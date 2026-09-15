@@ -20,27 +20,14 @@ jobs:
   schwarzerblitz-native:
     runs-on: windows-latest
     steps:
-      - name: Checkout Brutal Fist
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
-          submodules: false
-      - name: Checkout Schwarzerblitz engine source
-        uses: actions/checkout@v4
-        with:
-          repository: mhvnsnt/SchwarzerblitzEngine
-          path: vendor/SchwarzerblitzEngine
-          fetch-depth: 1
-      - name: Checkout Bannon source
-        uses: actions/checkout@v4
-        with:
-          repository: mhvnsnt/Bannon
-          path: BannonSource
-          fetch-depth: 1
+          submodules: recursive
       - name: Verify native source checkout
         shell: pwsh
         run: |
-          if (-not (Test-Path 'vendor/SchwarzerblitzEngine')) { throw 'SchwarzerblitzEngine source is missing' }
-          if (-not (Test-Path 'BannonSource')) { throw 'Bannon source is missing' }
+          if (-not (Test-Path 'vendor/SchwarzerblitzEngine')) { throw 'SchwarzerblitzEngine submodule is missing' }
+          if (-not (Test-Path 'BannonSource')) { throw 'BannonSource submodule is missing' }
       - name: Locate Visual Studio
         uses: microsoft/setup-msbuild@v2
       - name: Build Schwarzerblitz native engine
