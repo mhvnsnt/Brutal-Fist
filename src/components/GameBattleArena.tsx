@@ -11,7 +11,15 @@ import { MobileControls } from './MobileControls';
 import { useSoundEffects } from '../hooks/useSoundEffects';
 import dynamic from 'next/dynamic';
 
-const CharacterPortrait3D = dynamic(() => import('./CharacterPortrait3D'), { ssr: false });
+// ── 3D combat arena — loaded client-side only ─────────────────────────────────
+const CombatArena3D = dynamic(() => import('./CombatArena3D'), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full h-full flex items-center justify-center bg-black">
+      <div className="text-yellow-400 text-xs tracking-widest animate-pulse font-mono">LOADING ARENA...</div>
+    </div>
+  ),
+});
 
 interface GameBattleArenaProps {
   p1Fighter: BannonFighterProfile;
@@ -20,6 +28,10 @@ interface GameBattleArenaProps {
   onBack?: () => void;
   /** Optional label shown in the round indicator (e.g. "ROUND 2 / 7") */
   roundLabel?: string;
+  /** Optional cosmetic skin tint for P1 (hex color) */
+  p1SkinTint?: string;
+  /** Optional cosmetic skin tint for P2 (hex color) */
+  p2SkinTint?: string;
 }
 
 const EMPTY_INPUT: InputBitmask = {
@@ -35,7 +47,15 @@ const FACTION_COLOR: Record<string, string> = {
   independent: '#d97706',
 };
 
-export default function GameBattleArena({ p1Fighter, p2Fighter, onMatchEnd, onBack, roundLabel }: GameBattleArenaProps) {
+export default function GameBattleArena({
+  p1Fighter,
+  p2Fighter,
+  onMatchEnd,
+  onBack,
+  roundLabel,
+  p1SkinTint,
+  p2SkinTint,
+}: GameBattleArenaProps) {
   const engineRef = useRef<GameEngine | null>(null);
   const inputRef = useRef<InputBitmask>({ ...EMPTY_INPUT });
   const rafRef = useRef<number>(0);
@@ -50,6 +70,8 @@ export default function GameBattleArena({ p1Fighter, p2Fighter, onMatchEnd, onBa
   const [winner, setWinner] = useState<'p1' | 'p2' | 'draw' | null>(null);
   const [roundTimer, setRoundTimer] = useState(99);
   const [hitStopActive, setHitStopActive] = useState(false);
+  // ── State: arena is fully loaded (portrait boxes destroyed) ──────────────────
+  const [arenaReady, setArenaReady] = useState(false);
   const koHandledRef = useRef(false);
   const roundStartedRef = useRef(false);
 
@@ -93,9 +115,13 @@ export default function GameBattleArena({ p1Fighter, p2Fighter, onMatchEnd, onBa
     setRoundTimer(99);
     koHandledRef.current = false;
     roundStartedRef.current = false;
+    // Mark arena ready after a brief delay to ensure 3D canvas has mounted
+    // and character select assets are fully purged from the render tree
+    const readyTimer = window.setTimeout(() => setArenaReady(true), 400);
 
     return () => {
       cancelAnimationFrame(rafRef.current);
+      window.clearTimeout(readyTimer);
     };
   }, [p1Fighter, p2Fighter]);
 
@@ -154,7 +180,6 @@ export default function GameBattleArena({ p1Fighter, p2Fighter, onMatchEnd, onBa
         const isBlocked = engine.p2State === FighterState.Blockstun;
         const isCounter = prevP2State === FighterState.Startup || prevP2State === FighterState.Active;
 
-        // Sound selection
         if (isBlocked) {
           sfx.playBlock();
         } else if (isCounter) {
@@ -229,7 +254,6 @@ export default function GameBattleArena({ p1Fighter, p2Fighter, onMatchEnd, onBa
           : engine.p1Health <= 0 ? 'p2' : 'p1';
         setWinner(w);
         cancelAnimationFrame(rafRef.current);
-        // KO sound
         sfx.playKO();
         setTimeout(() => {
           if (w !== 'draw') sfx.playVictory();
@@ -327,34 +351,47 @@ export default function GameBattleArena({ p1Fighter, p2Fighter, onMatchEnd, onBa
 
   return (
     <div className="fixed inset-0 bg-black text-white overflow-hidden touch-none select-none font-mono">
-      {/* ── Arena background ── */}
-      <div className="absolute inset-0">
-        <div className="absolute bottom-0 left-0 right-0 h-[35%]"
-          style={{
-            background: 'linear-gradient(180deg, #1a1a1a 0%, #111 60%, #0a0a0a 100%)',
-            borderTop: '2px solid #333',
-          }}
-        />
-        <div className="absolute inset-0"
-          style={{
-            background: 'radial-gradient(ellipse at 50% 60%, #1c1c1e 0%, #0a0a0a 70%)',
-          }}
-        />
-        <div className="absolute inset-0 opacity-10" style={{
-          backgroundImage: `
-            repeating-linear-gradient(90deg, rgba(255,255,255,0.1) 0px, rgba(255,255,255,0.1) 1px, transparent 1px, transparent 80px),
-            repeating-linear-gradient(0deg, rgba(255,255,255,0.1) 0px, rgba(255,255,255,0.1) 1px, transparent 1px, transparent 80px)
-          `
-        }} />
-        <div className="absolute inset-0 opacity-5 pointer-events-none" style={{
-          backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.5) 2px, rgba(0,0,0,0.5) 4px)'
-        }} />
-        <div className="absolute inset-0 pointer-events-none"
-          style={{
-            background: `radial-gradient(ellipse at 25% 50%, ${p1Color}15 0%, transparent 50%), radial-gradient(ellipse at 75% 50%, ${p2Color}15 0%, transparent 50%)`
-          }}
+
+      {/* ── FULL 3D COMBAT VIEWPORT ──────────────────────────────────────────── */}
+      {/* This fills the entire screen. The HUD layers on top via z-index.        */}
+      {/* Portrait boxes from CharacterSelect are NOT rendered here — they are   */}
+      {/* destroyed the moment this component mounts (state transition complete). */}
+      <div className="absolute inset-0 z-0">
+        <CombatArena3D
+          p1Fighter={p1Fighter}
+          p2Fighter={p2Fighter}
+          p1State={p1State}
+          p2State={p2State}
+          p1Animation={p1Animation}
+          p2Animation={p2Animation}
+          p1Color={p1Color}
+          p2Color={p2Color}
+          hitStopActive={hitStopActive}
+          p1SkinTint={p1SkinTint}
+          p2SkinTint={p2SkinTint}
         />
       </div>
+
+      {/* ── Loading veil — hides the 3D canvas until fighters are spawned ─────── */}
+      {!arenaReady && (
+        <div className="absolute inset-0 z-50 bg-black flex flex-col items-center justify-center gap-3">
+          <div className="text-yellow-400 text-sm font-black tracking-[0.4em] animate-pulse">
+            LOADING ARENA
+          </div>
+          <div className="flex gap-1">
+            {[0, 1, 2].map(i => (
+              <div
+                key={i}
+                className="w-2 h-2 bg-yellow-400 rounded-full animate-bounce"
+                style={{ animationDelay: `${i * 0.15}s` }}
+              />
+            ))}
+          </div>
+          <div className="text-zinc-600 text-[9px] tracking-widest mt-2">
+            {p1Fighter.name.toUpperCase()} VS {p2Fighter.name.toUpperCase()}
+          </div>
+        </div>
+      )}
 
       {/* ── HUD: Health bars & timer ── */}
       <div className="absolute top-0 left-0 right-0 z-30 px-3 pt-2 pb-1">
@@ -367,7 +404,7 @@ export default function GameBattleArena({ p1Fighter, p2Fighter, onMatchEnd, onBa
               </span>
               <span className="text-[8px] text-zinc-500">{Math.ceil(p1Health).toLocaleString()}</span>
             </div>
-            <div className="h-4 border border-zinc-700 bg-zinc-900 relative overflow-hidden">
+            <div className="h-4 border border-zinc-700 bg-zinc-900/80 relative overflow-hidden">
               <div
                 className="absolute left-0 top-0 h-full transition-all duration-75"
                 style={{
@@ -380,14 +417,14 @@ export default function GameBattleArena({ p1Fighter, p2Fighter, onMatchEnd, onBa
                 <div className="absolute inset-0 animate-pulse bg-red-500/10" />
               )}
             </div>
-            <div className="text-[7px] text-zinc-600 tracking-widest h-3">
+            <div className="text-[7px] text-zinc-400 tracking-widest h-3">
               {getStateLabel(p1State, p1Animation)}
             </div>
           </div>
 
           {/* Center: Timer + Round */}
           <div className="flex flex-col items-center shrink-0 w-20">
-            <div className="text-[7px] text-zinc-600 tracking-widest text-center leading-tight">
+            <div className="text-[7px] text-zinc-400 tracking-widest text-center leading-tight">
               {roundLabel ?? 'ROUND 1'}
             </div>
             <div
@@ -400,7 +437,7 @@ export default function GameBattleArena({ p1Fighter, p2Fighter, onMatchEnd, onBa
             >
               {String(roundTimer).padStart(2, '0')}
             </div>
-            <div className="text-[7px] text-zinc-600 tracking-widest">F{frame}</div>
+            <div className="text-[7px] text-zinc-500 tracking-widest">F{frame}</div>
           </div>
 
           {/* P2 health bar */}
@@ -411,7 +448,7 @@ export default function GameBattleArena({ p1Fighter, p2Fighter, onMatchEnd, onBa
                 {p2Fighter.name.toUpperCase()}
               </span>
             </div>
-            <div className="h-4 border border-zinc-700 bg-zinc-900 relative overflow-hidden">
+            <div className="h-4 border border-zinc-700 bg-zinc-900/80 relative overflow-hidden">
               <div
                 className="absolute right-0 top-0 h-full transition-all duration-75"
                 style={{
@@ -424,90 +461,18 @@ export default function GameBattleArena({ p1Fighter, p2Fighter, onMatchEnd, onBa
                 <div className="absolute inset-0 animate-pulse bg-red-500/10" />
               )}
             </div>
-            <div className="text-[7px] text-zinc-600 tracking-widest h-3 text-right">
+            <div className="text-[7px] text-zinc-400 tracking-widest h-3 text-right">
               {getStateLabel(p2State, p2Animation)}
             </div>
           </div>
         </div>
       </div>
 
-      {/* ── Fighter 3D portrait panels (faction-colored) ── */}
-      <div className="absolute inset-0 flex items-end justify-between z-10 pointer-events-none px-4 pb-[18%]">
-        {/* P1 fighter */}
-        <div
-          className="relative flex flex-col items-center"
-          style={{
-            width: 'clamp(120px, 22vw, 220px)',
-            height: 'clamp(180px, 32vw, 320px)',
-            opacity: p1State === 'KO' ? 0.4 : 1,
-            transition: 'opacity 0.3s',
-            transform: p1State === 'Hitstun' ? 'translateX(6px) rotate(2deg)' : 'none',
-          }}
-        >
-          <div
-            className="absolute inset-0 border-2"
-            style={{
-              borderColor: p1Color,
-              boxShadow: `0 0 20px ${p1Color}44, inset 0 0 20px ${p1Color}11`,
-              background: `linear-gradient(180deg, #0a0a0a 0%, ${p1Color}18 100%)`,
-            }}
-          />
-          <div className="absolute inset-0">
-            <CharacterPortrait3D
-              modelUrl={p1Fighter.portraitUrl}
-              factionColor={p1Color}
-              mode="bust"
-              flash={hitStopActive}
-              flip={false}
-            />
-          </div>
-          <div
-            className="absolute bottom-0 left-0 right-0 text-center py-0.5 text-[8px] font-black tracking-widest"
-            style={{ background: `${p1Color}cc`, color: '#000' }}
-          >
-            {p1Fighter.name.toUpperCase()}
-          </div>
-        </div>
-
-        {/* P2 fighter */}
-        <div
-          className="relative flex flex-col items-center"
-          style={{
-            width: 'clamp(120px, 22vw, 220px)',
-            height: 'clamp(180px, 32vw, 320px)',
-            opacity: p2State === 'KO' ? 0.4 : 1,
-            transition: 'opacity 0.3s',
-            transform: p2State === 'Hitstun' ? 'translateX(-6px) rotate(-2deg)' : 'none',
-          }}
-        >
-          <div
-            className="absolute inset-0 border-2"
-            style={{
-              borderColor: p2Color,
-              boxShadow: `0 0 20px ${p2Color}44, inset 0 0 20px ${p2Color}11`,
-              background: `linear-gradient(180deg, #0a0a0a 0%, ${p2Color}18 100%)`,
-            }}
-          />
-          <div className="absolute inset-0">
-            <CharacterPortrait3D
-              modelUrl={p2Fighter.portraitUrl}
-              factionColor={p2Color}
-              mode="bust"
-              flash={hitStopActive}
-              flip={true}
-            />
-          </div>
-          <div
-            className="absolute bottom-0 left-0 right-0 text-center py-0.5 text-[8px] font-black tracking-widest"
-            style={{ background: `${p2Color}cc`, color: '#000' }}
-          >
-            {p2Fighter.name.toUpperCase()}
-          </div>
-        </div>
-      </div>
-
       {/* ── Move Execution Feedback ── */}
-      <MoveExecutionFeedback events={feedbackEvents} onExpire={(id) => setFeedbackEvents(prev => prev.filter(e => e.id !== id))} />
+      <MoveExecutionFeedback
+        events={feedbackEvents}
+        onExpire={(id) => setFeedbackEvents(prev => prev.filter(e => e.id !== id))}
+      />
 
       {/* ── KO / Time Out overlay ── */}
       {ko && (
@@ -543,14 +508,14 @@ export default function GameBattleArena({ p1Fighter, p2Fighter, onMatchEnd, onBa
       {onBack && (
         <button
           onClick={onBack}
-          className="absolute top-16 left-3 z-40 text-[8px] text-zinc-700 hover:text-zinc-400 border border-zinc-800 hover:border-zinc-600 px-2 py-1 transition-colors"
+          className="absolute top-16 left-3 z-40 text-[8px] text-zinc-500 hover:text-zinc-300 border border-zinc-800 hover:border-zinc-600 px-2 py-1 transition-colors bg-black/60"
         >
           ← BACK
         </button>
       )}
 
       {/* ── Controls legend ── */}
-      <div className="absolute bottom-2 left-3 z-30 text-[7px] text-zinc-700 space-y-0.5 pointer-events-none">
+      <div className="absolute bottom-2 left-3 z-30 text-[7px] text-zinc-600 space-y-0.5 pointer-events-none">
         <div>ARROWS: MOVE · Z: LIGHT · X: HEAVY · C: GUARD · V: GRAPPLE</div>
       </div>
     </div>
