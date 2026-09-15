@@ -3,14 +3,17 @@ import { AppScreen } from './types';
 import { BANNON_GLB_PLAYABLE_MODELS } from './data/bannonGlbRoster';
 import { type BannonFighterProfile, getBannonFighter } from './data/bannonRoster';
 import dynamic from 'next/dynamic';
+import { useAuth } from './contexts/AuthContext';
 
 const CharacterSelect = dynamic(() => import('./components/CharacterSelect'), { ssr: false });
 const GameBattleArena = dynamic(() => import('./components/GameBattleArena'), { ssr: false });
 const TournamentBracket = dynamic(() => import('./components/TournamentBracket'), { ssr: false });
 const TournamentStatsScreen = dynamic(() => import('./components/TournamentStatsScreen'), { ssr: false });
 const TournamentBrowserScreen = dynamic(() => import('./components/TournamentBrowserScreen'), { ssr: false });
+const AuthScreen = dynamic(() => import('./components/AuthScreen'), { ssr: false });
 
 export default function App() {
+  const { user, loading: authLoading, signOut } = useAuth();
   const [screen, setScreen] = useState<AppScreen>(AppScreen?.Boot);
   const [p1BannonFighter, setP1BannonFighter] = useState<BannonFighterProfile | null>(null);
   const [p2BannonFighter, setP2BannonFighter] = useState<BannonFighterProfile | null>(null);
@@ -31,6 +34,15 @@ export default function App() {
           <div className="mt-3 text-xl font-black tracking-widest">NO VALID BANNON GLB FIGHTERS</div>
           <div className="mt-3 text-xs text-slate-500">NO GLB = NO CHARACTER</div>
         </div>
+      </div>
+    );
+  }
+
+  // ── Auth loading ──
+  if (authLoading) {
+    return (
+      <div className="fixed inset-0 bg-black text-white flex items-center justify-center font-mono">
+        <div className="text-[9px] tracking-[0.45em] text-zinc-600 animate-pulse">AUTHENTICATING...</div>
       </div>
     );
   }
@@ -68,7 +80,20 @@ export default function App() {
     return (
       <div className="fixed inset-0 bg-[#10131a] text-white flex items-center justify-center font-mono">
         <div className="w-[min(86vw,420px)]">
-          <div className="mb-10 text-xs tracking-[0.45em] text-slate-500">3D FIGHTING GAME</div>
+          <div className="mb-2 text-xs tracking-[0.45em] text-slate-500">3D FIGHTING GAME</div>
+          {user && (
+            <div className="mb-6 flex items-center justify-between">
+              <div className="text-[8px] tracking-widest text-zinc-600">
+                PLAYER: <span className="text-zinc-400">{(user.email ?? '').split('@')[0].toUpperCase()}</span>
+              </div>
+              <button
+                onClick={() => signOut()}
+                className="text-[7px] tracking-widest text-zinc-700 hover:text-zinc-400 transition-colors border border-zinc-800 px-2 py-1"
+              >
+                SIGN OUT
+              </button>
+            </div>
+          )}
           <div className="space-y-2">
             <button
               onClick={() => { setGameMode('arcade'); setScreen(AppScreen?.Select); }}
@@ -96,7 +121,13 @@ export default function App() {
               TRAINING
             </button>
             <button
-              onClick={() => setScreen('stats' as any)}
+              onClick={() => {
+                if (!user) {
+                  setScreen('auth' as any);
+                } else {
+                  setScreen('stats' as any);
+                }
+              }}
               className="block w-full border border-slate-600 px-6 py-4 text-left text-xl font-black tracking-widest hover:bg-white hover:text-black transition-all"
             >
               STATS
@@ -105,6 +136,15 @@ export default function App() {
           </div>
         </div>
       </div>
+    );
+  }
+
+  // ── Auth Screen ──
+  if ((screen as any) === 'auth') {
+    return (
+      <AuthScreen
+        onSuccess={() => setScreen('stats' as any)}
+      />
     );
   }
 
@@ -117,8 +157,15 @@ export default function App() {
     );
   }
 
-  // ── Tournament Stats ──
+  // ── Tournament Stats (auth-gated) ──
   if ((screen as any) === 'stats') {
+    if (!user) {
+      return (
+        <AuthScreen
+          onSuccess={() => setScreen('stats' as any)}
+        />
+      );
+    }
     return (
       <TournamentStatsScreen
         onBack={() => setScreen(AppScreen?.MainMenu)}

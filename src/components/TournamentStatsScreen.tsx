@@ -11,6 +11,7 @@ import {
   TIER_LABEL,
 } from '../lib/statsService';
 import { useAuth } from '../contexts/AuthContext';
+import MatchDetailModal from './MatchDetailModal';
 
 const FACTION_COLOR: Record<string, string> = {
   alliance: '#1d4ed8',
@@ -73,6 +74,7 @@ export default function TournamentStatsScreen({ onBack }: TournamentStatsScreenP
   const [rankHistory, setRankHistory] = useState<PlayerRank[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedMatch, setSelectedMatch] = useState<MatchResult | null>(null);
 
   const loadData = useCallback(async () => {
     if (!user?.id) return;
@@ -320,7 +322,11 @@ export default function TournamentStatsScreen({ onBack }: TournamentStatsScreenP
                   </div>
                 ) : (
                   matches.map((m, i) => (
-                    <div key={m.id} className="flex items-center gap-3 py-2 border-b border-zinc-900">
+                    <button
+                      key={m.id}
+                      onClick={() => setSelectedMatch(m)}
+                      className="w-full flex items-center gap-3 py-2 border-b border-zinc-900 hover:bg-zinc-900/40 transition-colors text-left px-1"
+                    >
                       <div className="text-[7px] text-zinc-700 w-5 text-right shrink-0">{i + 1}</div>
                       <div
                         className="text-[8px] font-black w-10 shrink-0"
@@ -335,9 +341,13 @@ export default function TournamentStatsScreen({ onBack }: TournamentStatsScreenP
                       <div className="text-[7px] text-zinc-700 shrink-0">
                         {new Date(m.playedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                       </div>
-                    </div>
+                      <div className="text-[7px] text-zinc-700 shrink-0">›</div>
+                    </button>
                   ))
                 )}
+                <div className="pt-2 text-center">
+                  <div className="text-[7px] tracking-widest text-zinc-700">TAP A MATCH TO VIEW DETAILS</div>
+                </div>
               </div>
             )}
 
@@ -414,6 +424,14 @@ export default function TournamentStatsScreen({ onBack }: TournamentStatsScreenP
           </>
         )}
       </div>
+
+      {/* Match Detail Modal */}
+      {selectedMatch && (
+        <MatchDetailModal
+          match={selectedMatch}
+          onClose={() => setSelectedMatch(null)}
+        />
+      )}
     </div>
   );
 }
