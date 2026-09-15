@@ -12,6 +12,8 @@ export function useGameLoop() {
       p2Health: snapshot.p2.health,
       p1MaxHealth: engineRef.current.p1MaxHealth,
       p2MaxHealth: engineRef.current.p2MaxHealth,
+      p1Poise: engineRef.current.p1Poise,
+      p2Poise: engineRef.current.p2Poise,
       p1X: snapshot.p1.x,
       p1Z: snapshot.p1.z,
       p2X: snapshot.p2.x,
@@ -26,7 +28,7 @@ export function useGameLoop() {
   };
 
   const [engineState, setEngineState] = useState(makeState);
-  const inputRef = useRef<InputBitmask>({ up: false, down: false, left: false, right: false, light: false, heavy: false, guard: false });
+  const inputRef = useRef<InputBitmask>({ up: false, down: false, left: false, right: false, light: false, heavy: false, guard: false, grapple: false, escape: false, pin: false });
 
   useEffect(() => {
     const handleKey = (pressed: boolean) => (e: KeyboardEvent) => {
@@ -38,6 +40,9 @@ export function useGameLoop() {
         case 'j': inputRef.current.light = pressed; break;
         case 'k': inputRef.current.heavy = pressed; break;
         case 'l': inputRef.current.guard = pressed; break;
+        case 'u': inputRef.current.grapple = pressed; break;
+        case 'i': inputRef.current.escape = pressed; break;
+        case 'o': inputRef.current.pin = pressed; break;
       }
     };
     const down = handleKey(true); const up = handleKey(false);
