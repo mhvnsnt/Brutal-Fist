@@ -1,3 +1,7 @@
 [submodule "SchwarzerblitzEngine"]
 	path = SchwarzerblitzEngine
 	url = https://github.com/AndreaJens/SchwarzerblitzEngine.git
+
+[submodule "BannonSource"]
+	path = BannonSource
+	url = https://github.com/mhvnsnt/Bannon.git
