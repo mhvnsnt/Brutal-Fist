@@ -13,7 +13,7 @@ interface CharacterPortrait3DProps {
   mode?: 'bust' | 'full';
   /** Whether to apply a hit-stop brightness flash */
   flash?: boolean;
-  /** Flip horizontally for P2 side */
+  /** Flip horizontally for P2 side — rotates 180° on Y so character faces toward P1 */
   flip?: boolean;
 }
 
@@ -22,16 +22,20 @@ interface CharacterPortrait3DProps {
  * - Models are normalized so their bounding box bottom sits at Y=0
  * - Scale is normalized to 2.0 units tall
  * - Root is centered on X/Z axes
- * - Bannon faces +Z (toward camera) by default — all other models must match this
- * - Bust camera: looks at ~70% of model height (head/chest zone), positioned at Z=3.2 with FOV 28
+ * - All models face +Z (toward camera) after normalization
+ * - P2 side: rotate 180° on Y-axis so character faces left (toward P1), NOT X-scale flip
+ * - Bust camera: looks at ~72% of model height (head/chest zone), positioned at Z=3.2 with FOV 28
  * - Full camera: looks at 50% of model height, positioned at Z=4.5 with FOV 40
- * - No auto-rotation — models face forward (Bannon orientation)
  *
  * VERTICAL ALIGNMENT FIX:
- * The camera look-at Y is computed dynamically from the model's actual normalized
- * bounding box height, not a hardcoded value. This ensures all characters (Cody,
- * Cain Elias, Echo, etc.) frame correctly regardless of skeleton root height or
- * bounding box origin in the source GLB.
+ * normalizedHeight is stored in a ref AND state so the camera effect always
+ * reads the latest value immediately after model load without stale closure issues.
+ *
+ * FACING DIRECTION FIX:
+ * P2 uses rotation.y = Math.PI (180° Y-rotation) instead of scale.x = -1.
+ * X-scale flip mirrors the geometry (breaks asymmetric characters, reverses normals).
+ * Y-rotation correctly turns the character to face the opposite direction without
+ * distorting the mesh, matching how Maime frames correctly on the P2 side.
  */
 function PortraitModel({
   modelUrl,
@@ -43,9 +47,32 @@ function PortraitModel({
   const groupRef = useRef<THREE.Group>(null);
   const mixerRef = useRef<THREE.AnimationMixer | null>(null);
   const [model, setModel] = useState<THREE.Group | null>(null);
-  // Store the normalized model height so camera can frame correctly
+  // Store normalized height in both ref (for immediate camera access) and state (for re-render)
+  const normalizedHeightRef = useRef<number>(2.0);
   const [normalizedHeight, setNormalizedHeight] = useState<number>(2.0);
   const { camera } = useThree();
+
+  // Apply camera framing whenever mode, normalizedHeight, or camera changes
+  const applyCameraFraming = (height: number) => {
+    const cam = camera as THREE.PerspectiveCamera;
+    if (mode === 'bust') {
+      // Target the head/chest zone: 72% of model height from the floor (Y=0)
+      // For a 2.0-unit model this gives Y≈1.44, matching Bannon's reference.
+      const lookAtY = height * 0.72;
+      const camY = lookAtY + 0.15;
+      cam.fov = 28;
+      camera.position.set(0, camY, 3.2);
+      camera.lookAt(0, lookAtY, 0);
+    } else {
+      // Full body — center of mass at 50% height
+      const lookAtY = height * 0.50;
+      const camY = lookAtY;
+      cam.fov = 40;
+      camera.position.set(0, camY, 4.5);
+      camera.lookAt(0, lookAtY, 0);
+    }
+    cam.updateProjectionMatrix();
+  };
 
   useEffect(() => {
     let active = true;
@@ -74,16 +101,22 @@ function PortraitModel({
           -center.z * scale
         );
 
-        // 4. Ensure model faces +Z (Bannon forward direction)
+        // 4. Ensure model faces +Z (Bannon forward direction) — no rotation on the mesh itself.
+        //    P2 facing is handled by the parent group's Y rotation (see group below).
         cloned.rotation.set(0, 0, 0);
 
         // 5. Compute the actual normalized height AFTER scale+position are applied
-        //    so the camera can target the correct vertical zone for this specific model.
-        //    We re-measure the bounding box after normalization to get the true height.
+        //    Re-measure bounding box after normalization to get the true height.
         const normalizedBox = new THREE.Box3().setFromObject(cloned);
         const normalizedSize = normalizedBox.getSize(new THREE.Vector3());
-        // Store the actual height (should be ~2.0 but may vary due to accessories/props)
-        setNormalizedHeight(normalizedSize.y);
+        const height = normalizedSize.y;
+
+        // Store in ref immediately so camera framing can use it right away
+        normalizedHeightRef.current = height;
+        // Apply camera framing immediately with the correct height
+        applyCameraFraming(height);
+        // Also update state to trigger any dependent re-renders
+        setNormalizedHeight(height);
 
         // 6. Apply faction color tint to emissive (subtle, preserves original textures)
         const color = new THREE.Color(factionColor);
@@ -127,32 +160,9 @@ function PortraitModel({
     };
   }, [modelUrl, factionColor]);
 
-  // ── Camera framing — dynamically computed from actual model height ──────────
-  // This is the core fix: instead of hardcoding Y=1.4 (which only works for Bannon/Maime),
-  // we compute the look-at Y as a fraction of the model's actual normalized height.
-  // Bust mode targets the head/upper-chest zone (~72% up from feet).
-  // Full mode targets the center of mass (~50% up from feet).
+  // Re-apply camera framing when mode changes or normalizedHeight updates
   useEffect(() => {
-    const cam = camera as THREE.PerspectiveCamera;
-    if (mode === 'bust') {
-      // Target the head/chest zone: 72% of model height from the floor (Y=0)
-      // For a 2.0-unit model this gives Y≈1.44, matching Bannon's reference.
-      // For taller/shorter normalized models it scales proportionally.
-      const lookAtY = normalizedHeight * 0.72;
-      // Camera sits slightly above the look-at point to create a natural bust angle
-      const camY = lookAtY + 0.15;
-      cam.fov = 28;
-      camera.position.set(0, camY, 3.2);
-      camera.lookAt(0, lookAtY, 0);
-    } else {
-      // Full body — center of mass at 50% height
-      const lookAtY = normalizedHeight * 0.50;
-      const camY = lookAtY;
-      cam.fov = 40;
-      camera.position.set(0, camY, 4.5);
-      camera.lookAt(0, lookAtY, 0);
-    }
-    cam.updateProjectionMatrix();
+    applyCameraFraming(normalizedHeightRef.current);
   }, [mode, camera, normalizedHeight]);
 
   useFrame((_, delta) => {
@@ -164,7 +174,12 @@ function PortraitModel({
   return (
     <group
       ref={groupRef}
-      scale={flip ? [-1, 1, 1] : [1, 1, 1]}
+      // P2 side: rotate 180° on Y-axis so the character faces toward P1 (left/toward camera from right).
+      // This is the correct approach — NOT X-scale flip which mirrors geometry and breaks facing direction
+      // for characters whose GLB origin doesn't match Bannon's +Z forward convention.
+      // Maime works correctly because this rotation makes all characters face the same direction
+      // relative to the portrait camera regardless of their source GLB facing.
+      rotation={[0, flip ? Math.PI : 0, 0]}
     >
       <primitive object={model} />
     </group>
