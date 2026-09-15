@@ -14,6 +14,7 @@
     "clean": "rm -rf .next dist server.js",
     "psx:fighter": "node tools/psx/decimate-fighter.mjs BannonSource/assets/models/BANNON_rigged.glb public/models/bannon_psx.glb --tris=18000 --tex=256",
     "bannon:manifest": "node tools/bannon/build-character-manifest.mjs && node tools/bannon/build-animation-manifest.mjs",
+    "bannon:verify": "node tools/bannon/verify-and-build-roster.mjs",
     "sources:audit": "node tools/integration/build-source-audit.mjs"
   },
   "dependencies": {
@@ -29,7 +30,7 @@
     "meshoptimizer": "^0.24.0",
     "motion": "^12.23.24",
     "next": "16.3.3",
-    "react": "^19.2.0",
+    "react": "19.2.0",
     "react-dom": "^19.2.0",
     "sharp": "^0.34.4",
     "three": "^0.186.0",
@@ -37,15 +38,14 @@
     "vite": "^6.2.3"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4.1.14",
+    "@tailwindcss/postcss": "^4.1.0",
     "@types/express": "^4.17.21",
     "@types/node": "^22.14.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
-    "@types/three": "^0.186.0",
     "@vitejs/plugin-react": "^5.0.4",
     "autoprefixer": "^10.4.21",
-    "tailwindcss": "^4.1.14",
+    "tailwindcss": "^4.1.0",
     "typescript": "~5.8.2"
   }
 }
