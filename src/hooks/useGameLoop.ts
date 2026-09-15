@@ -4,20 +4,19 @@ import { InputBitmask } from '../types';
 
 export function useGameLoop() {
   const engineRef = useRef(new GameEngine());
-  const [engineState, setEngineState] = useState<{
-    frame: number;
-    state: string;
-    stateFrameCounter: number;
-    buffer: InputBitmask[];
-    p1Health: number;
-    p2Health: number;
-  }>({
+  const [engineState, setEngineState] = useState({
     frame: 0,
     state: 'Neutral',
+    p2State: 'Neutral',
     stateFrameCounter: 0,
-    buffer: [],
+    p2StateFrameCounter: 0,
+    buffer: [] as InputBitmask[],
     p1Health: 250,
-    p2Health: 250
+    p2Health: 250,
+    p1X: -2.25,
+    p1Z: 0,
+    p2X: 2.25,
+    p2Z: 0
   });
 
   const inputRef = useRef<InputBitmask>({
@@ -25,72 +24,67 @@ export function useGameLoop() {
   });
 
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
+    const handleKey = (pressed: boolean) => (e: KeyboardEvent) => {
       switch (e.key.toLowerCase()) {
-        case 'w': inputRef.current.up = true; break;
-        case 's': inputRef.current.down = true; break;
-        case 'a': inputRef.current.left = true; break;
-        case 'd': inputRef.current.right = true; break;
-        case 'j': inputRef.current.light = true; break;
-        case 'k': inputRef.current.heavy = true; break;
-        case 'l': inputRef.current.guard = true; break;
+        case 'w': inputRef.current.up = pressed; break;
+        case 's': inputRef.current.down = pressed; break;
+        case 'a': inputRef.current.left = pressed; break;
+        case 'd': inputRef.current.right = pressed; break;
+        case 'j': inputRef.current.light = pressed; break;
+        case 'k': inputRef.current.heavy = pressed; break;
+        case 'l': inputRef.current.guard = pressed; break;
       }
     };
-    const handleKeyUp = (e: KeyboardEvent) => {
-      switch (e.key.toLowerCase()) {
-        case 'w': inputRef.current.up = false; break;
-        case 's': inputRef.current.down = false; break;
-        case 'a': inputRef.current.left = false; break;
-        case 'd': inputRef.current.right = false; break;
-        case 'j': inputRef.current.light = false; break;
-        case 'k': inputRef.current.heavy = false; break;
-        case 'l': inputRef.current.guard = false; break;
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('keyup', handleKeyUp);
-
+    const down = handleKey(true);
+    const up = handleKey(false);
+    window.addEventListener('keydown', down);
+    window.addEventListener('keyup', up);
     return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('keydown', down);
+      window.removeEventListener('keyup', up);
     };
   }, []);
 
   useEffect(() => {
-    let animationFrameId: number;
-    let lastTime = performance.now();
+    let raf = 0;
+    let last = performance.now();
     let accumulator = 0;
-    const TIME_STEP = 1000 / 60; // 60 TPS
+    const step = 1000 / 60;
 
     const loop = (time: number) => {
-      accumulator += time - lastTime;
-      lastTime = time;
+      accumulator += Math.min(100, time - last);
+      last = time;
 
       let ticked = false;
-      while (accumulator >= TIME_STEP) {
+      while (accumulator >= step) {
         engineRef.current.tick(inputRef.current);
-        accumulator -= TIME_STEP;
+        accumulator -= step;
         ticked = true;
       }
 
       if (ticked) {
+        const engine = engineRef.current;
         setEngineState({
-          frame: engineRef.current.currentFrame,
-          state: engineRef.current.state,
-          stateFrameCounter: engineRef.current.stateFrameCounter,
-          buffer: [...engineRef.current.inputBuffer],
-          p1Health: engineRef.current.p1Health,
-          p2Health: engineRef.current.p2Health
+          frame: engine.currentFrame,
+          state: engine.state,
+          p2State: engine.p2State,
+          stateFrameCounter: engine.stateFrameCounter,
+          p2StateFrameCounter: engine.p2StateFrameCounter,
+          buffer: [...engine.inputBuffer],
+          p1Health: engine.p1Health,
+          p2Health: engine.p2Health,
+          p1X: engine.p1X,
+          p1Z: engine.p1Z,
+          p2X: engine.p2X,
+          p2Z: engine.p2Z
         });
       }
 
-      animationFrameId = requestAnimationFrame(loop);
+      raf = requestAnimationFrame(loop);
     };
 
-    animationFrameId = requestAnimationFrame(loop);
-
-    return () => cancelAnimationFrame(animationFrameId);
+    raf = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf);
   }, []);
 
   return { engineState, inputRef };
