@@ -61,4 +61,11 @@ The hard rule is encoded in `docs/BANNON_GLB_CHARACTER_LAW.md`, `docs/BANNON_GLB
 
 `npm run bannon:verify` is the runnable GLB roster gate. Dependency versions remain unchanged.
 
-This record is intentionally explicit so future agents understand that the GLB-only boundary, unlimited-attire inventory requirement, and move from generic prototype rendering to exact selected Bannon fighter instances are user-directed requirements, not optional implementation preferences.
+## 2026-09-15 — Exhaustiveness and native build-path repair
+
+A second audit pass found two structural weaknesses that would let the project look healthier than it was:
+
+- The previous Bannon verifier silently reduced the discovered GLB set to filename/name matches. That was not exhaustive enough for the user's law. It has now been hardened to enumerate every `assets/models/**/*.glb`, require every discovered GLB to have an explicit entry in the authoritative `src/data/bannonGlbRoster.ts` map, and fail closed with `UNMAPPED_GLB` instead of guessing ownership. Filename similarity is explicitly not proof. It also records the complete inventory, playable/blocked split, fighter IDs, and unmapped count in the generated manifest.
+- The repository's committed git tree currently places the Schwarzerblitz submodule at `SchwarzerblitzEngine`, while `.gitmodules` declared `vendor/SchwarzerblitzEngine`. Those paths were inconsistent. `.gitmodules` and the native CI job have now been aligned to the committed `SchwarzerblitzEngine` path so the checkout/build job is testing the actual repository layout.
+
+These changes are infrastructure corrections, not a claim that the full native game is finished. The native Schwarzerblitz game loop, native fighter slots, complete animation/move import, stage system, and full arcade/versus/training loops remain active build targets.
