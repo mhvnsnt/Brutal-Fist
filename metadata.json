@@ -1,0 +1,8 @@
+{
+  "name": "Brutal Fist",
+  "description": "A web-based architectural baseline prototype for a 3D fighting game featuring a deterministic 60fps tick rate, rolling input buffer, state machine, and PSX retro aesthetics.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
