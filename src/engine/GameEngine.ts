@@ -2,8 +2,10 @@ import { FighterState, FighterAnimation, FighterSnapshot, InputBitmask, FrameDat
 import { getMove, SchwarzerblitzMoveDefinition } from './SchwarzerblitzMoveCatalog';
 import { SchwarzerblitzInputBuffer } from './SchwarzerblitzInput';
 import { BannonFighterProfile, getBannonFighter } from '../data/bannonRoster';
+import { GrappleSystem } from './GrappleSystem';
+import { hitStopFramesForImpact } from './BannonCombatContract';
 
-const EMPTY_INPUT: InputBitmask = { up: false, down: false, left: false, right: false, light: false, heavy: false, guard: false };
+const EMPTY_INPUT: InputBitmask = { up: false, down: false, left: false, right: false, light: false, heavy: false, guard: false, grapple: false, escape: false, pin: false };
 const DEFAULT_HURTBOX: Hurtbox = { offsetX: 0, offsetZ: 0, width: 0.82, depth: 0.72 };
 const LIGHT = getMove('light');
 const HEAVY = getMove('heavy');
@@ -17,6 +19,8 @@ export class GameEngine {
   public readonly p2MaxHealth: number;
   public p1Health: number;
   public p2Health: number;
+  public p1Poise: number;
+  public p2Poise: number;
   public state: FighterState = FighterState.Neutral;
   public p2State: FighterState = FighterState.Neutral;
   public stateFrameCounter = 0;
@@ -31,6 +35,8 @@ export class GameEngine {
   public p2Facing: 1 | -1 = -1;
   public p1Animation: FighterAnimation = 'idle';
   public p2Animation: FighterAnimation = 'idle';
+  public readonly grapple = new GrappleSystem();
+  public hitStopFrames = 0;
 
   private readonly maxBufferSize = 60;
   private readonly arenaX = 5.5;
@@ -51,6 +57,8 @@ export class GameEngine {
     this.p2MaxHealth = p2Fighter.hp;
     this.p1Health = p1Fighter.hp;
     this.p2Health = p2Fighter.hp;
+    this.p1Poise = p1Fighter.poise;
+    this.p2Poise = p2Fighter.poise;
     for (let i = 0; i < this.maxBufferSize; i++) this.inputBuffer.push({ ...EMPTY_INPUT });
   }
 
@@ -60,7 +68,21 @@ export class GameEngine {
     this.inputBuffer.shift();
     this.inputBuffer.push({ ...currentInput });
     this.commandBuffer.push(this.currentFrame, currentInput);
+
+    if (this.hitStopFrames > 0) {
+      this.hitStopFrames--;
+      this.p1Animation = this.p1Animation === 'ko' ? 'ko' : this.p1Animation;
+      this.p2Animation = this.p2Animation === 'ko' ? 'ko' : this.p2Animation;
+      return;
+    }
+
     this.updateFacing();
+    this.updateGrapple(currentInput);
+    if (this.grapple.getState().phase !== 'none' && this.grapple.getState().phase !== 'escaped') {
+      this.updateGrappledStates();
+      return;
+    }
+    if (this.grapple.getState().phase === 'escaped') this.grapple.release(this.currentFrame);
     this.updatePlayer(currentInput);
     this.updateCpu();
     this.resolveBodySeparation();
@@ -68,17 +90,70 @@ export class GameEngine {
   }
 
   public getSnapshot(): { frame: number; p1: FighterSnapshot; p2: FighterSnapshot } {
+    const grappleState = this.grapple.getState();
     return {
       frame: this.currentFrame,
-      p1: this.snapshot(this.p1Health, this.p1X, this.p1Z, this.p1Facing, this.state, this.stateFrameCounter, this.p1Animation, this.currentMove),
-      p2: this.snapshot(this.p2Health, this.p2X, this.p2Z, this.p2Facing, this.p2State, this.p2StateFrameCounter, this.p2Animation, this.p2Move)
+      p1: this.snapshot(this.p1Health, this.p1X, this.p1Z, this.p1Facing, this.state, this.stateFrameCounter, this.p1Animation, this.currentMove, grappleState),
+      p2: this.snapshot(this.p2Health, this.p2X, this.p2Z, this.p2Facing, this.p2State, this.p2StateFrameCounter, this.p2Animation, this.p2Move, grappleState)
     };
   }
 
   public isMatchOver() { return this.p1Health <= 0 || this.p2Health <= 0; }
 
-  private snapshot(health: number, x: number, z: number, facing: 1 | -1, state: FighterState, stateFrame: number, animation: FighterAnimation, move: FrameData | null): FighterSnapshot {
-    return { health, x, z, facing, state, stateFrame, animation, move };
+  private snapshot(health: number, x: number, z: number, facing: 1 | -1, state: FighterState, stateFrame: number, animation: FighterAnimation, move: FrameData | null, grappleState: ReturnType<GrappleSystem['getState']>): FighterSnapshot {
+    return { health, x, z, facing, state, stateFrame, animation, move, grapplePhase: grappleState.phase, grappleEscapeMeter: grappleState.escapeMeter };
+  }
+
+  private updateGrapple(input: InputBitmask) {
+    const g = this.grapple.getState();
+    if (g.phase === 'none' && input.grapple && this.state === FighterState.Neutral && this.p2State === FighterState.Neutral) {
+      const distance = Math.hypot(this.p2X - this.p1X, this.p2Z - this.p1Z);
+      if (this.grapple.canEngage(distance, this.p2Guard)) {
+        this.grapple.engage('p1', 'p2', this.currentFrame);
+        this.state = FighterState.Grappled;
+        this.p2State = FighterState.Grappled;
+        this.p1Animation = 'grapple';
+        this.p2Animation = 'grapple';
+      }
+      return;
+    }
+    if (g.phase === 'engaged' || g.phase === 'control') {
+      if (input.escape) this.grapple.applyEscapeInput(8, this.currentFrame);
+      else this.grapple.advanceControl(this.currentFrame);
+      if (input.pin) {
+        this.grapple.attemptPin(this.currentFrame, this.measurePinContact());
+      } else if (input.heavy && g.attackerId === 'p1') {
+        this.grapple.advanceControl(this.currentFrame);
+        this.p2Health = Math.max(0, this.p2Health - this.scaledDamage(HEAVY.damage * 1.5, this.p1Fighter));
+        this.p1Animation = 'throw';
+        this.p2Animation = 'hit';
+        this.p2State = FighterState.Hitstun;
+        this.p2Hitstun = 24;
+        this.grapple.release(this.currentFrame);
+      }
+    }
+  }
+
+  private updateGrappledStates() {
+    const g = this.grapple.getState();
+    if (g.phase === 'pinned') {
+      this.state = g.attackerId === 'p1' ? FighterState.Neutral : FighterState.Pinned;
+      this.p2State = g.defenderId === 'p2' ? FighterState.Pinned : FighterState.Neutral;
+      this.p1Animation = g.attackerId === 'p1' ? 'pin' : 'idle';
+      this.p2Animation = g.defenderId === 'p2' ? 'pin' : 'idle';
+      return;
+    }
+    this.state = g.attackerId === 'p1' ? FighterState.Grappled : FighterState.Neutral;
+    this.p2State = g.defenderId === 'p2' ? FighterState.Grappled : FighterState.Neutral;
+    this.p1Animation = g.attackerId === 'p1' ? 'grapple' : 'idle';
+    this.p2Animation = g.defenderId === 'p2' ? 'grapple' : 'idle';
+  }
+
+  private measurePinContact() {
+    const distance = Math.hypot(this.p2X - this.p1X, this.p2Z - this.p1Z);
+    const ringMatContact = Math.abs(this.p2X) <= this.arenaX && Math.abs(this.p2Z) <= this.arenaZ;
+    const shoulderDistance = Math.max(0, distance - 0.15);
+    return { leftShoulderDistanceM: shoulderDistance, rightShoulderDistanceM: shoulderDistance, ringMatContact };
   }
 
   private updatePlayer(input: InputBitmask) {
@@ -144,9 +219,21 @@ export class GameEngine {
   private tryHit(attackerIsP1: boolean, move: FrameData) {
     const hitbox = move.hitbox ?? this.legacyHitbox(move); const attackerX = attackerIsP1 ? this.p1X : this.p2X; const attackerZ = attackerIsP1 ? this.p1Z : this.p2Z; const attackerFacing = attackerIsP1 ? this.p1Facing : this.p2Facing; const defenderX = attackerIsP1 ? this.p2X : this.p1X; const defenderZ = attackerIsP1 ? this.p2Z : this.p1Z; const defenderGuard = attackerIsP1 ? this.p2Guard : this.p1Guard;
     const centerX = attackerX + attackerFacing * hitbox.offsetX; const centerZ = attackerZ + hitbox.offsetZ; const xOverlap = Math.abs(centerX - defenderX) <= (hitbox.width + this.hurtbox.width) * 0.5; const zOverlap = Math.abs(centerZ - defenderZ) <= (hitbox.depth + this.hurtbox.depth) * 0.5; if (!xOverlap || !zOverlap) return;
-    const attacker = attackerIsP1 ? this.p1Fighter : this.p2Fighter; const damage = this.scaledDamage(hitbox.damage || move.damage, attacker); const push = hitbox.pushback || move.pushback;
-    if (attackerIsP1) { this.p2Health = Math.max(0, this.p2Health - damage); this.p2State = defenderGuard ? FighterState.Blockstun : FighterState.Hitstun; this.p2Animation = defenderGuard ? 'block' : 'hit'; if (defenderGuard) this.p2Blockstun = hitbox.blockstun || move.blockstun || 9; else this.p2Hitstun = hitbox.hitstun || move.hitstun || 15; this.p2X += this.p1Facing * push; }
-    else { this.p1Health = Math.max(0, this.p1Health - damage); this.state = defenderGuard ? FighterState.Blockstun : FighterState.Hitstun; this.p1Animation = defenderGuard ? 'block' : 'hit'; if (defenderGuard) this.p1Blockstun = hitbox.blockstun || move.blockstun || 9; else this.p1Hitstun = hitbox.hitstun || move.hitstun || 15; this.p1X += this.p2Facing * push; }
+    const attacker = attackerIsP1 ? this.p1Fighter : this.p2Fighter; const defenderPoise = attackerIsP1 ? this.p2Poise : this.p1Poise; const damage = this.scaledDamage(hitbox.damage || move.damage, attacker); const push = hitbox.pushback || move.pushback;
+    if (attackerIsP1) {
+      this.p2Health = Math.max(0, this.p2Health - damage); this.p2State = defenderGuard ? FighterState.Blockstun : FighterState.Hitstun; this.p2Animation = defenderGuard ? 'block' : 'hit';
+      if (defenderGuard) this.p2Blockstun = hitbox.blockstun || move.blockstun || 9;
+      else { this.p2Hitstun = hitbox.hitstun || move.hitstun || 15; this.p2Poise = Math.max(0, defenderPoise - Math.max(1, Math.round(damage / 100))); }
+      this.p2X += this.p1Facing * push;
+    } else {
+      this.p1Health = Math.max(0, this.p1Health - damage); this.state = defenderGuard ? FighterState.Blockstun : FighterState.Hitstun; this.p1Animation = defenderGuard ? 'block' : 'hit';
+      if (defenderGuard) this.p1Blockstun = hitbox.blockstun || move.blockstun || 9;
+      else { this.p1Hitstun = hitbox.hitstun || move.hitstun || 15; this.p1Poise = Math.max(0, this.p1Poise - Math.max(1, Math.round(damage / 100))); }
+      this.p1X += this.p2Facing * push;
+    }
+    this.hitStopFrames = Math.max(this.hitStopFrames, hitStopFramesForImpact(damage));
+    if (attackerIsP1 && this.p2Poise <= 0) this.p2Animation = 'ko';
+    if (!attackerIsP1 && this.p1Poise <= 0) this.p1Animation = 'ko';
     if (attackerIsP1 && this.p2Health <= 0) { this.p2State = FighterState.KO; this.p2Animation = 'ko'; }
     if (!attackerIsP1 && this.p1Health <= 0) { this.state = FighterState.KO; this.p1Animation = 'ko'; }
   }
