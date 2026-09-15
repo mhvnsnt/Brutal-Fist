@@ -4,12 +4,14 @@ import { InputBitmask } from '../types';
 
 export function useGameLoop() {
   const engineRef = useRef(new GameEngine());
-  const [engineState, setEngineState] = useState(() => {
+  const makeState = () => {
     const snapshot = engineRef.current.getSnapshot();
     return {
       ...snapshot,
       p1Health: snapshot.p1.health,
       p2Health: snapshot.p2.health,
+      p1MaxHealth: engineRef.current.p1MaxHealth,
+      p2MaxHealth: engineRef.current.p2MaxHealth,
       p1X: snapshot.p1.x,
       p1Z: snapshot.p1.z,
       p2X: snapshot.p2.x,
@@ -21,11 +23,10 @@ export function useGameLoop() {
       p1Animation: snapshot.p1.animation,
       p2Animation: snapshot.p2.animation
     };
-  });
+  };
 
-  const inputRef = useRef<InputBitmask>({
-    up: false, down: false, left: false, right: false, light: false, heavy: false, guard: false
-  });
+  const [engineState, setEngineState] = useState(makeState);
+  const inputRef = useRef<InputBitmask>({ up: false, down: false, left: false, right: false, light: false, heavy: false, guard: false });
 
   useEffect(() => {
     const handleKey = (pressed: boolean) => (e: KeyboardEvent) => {
@@ -39,52 +40,19 @@ export function useGameLoop() {
         case 'l': inputRef.current.guard = pressed; break;
       }
     };
-    const down = handleKey(true);
-    const up = handleKey(false);
-    window.addEventListener('keydown', down);
-    window.addEventListener('keyup', up);
-    return () => {
-      window.removeEventListener('keydown', down);
-      window.removeEventListener('keyup', up);
-    };
+    const down = handleKey(true); const up = handleKey(false);
+    window.addEventListener('keydown', down); window.addEventListener('keyup', up);
+    return () => { window.removeEventListener('keydown', down); window.removeEventListener('keyup', up); };
   }, []);
 
   useEffect(() => {
-    let raf = 0;
-    let last = performance.now();
-    let accumulator = 0;
-    const fixedStepMs = 1000 / 60;
-
-    const publish = () => {
-      const snapshot = engineRef.current.getSnapshot();
-      setEngineState({
-        ...snapshot,
-        p1Health: snapshot.p1.health,
-        p2Health: snapshot.p2.health,
-        p1X: snapshot.p1.x,
-        p1Z: snapshot.p1.z,
-        p2X: snapshot.p2.x,
-        p2Z: snapshot.p2.z,
-        state: snapshot.p1.state,
-        p2State: snapshot.p2.state,
-        p1Facing: snapshot.p1.facing,
-        p2Facing: snapshot.p2.facing,
-        p1Animation: snapshot.p1.animation,
-        p2Animation: snapshot.p2.animation
-      });
-    };
-
+    let raf = 0; let last = performance.now(); let accumulator = 0; const fixedStepMs = 1000 / 60;
     const loop = (time: number) => {
-      accumulator += Math.min(100, time - last);
-      last = time;
-      while (accumulator >= fixedStepMs) {
-        engineRef.current.tick({ ...inputRef.current });
-        accumulator -= fixedStepMs;
-      }
-      publish();
+      accumulator += Math.min(100, time - last); last = time;
+      while (accumulator >= fixedStepMs) { engineRef.current.tick({ ...inputRef.current }); accumulator -= fixedStepMs; }
+      setEngineState(makeState());
       raf = requestAnimationFrame(loop);
     };
-
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
   }, []);
