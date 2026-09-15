@@ -4,12 +4,14 @@ import { PSXCanvas } from './components/PSXCanvas';
 import { MobileControls } from './components/MobileControls';
 import { AppScreen } from './types';
 import { useDriveModel } from './hooks/useDriveModel';
-import { BANNON_ROSTER } from './data/bannonRoster';
+import { BANNON_GLB_PLAYABLE_MODELS } from './data/bannonGlbRoster';
 
 export default function App() {
   const { engineState, inputRef } = useGameLoop();
   const [screen, setScreen] = useState<AppScreen>(AppScreen.Boot);
   const [vsStartTime, setVsStartTime] = useState<number | null>(null);
+  const [p1Index, setP1Index] = useState(0);
+  const [p2Index, setP2Index] = useState(Math.min(1, Math.max(0, BANNON_GLB_PLAYABLE_MODELS.length - 1)));
   const loadAssets = screen === AppScreen.Select || screen === AppScreen.VS || screen === AppScreen.Combat;
   const { modelUrl, loading: modelLoading, error: modelError } = useDriveModel(loadAssets);
 
@@ -38,14 +40,20 @@ export default function App() {
     }
   }, [screen, engineState.p1Health, engineState.p2Health]);
 
-  const p1Name = BANNON_ROSTER[0].name;
-  const p2Name = BANNON_ROSTER[3].name;
+  if (!BANNON_GLB_PLAYABLE_MODELS.length) {
+    return <div className="fixed inset-0 bg-black text-white flex items-center justify-center font-mono"><div className="text-center"><div className="text-xs tracking-[0.45em] text-red-400">ROSTER LOCKED</div><div className="mt-3 text-xl font-black tracking-widest">NO VALID BANNON GLB FIGHTERS</div><div className="mt-3 text-xs text-slate-500">NO GLB = NO CHARACTER</div></div></div>;
+  }
+
+  const p1 = BANNON_GLB_PLAYABLE_MODELS[p1Index] ?? BANNON_GLB_PLAYABLE_MODELS[0];
+  const p2 = BANNON_GLB_PLAYABLE_MODELS[p2Index] ?? BANNON_GLB_PLAYABLE_MODELS[0];
+  const p1Name = p1.name;
+  const p2Name = p2.name;
 
   if (screen === AppScreen.Boot) return <div className="fixed inset-0 bg-black text-white flex items-center justify-center font-mono"><div className="text-center"><div className="text-xs tracking-[0.45em] text-slate-500">SCHWARZERBLITZ RUNTIME</div><div className="mt-3 text-2xl font-black tracking-widest">BRUTAL FIST</div></div></div>;
   if (screen === AppScreen.Title) return <div className="fixed inset-0 bg-black text-white flex items-center justify-center font-mono"><button autoFocus onClick={() => setScreen(AppScreen.MainMenu)} className="text-4xl font-black italic tracking-[0.18em] text-white animate-pulse">BRUTAL FIST<span className="block mt-8 text-sm tracking-[0.45em] text-yellow-400">PRESS START</span></button></div>;
   if (screen === AppScreen.MainMenu) return <div className="fixed inset-0 bg-[#10131a] text-white flex items-center justify-center font-mono"><div className="w-[min(86vw,420px)]"><div className="mb-10 text-xs tracking-[0.45em] text-slate-500">3D FIGHTING GAME</div><div className="space-y-2"><button onClick={() => setScreen(AppScreen.Select)} className="block w-full border border-slate-600 px-6 py-4 text-left text-xl font-black tracking-widest hover:bg-white hover:text-black">ARCADE</button><button onClick={() => setScreen(AppScreen.Select)} className="block w-full border border-slate-600 px-6 py-4 text-left text-xl font-black tracking-widest hover:bg-white hover:text-black">VERSUS</button><button onClick={() => setScreen(AppScreen.Select)} className="block w-full border border-slate-600 px-6 py-4 text-left text-xl font-black tracking-widest hover:bg-white hover:text-black">TRAINING</button></div></div></div>;
-  if (screen === AppScreen.Select) return <div className="fixed inset-0 bg-black text-white flex flex-col items-center justify-center font-mono"><div className="text-xs tracking-[0.45em] text-slate-500 mb-4">CHARACTER SELECT · BANNON ROSTER</div><button onClick={() => setScreen(AppScreen.VS)} className="w-72 h-44 border-2 border-white bg-[#252933] hover:bg-[#3b414d]"><div className="text-2xl font-black tracking-widest">{p1Name}</div><div className="mt-3 text-xs text-slate-400">{BANNON_ROSTER.length} SEEDED FIGHTERS · ENTER TO FIGHT</div></button></div>;
-  if (screen === AppScreen.VS) return <div className="fixed inset-0 bg-black text-white flex items-center justify-center font-mono overflow-hidden"><div className="w-full px-8 flex items-center justify-between"><div className="text-3xl md:text-6xl font-black italic">{p1Name}</div><div className="text-4xl md:text-7xl font-black text-red-500">VS</div><div className="text-3xl md:text-7xl font-black italic text-slate-500">{p2Name}</div></div><div className="absolute bottom-8 left-0 right-0 text-center text-xs tracking-[0.45em] text-yellow-400 animate-pulse">{modelLoading ? 'NOW LOADING FIGHTER' : 'NOW LOADING'}</div>{modelError && <div className="absolute bottom-2 left-0 right-0 text-center text-[9px] text-slate-700">FALLBACK ACTOR</div>}</div>;
+  if (screen === AppScreen.Select) return <div className="fixed inset-0 bg-black text-white flex flex-col items-center justify-center font-mono"><div className="text-xs tracking-[0.45em] text-slate-500 mb-4">CHARACTER SELECT · VERIFIED BANNON GLB ROSTER</div><div className="grid grid-cols-2 md:grid-cols-4 gap-3 max-h-[70vh] overflow-auto p-2">{BANNON_GLB_PLAYABLE_MODELS.map((fighter, index) => <button key={`${fighter.id}:${fighter.model}`} onClick={() => { setP1Index(index); setP2Index(index === p1Index && BANNON_GLB_PLAYABLE_MODELS.length > 1 ? (index + 1) % BANNON_GLB_PLAYABLE_MODELS.length : p2Index); setScreen(AppScreen.VS); }} className="w-36 h-28 border border-white bg-[#252933] hover:bg-[#3b414d]"><div className="text-sm font-black tracking-widest">{fighter.name}</div><div className="mt-2 text-[9px] text-slate-400">{fighter.attire ?? fighter.model}</div></button>)}</div><div className="mt-4 text-[9px] tracking-[0.25em] text-slate-600">ONLY GLB_BACKED + QA-PASSED FIGHTERS ARE SELECTABLE</div></div>;
+  if (screen === AppScreen.VS) return <div className="fixed inset-0 bg-black text-white flex items-center justify-center font-mono overflow-hidden"><div className="w-full px-8 flex items-center justify-between"><div className="text-3xl md:text-6xl font-black italic">{p1Name}</div><div className="text-4xl md:text-7xl font-black text-red-500">VS</div><div className="text-3xl md:text-7xl font-black italic text-slate-500">{p2Name}</div></div><div className="absolute bottom-8 left-0 right-0 text-center text-xs tracking-[0.45em] text-yellow-400 animate-pulse">{modelLoading ? 'NOW LOADING VERIFIED FIGHTER' : 'READY'}</div>{modelError && <div className="absolute bottom-2 left-0 right-0 text-center text-[9px] text-red-400">FIGHTER ASSET FAILED TO LOAD — MATCH BLOCKED</div>}</div>;
 
   const p1Percent = Math.max(0, Math.min(100, (engineState.p1Health / engineState.p1MaxHealth) * 100));
   const p2Percent = Math.max(0, Math.min(100, (engineState.p2Health / engineState.p2MaxHealth) * 100));
