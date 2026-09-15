@@ -18,22 +18,23 @@ interface CharacterPortrait3DProps {
 }
 
 /**
- * NORMALIZATION CONTRACT (v6 — Universal Root Bone Offset):
+ * NORMALIZATION CONTRACT (v7 — Universal Root Bone Offset + 3-Point Lighting + Idle Anim):
  *
- * Root cause of systemic floor-sink for all non-Bannon/Maime characters:
- *   Their skeleton root bones are zeroed at absolute floor level (Y=0),
- *   while Bannon and Maime have their roots sitting higher (pelvis/waist).
- *   After bounding-box centering, the fixed camera still aims too low for
- *   floor-rooted characters because their geometric center is at their feet,
- *   not their torso.
+ * Global Y-offset strategy:
+ *   Bannon and Maime are the reference baseline (root bones at pelvis/waist) → 0 extra offset.
+ *   ALL other characters have floor-level root bones → receive a universal +1.15 Y offset.
+ *   Detection is by explicit allowlist: only "bannon" and "maime" substrings get 0.
+ *   Every other character — known or unknown — gets +1.15 automatically.
  *
- * Fix (v6):
- *   All characters except Bannon and Maime receive a universal +1.15 Y offset
- *   on top of the bounding-box centering. This is the normalized-space
- *   equivalent of +100–120 cm in a 180–190 cm character (55–63% of height),
- *   scaled to the 2.0-unit normalized height used in this scene.
+ * 3-Point Lighting:
+ *   Key light:  strong warm-white from upper-right front — primary illumination
+ *   Fill light: soft cool from upper-left front — lifts shadows, faction-tinted
+ *   Rim light:  narrow bright from behind-upper — separates character from background
  *
- *   Bannon and Maime are the reference baseline — they receive 0 extra offset.
+ * Idle Animation:
+ *   Mixer is created on the cloned scene. Clips from gltf.animations are retargeted
+ *   to the cloned scene's bone hierarchy by name. Idle clip is selected by keyword
+ *   priority: idle > stand > neutral > walk > any first clip.
  *
  * Camera positions (fixed, never change):
  *   - Bust mode:  position=(0, 1.6, 3.2), lookAt=(0, 1.4, 0), FOV=28
@@ -41,49 +42,59 @@ interface CharacterPortrait3DProps {
  */
 
 /**
- * Per-character Y nudge table.
- * Key = substring of the GLB filename (case-insensitive).
- * Value = additional Y offset in world units (positive = move up).
- *
- * Bannon and Maime are the reference — 0 offset.
- * All other characters get +1.15 (≈ +100–120 cm in normalized 2-unit space)
- * to correct the systemic root-bone floor-level mismatch.
+ * Returns the Y nudge for a character.
+ * ONLY Bannon and Maime (the reference baseline) get 0.
+ * Every other character — including all floor-rooted fighters — gets +1.15.
+ * This is the normalized-space equivalent of +100–120 cm on a 180–190 cm character.
  */
-const PORTRAIT_Y_NUDGE: Record<string, number> = {
-  'bannon':        0,
-  'maime':         0,
-  'onyx':          1.15,
-  'cain_elias':    1.15,
-  'cody':          1.15,
-  'echo':          1.15,
-  'stickup':       1.15,
-  'cipher':        1.15,
-  'hall_nighter':  1.15,
-  'static':        1.15,
-  'viper':         1.15,
-  'kobra':         1.15,
-  'aaron_ruben':   1.15,
-  'hollow':        1.15,
-  'edwin_kennedy': 1.15,
-  'pablo':         1.15,
-  'tyneshia':      1.15,
-  'triple_xxx':    1.15,
-  'el_toro':       1.15,
-  'stan_combs':    1.15,
-  'brutus':        1.15,
-  'titan':         1.15,
-  'master_sensei': 1.15,
-  'wreck':         1.15,
-};
-
 function getYNudge(modelUrl: string): number {
   const lower = modelUrl.toLowerCase();
-  for (const [key, nudge] of Object.entries(PORTRAIT_Y_NUDGE)) {
-    if (lower.includes(key)) return nudge;
-  }
-  // Default: apply the universal root-bone correction for any unknown character
-  // that is not Bannon or Maime
+  // Only the two reference characters are exempt from the universal offset
+  if (lower.includes('bannon') || lower.includes('maime')) return 0;
+  // Universal correction for ALL other roster members
   return 1.15;
+}
+
+/**
+ * Retarget animation clips from the original GLTF scene to a cloned scene.
+ * Three.js AnimationClip tracks reference bones by name, so clips work on
+ * clones as long as the bone hierarchy names match — which they do for clone(true).
+ * We explicitly retarget by remapping track paths to the cloned root UUID.
+ */
+function retargetClips(
+  clips: THREE.AnimationClip[],
+  sourceRoot: THREE.Object3D,
+  targetRoot: THREE.Object3D
+): THREE.AnimationClip[] {
+  // Build a name→UUID map for the target scene
+  const targetMap = new Map<string, string>();
+  targetRoot.traverse((obj) => targetMap.set(obj.name, obj.uuid));
+
+  return clips.map((clip) => {
+    const retargeted = clip.clone();
+    retargeted.tracks = clip.tracks.map((track) => {
+      // Track name format: "boneName.property" or "boneName[uuid].property"
+      const dotIdx = track.name.indexOf('.');
+      if (dotIdx === -1) return track.clone();
+      const boneName = track.name.slice(0, dotIdx);
+      const property = track.name.slice(dotIdx);
+      const targetUUID = targetMap.get(boneName);
+      const newTrack = track.clone();
+      newTrack.name = targetUUID ? `${boneName}${property}` : track.name;
+      return newTrack;
+    });
+    return retargeted;
+  });
+}
+
+/** Select the best idle animation clip from available clips */
+function selectIdleClip(clips: THREE.AnimationClip[]): THREE.AnimationClip {
+  const idleKeywords = ['idle', 'stand', 'neutral', 'ready', 'wait', 'rest', 'bind', 'tpose', 't-pose'];
+  for (const keyword of idleKeywords) {
+    const found = clips.find((a) => a.name.toLowerCase().includes(keyword));
+    if (found) return found;
+  }
+  return clips[0];
 }
 
 /** Set up the fixed camera once on mount — never changes after that */
@@ -103,6 +114,54 @@ function FixedCamera({ mode }: { mode: 'bust' | 'full' }) {
     cam.updateProjectionMatrix();
   }, [mode, camera]);
   return null;
+}
+
+/**
+ * 3-Point Portrait Lighting
+ * Key:  strong warm-white from upper-right front (primary illumination)
+ * Fill: soft cool-tinted from upper-left front (lifts shadows, faction color)
+ * Rim:  bright narrow from upper-rear (separates character from background)
+ */
+function PortraitLighting({ factionColor }: { factionColor: string }) {
+  return (
+    <>
+      {/* Ambient base — very low so 3-point lights do the work */}
+      <ambientLight intensity={0.25} color="#e8eaf0" />
+
+      {/* KEY LIGHT — primary illumination, warm-white, upper-right front */}
+      <directionalLight
+        position={[2.5, 3.5, 3.0]}
+        intensity={2.2}
+        color="#fff5e8"
+        castShadow={false}
+      />
+
+      {/* FILL LIGHT — soft, faction-tinted, upper-left front, lifts shadow side */}
+      <directionalLight
+        position={[-2.0, 2.0, 2.5]}
+        intensity={0.75}
+        color={factionColor}
+        castShadow={false}
+      />
+
+      {/* RIM LIGHT — bright, cool-white, from upper-rear, separates from background */}
+      <directionalLight
+        position={[0.5, 4.0, -3.5]}
+        intensity={1.4}
+        color="#c8d8ff"
+        castShadow={false}
+      />
+
+      {/* Subtle faction atmosphere point light near character chest */}
+      <pointLight
+        position={[0, 1.3, 1.8]}
+        intensity={0.3}
+        color={factionColor}
+        distance={4}
+        decay={2}
+      />
+    </>
+  );
 }
 
 function PortraitModel({
@@ -135,9 +194,6 @@ function PortraitModel({
         cloned.scale.setScalar(scale);
 
         // ── Step 3: Force matrix world update so Box3 sees post-scale coords ──
-        // This is the critical fix: without this, Box3 still reads pre-scale
-        // world matrices and the center.y * scale math is wrong for models
-        // whose skeleton root is offset from the mesh geometric center.
         cloned.updateMatrixWorld(true);
 
         // ── Step 4: Re-measure bounding box in post-scale world space ─────────
@@ -145,11 +201,13 @@ function PortraitModel({
         const scaledCenter = scaledBox.getCenter(new THREE.Vector3());
 
         // ── Step 5: Compute Y offset so vertical center lands at Y=1.0 ────────
-        // scaledCenter.y is now the true post-scale vertical center.
-        // We want: scaledCenter.y + offsetY = 1.0
         const baseOffsetY = 1.0 - scaledCenter.y;
 
-        // ── Step 6: Apply per-character Y nudge for fine-tuning ───────────────
+        // ── Step 6: Apply universal Y nudge ───────────────────────────────────
+        // getYNudge returns 0 ONLY for Bannon and Maime (reference baseline).
+        // ALL other characters — Hall Nighter, Stick-Up, Static, Cody, Echo,
+        // Onyx, Cain Elias, and every future fighter — get +1.15 universally.
+        // No per-character table entries needed; the default covers everyone.
         const nudge = getYNudge(modelUrl);
         const offsetY = baseOffsetY + nudge;
 
@@ -160,9 +218,7 @@ function PortraitModel({
         );
 
         // ── Step 7: Reset source rotation on root AND all top-level children ──
-        // Ensures every character starts from the same neutral facing direction.
-        // The group wrapper's rotation (flip ? Math.PI : 0) is the sole control
-        // for P1/P2 facing — no per-character overrides allowed.
+        // P1/P2 facing is controlled solely by the group wrapper rotation below.
         cloned.rotation.set(0, 0, 0);
         cloned.children.forEach((child) => {
           child.rotation.set(0, 0, 0);
@@ -184,17 +240,18 @@ function PortraitModel({
           });
         });
 
-        // ── Step 9: Start idle animation if available ─────────────────────────
-        if (gltf.animations.length > 0) {
+        // ── Step 9: Idle animation ─────────────────────────────────────────────
+        // Mixer is created on the cloned scene. Clips from gltf.animations are
+        // retargeted to the cloned scene's bone hierarchy (same names, new UUIDs).
+        // selectIdleClip picks the best idle/stand/neutral clip, falling back to
+        // the first available animation so every character animates — never T-pose.
+        if (gltf.animations && gltf.animations.length > 0) {
+          const retargeted = retargetClips(gltf.animations, gltf.scene, cloned);
           mixerRef.current = new THREE.AnimationMixer(cloned);
-          const idleClip =
-            gltf.animations.find((a) =>
-              ['idle', 'Idle', 'neutral', 'Neutral', 'standing', 'bind', 'T-pose', 'TPose'].some((k) =>
-                a.name.toLowerCase().includes(k.toLowerCase())
-              )
-            ) ?? gltf.animations[0];
+          const idleClip = selectIdleClip(retargeted);
           const action = mixerRef.current.clipAction(idleClip);
           action.setLoop(THREE.LoopRepeat, Infinity);
+          action.fadeIn(0.3);
           action.play();
         }
 
@@ -255,12 +312,8 @@ export default function CharacterPortrait3D({
         {/* Fixed camera — set once, never recomputed */}
         <FixedCamera mode={mode} />
 
-        {/* Lighting */}
-        <ambientLight intensity={0.7} />
-        <directionalLight position={[1.5, 3.5, 4]} intensity={1.4} />
-        <directionalLight position={[-2, 1.5, 2]} intensity={0.5} color={factionColor} />
-        <directionalLight position={[0, 4, -3]} intensity={0.3} color="#ffffff" />
-        <pointLight position={[0, 1.2, 2.5]} intensity={0.4} color={factionColor} />
+        {/* 3-Point Portrait Lighting: key + fill + rim */}
+        <PortraitLighting factionColor={factionColor} />
 
         <Suspense fallback={null}>
           <PortraitModel
