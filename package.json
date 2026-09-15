@@ -13,7 +13,8 @@
     "start:vite": "node dist/server.cjs",
     "clean": "rm -rf .next dist server.js",
     "psx:fighter": "node tools/psx/decimate-fighter.mjs BannonSource/assets/models/BANNON_rigged.glb public/models/bannon_psx.glb --tris=18000 --tex=256",
-    "bannon:manifest": "node tools/bannon/build-character-manifest.mjs && node tools/bannon/build-animation-manifest.mjs"
+    "bannon:manifest": "node tools/bannon/build-character-manifest.mjs && node tools/bannon/build-animation-manifest.mjs",
+    "sources:audit": "node tools/integration/build-source-audit.mjs"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.8",
