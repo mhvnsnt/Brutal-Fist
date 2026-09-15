@@ -3,6 +3,7 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { DEFAULT_PSX_RENDER } from '../render/psx';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 
 interface FighterMeshProps {
   state: string;
@@ -35,6 +36,7 @@ export function FighterMesh({ state, animation, modelUrl, position, facing, tint
     if (!modelUrl) { setModel(null); return; }
     let active = true;
     const loader = new GLTFLoader();
+    loader.setMeshoptDecoder(MeshoptDecoder);
     loader.load(modelUrl, (gltf) => {
       if (!active) return;
       const cloned = gltf.scene.clone(true);
@@ -88,12 +90,7 @@ export function FighterMesh({ state, animation, modelUrl, position, facing, tint
     groupRef.current.scale.x = facing * (attacking ? 1.03 : 1);
   });
 
-  if (!model) return (
-    <group ref={groupRef} position={position}>
-      <mesh position={[0, 1.35, 0]}><capsuleGeometry args={[0.48, 1.65, 5, 8]} /><meshStandardMaterial color={tint ?? '#b9b9b9'} roughness={0.9} flatShading /></mesh>
-      <mesh position={[0, 2.55, 0]}><icosahedronGeometry args={[0.38, 1]} /><meshStandardMaterial color={tint ?? '#b9b9b9'} roughness={0.9} flatShading /></mesh>
-    </group>
-  );
+  if (!model) return null;
 
   return <group ref={groupRef} position={position}><primitive object={model} /></group>;
 }
