@@ -390,8 +390,8 @@ export default function GameBattleArena({
   return (
     <div className="fixed inset-0 bg-black text-white overflow-hidden touch-none select-none font-mono">
 
-      {/* ── FULL 3D COMBAT VIEWPORT ── */}
-      <div className="absolute inset-0 z-0">
+      {/* ── FULL-SCREEN 3D COMBAT VIEWPORT — background layer ── */}
+      <div className="absolute inset-0 z-0" style={{ width: '100%', height: '100%' }}>
         <CombatArena3D
           p1Fighter={p1Fighter}
           p2Fighter={p2Fighter}
@@ -414,10 +414,11 @@ export default function GameBattleArena({
         />
       </div>
 
-      {/* ── HUD: only visible during fight phase ── */}
+      {/* ── HUD OVERLAY: transparent, only visible during fight phase ── */}
       {cinematicPhase === 'fight' && (
         <>
-          <div className="absolute top-0 left-0 right-0 z-30 px-3 pt-2 pb-1">
+          {/* Health bars + timer — semi-transparent background only on bar rows */}
+          <div className="absolute top-0 left-0 right-0 z-30 px-3 pt-2 pb-1 pointer-events-none">
             <div className="flex items-center gap-2">
               {/* P1 health bar */}
               <div className="flex-1 flex flex-col gap-0.5">
@@ -425,46 +426,46 @@ export default function GameBattleArena({
                   <span className="text-[9px] font-black tracking-[0.3em]" style={{ color: p1Color }}>
                     {p1Fighter.name.toUpperCase()}
                   </span>
-                  <span className="text-[8px] text-zinc-500">{Math.ceil(p1Health).toLocaleString()}</span>
+                  <span className="text-[8px] text-zinc-400">{Math.ceil(p1Health).toLocaleString()}</span>
                 </div>
-                <div className="h-4 border border-zinc-700 bg-zinc-900/80 relative overflow-hidden">
+                <div className="h-4 border border-zinc-700/60 bg-black/50 relative overflow-hidden">
                   <div
                     className="absolute left-0 top-0 h-full transition-all duration-75"
                     style={{ width: `${p1Pct}%`, background: getHealthBarColor(p1Pct), boxShadow: `0 0 8px ${getHealthBarColor(p1Pct)}88` }}
                   />
                   {p1Pct <= 25 && <div className="absolute inset-0 animate-pulse bg-red-500/10" />}
                 </div>
-                <div className="text-[7px] text-zinc-400 tracking-widest h-3">{getStateLabel(p1State, p1Animation)}</div>
+                <div className="text-[7px] text-zinc-300 tracking-widest h-3">{getStateLabel(p1State, p1Animation)}</div>
               </div>
 
               {/* Center: Timer + Round */}
               <div className="flex flex-col items-center shrink-0 w-20">
-                <div className="text-[7px] text-zinc-400 tracking-widest text-center leading-tight">{roundLabel ?? 'ROUND 1'}</div>
+                <div className="text-[7px] text-zinc-300 tracking-widest text-center leading-tight">{roundLabel ?? 'ROUND 1'}</div>
                 <div
                   className="text-2xl font-black tabular-nums leading-none"
                   style={{ color: roundTimer <= 10 ? '#ef4444' : '#facc15', textShadow: roundTimer <= 10 ? '0 0 12px #ef4444' : '0 0 12px #facc15' }}
                 >
                   {String(roundTimer).padStart(2, '0')}
                 </div>
-                <div className="text-[7px] text-zinc-500 tracking-widest">F{frame}</div>
+                <div className="text-[7px] text-zinc-400 tracking-widest">F{frame}</div>
               </div>
 
               {/* P2 health bar */}
               <div className="flex-1 flex flex-col gap-0.5">
                 <div className="flex items-center justify-between mb-0.5">
-                  <span className="text-[8px] text-zinc-500 text-right w-full">{Math.ceil(p2Health).toLocaleString()}</span>
+                  <span className="text-[8px] text-zinc-400 text-right w-full">{Math.ceil(p2Health).toLocaleString()}</span>
                   <span className="text-[9px] font-black tracking-[0.3em] ml-2 whitespace-nowrap" style={{ color: p2Color }}>
                     {p2Fighter.name.toUpperCase()}
                   </span>
                 </div>
-                <div className="h-4 border border-zinc-700 bg-zinc-900/80 relative overflow-hidden">
+                <div className="h-4 border border-zinc-700/60 bg-black/50 relative overflow-hidden">
                   <div
                     className="absolute right-0 top-0 h-full transition-all duration-75"
                     style={{ width: `${p2Pct}%`, background: getHealthBarColor(p2Pct), boxShadow: `0 0 8px ${getHealthBarColor(p2Pct)}88` }}
                   />
                   {p2Pct <= 25 && <div className="absolute inset-0 animate-pulse bg-red-500/10" />}
                 </div>
-                <div className="text-[7px] text-zinc-400 tracking-widest h-3 text-right">{getStateLabel(p2State, p2Animation)}</div>
+                <div className="text-[7px] text-zinc-300 tracking-widest h-3 text-right">{getStateLabel(p2State, p2Animation)}</div>
               </div>
             </div>
           </div>
@@ -490,11 +491,11 @@ export default function GameBattleArena({
           {/* Hit stop flash */}
           {hitStopActive && <div className="absolute inset-0 z-40 pointer-events-none bg-white/5 animate-pulse" />}
 
-          {/* Mobile controls */}
+          {/* Mobile touch controls — transparent overlay on top of 3D arena */}
           {!ko && <MobileControls inputRef={inputRef} />}
 
           {/* Controls legend */}
-          <div className="absolute bottom-2 left-3 z-30 text-[7px] text-zinc-600 space-y-0.5 pointer-events-none">
+          <div className="absolute bottom-2 left-3 z-30 text-[7px] text-zinc-500 space-y-0.5 pointer-events-none">
             <div>ARROWS: MOVE · Z: LIGHT · X: HEAVY · C: GUARD · V: GRAPPLE · Q/E: SIDESTEP</div>
           </div>
         </>
@@ -504,7 +505,7 @@ export default function GameBattleArena({
       {onBack && cinematicPhase === 'fight' && (
         <button
           onClick={onBack}
-          className="absolute top-16 left-3 z-40 text-[8px] text-zinc-500 hover:text-zinc-300 border border-zinc-800 hover:border-zinc-600 px-2 py-1 transition-colors bg-black/60"
+          className="absolute top-16 left-3 z-40 text-[8px] text-zinc-400 hover:text-zinc-200 border border-zinc-700/60 hover:border-zinc-500 px-2 py-1 transition-colors bg-black/50"
         >
           ← BACK
         </button>

@@ -9,8 +9,8 @@ import { type BannonFighterProfile } from '../data/bannonRoster';
 // ── Stage geometry constants ──────────────────────────────────────────────────
 const FLOOR_WIDTH = 24;
 const FLOOR_DEPTH = 10;
-const P1_X = -3.5;
-const P2_X = 3.5;
+const P1_X = -3;
+const P2_X = 3;
 const Z_RANGE = 2.0; // max Z sidestep distance from center
 
 // ── Cinematic phases ──────────────────────────────────────────────────────────
@@ -102,16 +102,17 @@ function CinematicCamera({
       cam.lookAt(0, 1.2, 0);
       cam.updateProjectionMatrix();
     } else if (phase === 'fight') {
-      // Dynamic midpoint tracking
+      // Dynamic midpoint tracking — Tekken-style zoom based on fighter distance
       const midX = (p1X + p2X) / 2;
       const midZ = (p1Z + p2Z) / 2;
       const dist = Math.sqrt(Math.pow(p2X - p1X, 2) + Math.pow(p2Z - p1Z, 2));
-      const targetZ = Math.max(5.5, Math.min(12, dist * 1.1 + 3.5));
-      const targetY = 2.2;
-      cam.position.x += (midX - cam.position.x) * 0.08;
-      cam.position.y += (targetY - cam.position.y) * 0.06;
-      cam.position.z += (targetZ + midZ * 0.3 - cam.position.z) * 0.06;
-      cam.lookAt(midX, 1.2, midZ * 0.2);
+      // Camera pulls back as fighters spread apart, pushes in as they close
+      const targetCamZ = Math.max(4.5, Math.min(11, dist * 1.05 + 3.0));
+      const targetCamY = 2.0 + dist * 0.05;
+      cam.position.x += (midX - cam.position.x) * 0.1;
+      cam.position.y += (targetCamY - cam.position.y) * 0.07;
+      cam.position.z += (targetCamZ + midZ * 0.25 - cam.position.z) * 0.08;
+      cam.lookAt(midX, 1.1, midZ * 0.15);
       cam.updateProjectionMatrix();
     } else if (phase === 'victory') {
       // Close-up on winner (P1 side for now — caller can pass winner position)
@@ -529,8 +530,8 @@ export default function CombatArena3D({
       <Canvas
         shadows
         gl={{ antialias: false, alpha: false }}
-        style={{ width: '100%', height: '100%', background: '#050505' }}
-        camera={{ position: [0, 2.2, 8], fov: cameraFov, near: 0.1, far: 200 }}
+        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', background: '#050505' }}
+        camera={{ position: [0, 2.2, 7], fov: cameraFov, near: 0.1, far: 200 }}
       >
         <color attach="background" args={['#050508']} />
         <fog attach="fog" args={['#050508', 18, 40]} />
