@@ -6,7 +6,7 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-const PORT = Number(process.env.PORT || 3000);
+const PORT = 3000; // MUST be 3000 for infrastructure routing
 const ALLOWED_HOSTS = new Set([
   'drive.google.com',
   'drive.usercontent.google.com',

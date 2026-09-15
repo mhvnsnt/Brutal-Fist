@@ -88,7 +88,7 @@ export class GameEngine {
       } else if (this.state === FighterState.Recovery && this.stateFrameCounter >= this.currentMove.recovery) {
         this.state = FighterState.Neutral; this.stateFrameCounter = 0; this.currentMove = null;
       }
-      this.p1Animation = this.currentMove.animation ?? 'light';
+      this.p1Animation = this.currentMove?.animation ?? 'light';
       return;
     }
 
@@ -133,7 +133,7 @@ export class GameEngine {
         if (this.p2StateFrameCounter === 1) this.tryHit(false, this.p2Move);
         if (this.p2StateFrameCounter >= this.p2Move.active) { this.p2State = FighterState.Recovery; this.p2StateFrameCounter = 0; }
       } else if (this.p2State === FighterState.Recovery && this.p2StateFrameCounter >= this.p2Move.recovery) { this.p2State = FighterState.Neutral; this.p2StateFrameCounter = 0; this.p2Move = null; }
-      this.p2Animation = this.p2Move.animation ?? 'light';
+      this.p2Animation = this.p2Move?.animation ?? 'light';
       return;
     }
 
