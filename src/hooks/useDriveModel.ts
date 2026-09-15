@@ -37,13 +37,12 @@ export function useDriveModel(startFetch: boolean, modelFile?: string) {
       try {
         const publicUrl = getConfiguredUrl(modelFile);
         const response = await fetch(publicUrl);
-        if (response.status === 404) {
-          // GLB not yet deployed — not a fatal error, game proceeds without mesh
-          console.warn(`Fighter GLB not found (404): ${modelFile ?? 'unconfigured'} — proceeding without model`);
+        if (!response.ok) {
+          // GLB not yet deployed or unavailable — not a fatal error, game proceeds without mesh
+          console.warn(`Fighter GLB not available (HTTP ${response.status}): ${modelFile ?? 'unconfigured'} — proceeding without model`);
           if (active) { setModelUrl(null); setError(null); }
           return;
         }
-        if (!response.ok) throw new Error(`Fighter GLB returned HTTP ${response.status}: ${modelFile ?? 'unconfigured'}`);
         const blob = await response.blob();
         if (!blob.size) throw new Error('Fighter GLB was empty');
         objectUrl = URL.createObjectURL(blob);
