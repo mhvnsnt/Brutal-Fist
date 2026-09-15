@@ -18,28 +18,69 @@ interface CharacterPortrait3DProps {
 }
 
 /**
- * NORMALIZATION CONTRACT (v4 — Fixed Camera approach):
+ * NORMALIZATION CONTRACT (v5 — Post-Scale Bounding Box):
  *
- * Problem with previous approaches:
- *   - Dynamic camera framing based on bounding box height had race conditions
- *   - applyCameraFraming called in useEffect ran after render with stale values
- *   - Re-measuring bounding box after scale/position on a detached scene was unreliable
+ * Root cause of previous failures:
+ *   Box3.setFromObject() was called on the raw clone BEFORE scale was applied.
+ *   So `center.y * scale` used the pre-scale center, but the model renders in
+ *   post-scale space — causing wrong Y offsets for models whose skeleton root
+ *   is not at the geometric center of the mesh.
  *
- * New approach — Fixed Camera + Center-of-Mass Normalization:
- *   1. Compute bounding box of raw GLB scene
- *   2. Scale model so it is exactly 2.0 units tall
- *   3. Position model so its VERTICAL CENTER sits at Y=1.0 (not bottom at Y=0)
- *      - This means: feet at Y=0, head at Y=2.0, center at Y=1.0
- *      - Camera always looks at Y=1.0 (bust: slightly higher at Y=1.4)
- *   4. Center X/Z axes
- *   5. Camera is FIXED — no dynamic computation, no race conditions
+ * Fix:
+ *   1. Clone the GLB scene
+ *   2. Apply scale.setScalar() to the clone
+ *   3. Force updateMatrixWorld(true) so Three.js recomputes all world matrices
+ *   4. Re-measure Box3 in post-scale world space
+ *   5. Compute offsetY = 1.0 - postScaleCenter.y
+ *      (places vertical center at Y=1.0 in all cases)
+ *   6. Apply per-character Y nudge from PORTRAIT_Y_NUDGE table for fine-tuning
  *
  * Camera positions (fixed, never change):
  *   - Bust mode:  position=(0, 1.6, 3.2), lookAt=(0, 1.4, 0), FOV=28
  *   - Full mode:  position=(0, 1.0, 4.5), lookAt=(0, 1.0, 0), FOV=40
- *
- * P2 facing: rotation.y = Math.PI (180° Y-rotation), NOT scale.x = -1
  */
+
+/**
+ * Per-character Y nudge table.
+ * Key = substring of the GLB filename (case-insensitive).
+ * Value = additional Y offset in world units (positive = move up, negative = move down).
+ * Bannon and Maime are the reference — they get 0 nudge.
+ * All other characters are tuned relative to them.
+ */
+const PORTRAIT_Y_NUDGE: Record<string, number> = {
+  'bannon':       0,
+  'maime':        0,
+  'onyx':         0.15,
+  'cain_elias':   0.12,
+  'cody':         0.18,
+  'echo':         0.14,
+  'stickup':      0.10,
+  'cipher':       0.12,
+  'hall_nighter': 0.10,
+  'static':       0.10,
+  'viper':        0.10,
+  'kobra':        0.10,
+  'aaron_ruben':  0.10,
+  'hollow':       0.10,
+  'edwin_kennedy':0.10,
+  'pablo':        0.10,
+  'tyneshia':     0.10,
+  'triple_xxx':   0.10,
+  'el_toro':      0.10,
+  'stan_combs':   0.10,
+  'brutus':       0.10,
+  'titan':        0.10,
+  'master_sensei':0.10,
+  'wreck':        0.10,
+};
+
+function getYNudge(modelUrl: string): number {
+  const lower = modelUrl.toLowerCase();
+  for (const [key, nudge] of Object.entries(PORTRAIT_Y_NUDGE)) {
+    if (lower.includes(key)) return nudge;
+  }
+  return 0.10; // default nudge for unknown models
+}
 
 /** Set up the fixed camera once on mount — never changes after that */
 function FixedCamera({ mode }: { mode: 'bust' | 'full' }) {
@@ -81,35 +122,43 @@ function PortraitModel({
         if (!active) return;
         const cloned = gltf.scene.clone(true);
 
-        // ── Step 1: Measure raw bounding box ──────────────────────────────────
-        const box = new THREE.Box3().setFromObject(cloned);
-        const size = box.getSize(new THREE.Vector3());
-        const center = box.getCenter(new THREE.Vector3());
+        // ── Step 1: Measure raw bounding box (pre-scale) ──────────────────────
+        const rawBox = new THREE.Box3().setFromObject(cloned);
+        const rawSize = rawBox.getSize(new THREE.Vector3());
 
-        // ── Step 2: Scale to exactly 2.0 units tall ───────────────────────────
-        const scale = size.y > 0 ? 2.0 / size.y : 1;
+        // ── Step 2: Compute scale to make model exactly 2.0 units tall ────────
+        const scale = rawSize.y > 0 ? 2.0 / rawSize.y : 1;
         cloned.scale.setScalar(scale);
 
-        // ── Step 3: Position so vertical center = Y=1.0 ──────────────────────
-        // After scaling:
-        //   - box.min.y * scale = bottom of model in world space (before offset)
-        //   - box.max.y * scale = top of model in world space (before offset)
-        //   - center.y * scale = vertical center of model (before offset)
-        // We want: center.y * scale + offsetY = 1.0
-        // So: offsetY = 1.0 - center.y * scale
-        // This places feet at Y≈0, center at Y=1.0, head at Y≈2.0
-        const offsetY = 1.0 - center.y * scale;
+        // ── Step 3: Force matrix world update so Box3 sees post-scale coords ──
+        // This is the critical fix: without this, Box3 still reads pre-scale
+        // world matrices and the center.y * scale math is wrong for models
+        // whose skeleton root is offset from the mesh geometric center.
+        cloned.updateMatrixWorld(true);
+
+        // ── Step 4: Re-measure bounding box in post-scale world space ─────────
+        const scaledBox = new THREE.Box3().setFromObject(cloned);
+        const scaledCenter = scaledBox.getCenter(new THREE.Vector3());
+
+        // ── Step 5: Compute Y offset so vertical center lands at Y=1.0 ────────
+        // scaledCenter.y is now the true post-scale vertical center.
+        // We want: scaledCenter.y + offsetY = 1.0
+        const baseOffsetY = 1.0 - scaledCenter.y;
+
+        // ── Step 6: Apply per-character Y nudge for fine-tuning ───────────────
+        const nudge = getYNudge(modelUrl);
+        const offsetY = baseOffsetY + nudge;
+
         cloned.position.set(
-          -center.x * scale,
+          -scaledCenter.x,
           offsetY,
-          -center.z * scale
+          -scaledCenter.z
         );
 
-        // ── Step 4: Reset any source rotation on the mesh ─────────────────────
-        // P2 facing is handled by the parent group rotation, not the mesh itself
+        // ── Step 7: Reset any source rotation on the mesh ─────────────────────
         cloned.rotation.set(0, 0, 0);
 
-        // ── Step 5: Apply faction color tint ─────────────────────────────────
+        // ── Step 8: Apply faction color tint ──────────────────────────────────
         const color = new THREE.Color(factionColor);
         cloned.traverse((child) => {
           if (!(child as THREE.Mesh).isMesh) return;
@@ -125,7 +174,7 @@ function PortraitModel({
           });
         });
 
-        // ── Step 6: Start idle animation if available ─────────────────────────
+        // ── Step 9: Start idle animation if available ─────────────────────────
         if (gltf.animations.length > 0) {
           mixerRef.current = new THREE.AnimationMixer(cloned);
           const idleClip =
@@ -161,8 +210,6 @@ function PortraitModel({
     <group
       ref={groupRef}
       // P2 side: rotate 180° on Y-axis so the character faces toward P1.
-      // Y-rotation correctly turns the character without distorting geometry or reversing normals.
-      // Do NOT use scale.x = -1 (mirrors geometry, breaks asymmetric characters).
       rotation={[0, flip ? Math.PI : 0, 0]}
     >
       <primitive object={model} />
@@ -198,19 +245,11 @@ export default function CharacterPortrait3D({
         {/* Fixed camera — set once, never recomputed */}
         <FixedCamera mode={mode} />
 
-        {/* Lighting — matches Bannon's reference lighting setup */}
+        {/* Lighting */}
         <ambientLight intensity={0.7} />
-        {/* Key light — front-top, slightly right */}
         <directionalLight position={[1.5, 3.5, 4]} intensity={1.4} />
-        {/* Fill light — left side, faction tinted */}
-        <directionalLight
-          position={[-2, 1.5, 2]}
-          intensity={0.5}
-          color={factionColor}
-        />
-        {/* Rim light — behind, top */}
+        <directionalLight position={[-2, 1.5, 2]} intensity={0.5} color={factionColor} />
         <directionalLight position={[0, 4, -3]} intensity={0.3} color="#ffffff" />
-        {/* Point light — faction atmosphere at chest level */}
         <pointLight position={[0, 1.2, 2.5]} intensity={0.4} color={factionColor} />
 
         <Suspense fallback={null}>
