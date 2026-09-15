@@ -30,11 +30,9 @@ function publicDriveDownloadUrl(raw: string) {
 async function startServer() {
   const app = express();
 
-  // Same-origin proxy: the browser never needs a Drive OAuth token and never
-  // has to solve Drive's cross-origin download headers itself.
   app.get('/api/public-model', async (req, res) => {
+    const raw = String(req.query.url || '');
     try {
-      const raw = String(req.query.url || '');
       if (!raw || raw === 'undefined') return res.status(400).send('Missing public model URL');
       const target = publicDriveDownloadUrl(raw);
       const upstream = await fetch(target, { redirect: 'follow' });
@@ -45,10 +43,9 @@ async function startServer() {
       res.setHeader('Cache-Control', 'public, max-age=3600');
       res.setHeader('Access-Control-Allow-Origin', '*');
       Readable.fromWeb(upstream.body as any).pipe(res);
-      return undefined;
     } catch (error) {
       console.error('Public model proxy error. raw URL:', raw, error);
-      return res.status(400).send(error instanceof Error ? error.message : 'Invalid public model URL');
+      res.status(400).send(error instanceof Error ? error.message : 'Invalid public model URL');
     }
   });
 
