@@ -60,9 +60,9 @@ There is **no four-attire maximum**. Every actual GLB must be inventoried and cl
 
 ## Important audit note
 
-Bannon's `tools/rigready/bank_map.json` explicitly proves additional multi-attire banked outputs: Edwin Kennedy attires 1 and 3; Pablo attires 1–3; Tyneshia attires 1–2; and Triple XXX attires 1–4. Therefore BF must not impose an arbitrary attire cap. fileciteturn425file0
+Bannon's `tools/rigready/bank_map.json` explicitly proves additional multi-attire banked outputs: Edwin Kennedy attires 1 and 3; Pablo attires 1–3; Tyneshia attires 1–2; and Triple XXX attires 1–4. Therefore BF must not impose an arbitrary attire cap.
 
-Bannon's model QA establishes measured skin gates and additional GLB-backed identities; weak/failing models remain blocked until their gate passes. fileciteturn428file0
+Bannon's model QA establishes measured skin gates and additional GLB-backed identities; weak/failing models remain blocked until their gate passes.
 
 ## What does NOT count
 
