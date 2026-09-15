@@ -11,10 +11,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
       - run: bun install
+      - name: Enforce Bannon GLB roster boundary
+        run: bun run bannon:verify
       - run: bun run build
 
   schwarzerblitz-native:
