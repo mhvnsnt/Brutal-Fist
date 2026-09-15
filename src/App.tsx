@@ -5,6 +5,7 @@ import { type BannonFighterProfile, getBannonFighter } from './data/bannonRoster
 import dynamic from 'next/dynamic';
 import { useAuth } from './contexts/AuthContext';
 import { type TournamentEndData } from './components/TournamentBracket';
+import { type TournamentSettings, DEFAULT_TOURNAMENT_SETTINGS } from './components/TournamentSettingsScreen';
 
 const CharacterSelect = dynamic(() => import('./components/CharacterSelect'), { ssr: false });
 const GameBattleArena = dynamic(() => import('./components/GameBattleArena'), { ssr: false });
@@ -14,6 +15,8 @@ const TournamentBrowserScreen = dynamic(() => import('./components/TournamentBro
 const AuthScreen = dynamic(() => import('./components/AuthScreen'), { ssr: false });
 const PostTournamentScreen = dynamic(() => import('./components/PostTournamentScreen'), { ssr: false });
 const PlayerProfileScreen = dynamic(() => import('./components/PlayerProfileScreen'), { ssr: false });
+const TournamentSettingsScreen = dynamic(() => import('./components/TournamentSettingsScreen'), { ssr: false });
+const LeaderboardScreen = dynamic(() => import('./components/LeaderboardScreen'), { ssr: false });
 
 export default function App() {
   const { user, loading: authLoading, signOut } = useAuth();
@@ -23,6 +26,7 @@ export default function App() {
   const [matchWinner, setMatchWinner] = useState<'p1' | 'p2' | 'draw' | null>(null);
   const [gameMode, setGameMode] = useState<'arcade' | 'versus' | 'tournament'>('versus');
   const [tournamentEndData, setTournamentEndData] = useState<TournamentEndData | null>(null);
+  const [tournamentSettings, setTournamentSettings] = useState<TournamentSettings>(DEFAULT_TOURNAMENT_SETTINGS);
 
   useEffect(() => {
     if (screen !== AppScreen?.Boot) return;
@@ -125,12 +129,16 @@ export default function App() {
               TRAINING
             </button>
             <button
+              onClick={() => setScreen('leaderboard' as any)}
+              className="block w-full border border-slate-600 px-6 py-4 text-left text-xl font-black tracking-widest hover:bg-white hover:text-black transition-all"
+            >
+              LEADERBOARD
+              <span className="ml-3 text-[10px] text-yellow-400 tracking-widest">GLOBAL RANKS</span>
+            </button>
+            <button
               onClick={() => {
-                if (!user) {
-                  setScreen('auth' as any);
-                } else {
-                  setScreen('stats' as any);
-                }
+                if (!user) { setScreen('auth' as any); }
+                else { setScreen('stats' as any); }
               }}
               className="block w-full border border-slate-600 px-6 py-4 text-left text-xl font-black tracking-widest hover:bg-white hover:text-black transition-all"
             >
@@ -139,11 +147,8 @@ export default function App() {
             </button>
             <button
               onClick={() => {
-                if (!user) {
-                  setScreen('auth' as any);
-                } else {
-                  setScreen('profile' as any);
-                }
+                if (!user) { setScreen('auth' as any); }
+                else { setScreen('profile' as any); }
               }}
               className="block w-full border border-slate-600 px-6 py-4 text-left text-xl font-black tracking-widest hover:bg-white hover:text-black transition-all"
             >
@@ -158,48 +163,43 @@ export default function App() {
 
   // ── Auth Screen ──
   if ((screen as any) === 'auth') {
-    return (
-      <AuthScreen
-        onSuccess={() => setScreen('stats' as any)}
-      />
-    );
+    return <AuthScreen onSuccess={() => setScreen('stats' as any)} />;
   }
 
   // ── Tournament Browser ──
   if ((screen as any) === 'tournament_browser') {
+    return <TournamentBrowserScreen onBack={() => setScreen(AppScreen?.MainMenu)} />;
+  }
+
+  // ── Tournament Settings (pre-entry) ──
+  if ((screen as any) === 'tournament_settings') {
     return (
-      <TournamentBrowserScreen
+      <TournamentSettingsScreen
+        initialSettings={tournamentSettings}
         onBack={() => setScreen(AppScreen?.MainMenu)}
+        onConfirm={(s) => {
+          setTournamentSettings(s);
+          setScreen('tournament_browser' as any);
+        }}
       />
     );
+  }
+
+  // ── Leaderboard ──
+  if ((screen as any) === 'leaderboard') {
+    return <LeaderboardScreen onBack={() => setScreen(AppScreen?.MainMenu)} />;
   }
 
   // ── Tournament Stats (auth-gated) ──
   if ((screen as any) === 'stats') {
-    if (!user) {
-      return (
-        <AuthScreen
-          onSuccess={() => setScreen('stats' as any)}
-        />
-      );
-    }
-    return (
-      <TournamentStatsScreen
-        onBack={() => setScreen(AppScreen?.MainMenu)}
-      />
-    );
+    if (!user) return <AuthScreen onSuccess={() => setScreen('stats' as any)} />;
+    return <TournamentStatsScreen onBack={() => setScreen(AppScreen?.MainMenu)} />;
   }
 
   // ── Player Profile Screen ──
   if ((screen as any) === 'profile') {
-    if (!user) {
-      return <AuthScreen onSuccess={() => setScreen('profile' as any)} />;
-    }
-    return (
-      <PlayerProfileScreen
-        onBack={() => setScreen(AppScreen?.MainMenu)}
-      />
-    );
+    if (!user) return <AuthScreen onSuccess={() => setScreen('profile' as any)} />;
+    return <PlayerProfileScreen onBack={() => setScreen(AppScreen?.MainMenu)} />;
   }
 
   // ── Post Tournament Screen ──
@@ -218,7 +218,7 @@ export default function App() {
     );
   }
 
-  // ── Character Select (Tekken 3 layout) ──
+  // ── Character Select ──
   if (screen === AppScreen?.Select) {
     return (
       <CharacterSelect
@@ -235,7 +235,7 @@ export default function App() {
     );
   }
 
-  // ── Tournament Bracket (legacy direct entry) ──
+  // ── Tournament Bracket ──
   if ((screen as any) === 'tournament') {
     const player = p1BannonFighter ?? getBannonFighter('bannon')!;
     return (
@@ -263,6 +263,7 @@ export default function App() {
           setScreen(AppScreen?.PostMatch);
         }}
         onBack={() => setScreen(AppScreen?.Select)}
+        settings={tournamentSettings}
       />
     );
   }
