@@ -7,6 +7,8 @@ import dynamic from 'next/dynamic';
 const CharacterSelect = dynamic(() => import('./components/CharacterSelect'), { ssr: false });
 const GameBattleArena = dynamic(() => import('./components/GameBattleArena'), { ssr: false });
 const TournamentBracket = dynamic(() => import('./components/TournamentBracket'), { ssr: false });
+const TournamentStatsScreen = dynamic(() => import('./components/TournamentStatsScreen'), { ssr: false });
+const TournamentBrowserScreen = dynamic(() => import('./components/TournamentBrowserScreen'), { ssr: false });
 
 export default function App() {
   const [screen, setScreen] = useState<AppScreen>(AppScreen?.Boot);
@@ -81,7 +83,7 @@ export default function App() {
               VERSUS
             </button>
             <button
-              onClick={() => { setGameMode('tournament'); setScreen(AppScreen?.Select); }}
+              onClick={() => { setGameMode('tournament'); setScreen('tournament_browser' as any); }}
               className="block w-full border border-slate-600 px-6 py-4 text-left text-xl font-black tracking-widest hover:bg-white hover:text-black transition-all"
             >
               TOURNAMENT
@@ -93,9 +95,34 @@ export default function App() {
             >
               TRAINING
             </button>
+            <button
+              onClick={() => setScreen('stats' as any)}
+              className="block w-full border border-slate-600 px-6 py-4 text-left text-xl font-black tracking-widest hover:bg-white hover:text-black transition-all"
+            >
+              STATS
+              <span className="ml-3 text-[10px] text-zinc-500 tracking-widest">RECORDS & RANK</span>
+            </button>
           </div>
         </div>
       </div>
+    );
+  }
+
+  // ── Tournament Browser ──
+  if ((screen as any) === 'tournament_browser') {
+    return (
+      <TournamentBrowserScreen
+        onBack={() => setScreen(AppScreen?.MainMenu)}
+      />
+    );
+  }
+
+  // ── Tournament Stats ──
+  if ((screen as any) === 'stats') {
+    return (
+      <TournamentStatsScreen
+        onBack={() => setScreen(AppScreen?.MainMenu)}
+      />
     );
   }
 
@@ -116,7 +143,7 @@ export default function App() {
     );
   }
 
-  // ── Tournament Bracket ──
+  // ── Tournament Bracket (legacy direct entry) ──
   if ((screen as any) === 'tournament') {
     const player = p1BannonFighter ?? getBannonFighter('bannon')!;
     return (

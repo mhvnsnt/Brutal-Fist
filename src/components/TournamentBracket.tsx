@@ -1,8 +1,10 @@
 'use client';
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { type BannonFighterProfile, BANNON_ROSTER } from '../data/bannonRoster';
 import dynamic from 'next/dynamic';
+import { useAuth } from '../contexts/AuthContext';
+import { statsService, calcRankPoints, getRankTier } from '../lib/statsService';
 
 const GameBattleArena = dynamic(() => import('./GameBattleArena'), { ssr: false });
 
@@ -60,6 +62,7 @@ function StatBar({ label, value, max, color }: { label: string; value: number; m
 }
 
 export default function TournamentBracket({ playerFighter, onExit }: TournamentBracketProps) {
+  const { user } = useAuth();
   const [opponents] = useState<BannonFighterProfile[]>(() => buildOpponentQueue(playerFighter));
   const [phase, setPhase] = useState<TournamentPhase>('bracket_view');
   const [currentRound, setCurrentRound] = useState(0); // 0-indexed
@@ -68,6 +71,23 @@ export default function TournamentBracket({ playerFighter, onExit }: TournamentB
   const [stats, setStats] = useState<CumulativeStats>({
     wins: 0, losses: 0, draws: 0, totalRounds: 0, currentStreak: 0,
   });
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [tournamentId] = useState<string>('');
+
+  // Create a session when the bracket starts
+  useEffect(() => {
+    if (!user?.id) return;
+    statsService.getTournaments().then(ts => {
+      const t = ts[0];
+      if (!t) return;
+      statsService.createSession({
+        userId: user.id,
+        tournamentId: t.id,
+        fighterId: playerFighter.id,
+        fighterName: playerFighter.name,
+      }).then(id => { if (id) setSessionId(id); });
+    });
+  }, [user?.id, playerFighter.id, playerFighter.name]);
 
   const currentOpponent = opponents[currentRound] ?? null;
   const totalRounds = opponents.length;
@@ -93,25 +113,65 @@ export default function TournamentBracket({ playerFighter, onExit }: TournamentB
       currentStreak: playerWon ? prev.currentStreak + 1 : 0,
     }));
 
+    // Persist match result
+    if (user?.id && sessionId) {
+      statsService.saveMatchResult({
+        sessionId,
+        userId: user.id,
+        roundNumber: currentRound + 1,
+        opponentFighterId: opponents[currentRound].id,
+        opponentFighterName: opponents[currentRound].name,
+        outcome: playerWon ? 'win' : isDraw ? 'draw' : 'loss',
+      });
+    }
+
     setPhase('round_result');
-  }, [currentRound, opponents]);
+  }, [currentRound, opponents, user?.id, sessionId]);
+
+  const persistSessionEnd = useCallback((finalStats: CumulativeStats, isChampion: boolean, isEliminated: boolean) => {
+    if (!user?.id || !sessionId) return;
+    const pts = calcRankPoints(finalStats.wins, finalStats.losses, isChampion);
+    const tier = getRankTier(pts);
+    statsService.completeSession({
+      sessionId,
+      wins: finalStats.wins,
+      losses: finalStats.losses,
+      draws: finalStats.draws,
+      roundsPlayed: finalStats.totalRounds,
+      isChampion,
+      isEliminated,
+      rankPointsEarned: pts,
+    });
+    statsService.upsertFighterStats({
+      userId: user.id,
+      fighterId: playerFighter.id,
+      fighterName: playerFighter.name,
+      wins: finalStats.wins,
+      losses: finalStats.losses,
+      draws: finalStats.draws,
+      tournamentEntered: true,
+      tournamentWon: isChampion,
+      streak: finalStats.currentStreak,
+    });
+    statsService.recordRank(user.id, pts, tier);
+  }, [user?.id, sessionId, playerFighter.id, playerFighter.name]);
 
   const handleNextRound = useCallback(() => {
     if (!lastResult) return;
     if (!lastResult.playerWon && lastResult.winner !== 'draw') {
-      // Player lost — eliminated
+      persistSessionEnd(stats, false, true);
       setPhase('eliminated');
       return;
     }
     const nextRound = currentRound + 1;
     if (nextRound >= totalRounds) {
-      // All rounds complete — champion!
+      persistSessionEnd(stats, true, false);
       setPhase('champion');
     } else {
       setCurrentRound(nextRound);
       setPhase('bracket_view');
     }
-  }, [lastResult, currentRound, totalRounds]);
+  }, [lastResult, currentRound, totalRounds, stats, persistSessionEnd]);
 
   const playerColor = FACTION_COLOR[playerFighter.factionAlignment];
 
