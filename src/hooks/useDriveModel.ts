@@ -1,7 +1,44 @@
-import { useState, useEffect } from 'react';
-import { getAccessToken } from '../lib/firebase';
+import { useEffect, useState } from 'react';
 
-const FOLDER_ID = '19k_jmuiUYsAubZyx_bUL0m8svyYmevM5';
+/**
+ * Public asset loader for Google AI Studio / browser previews.
+ *
+ * No OAuth, Firebase session, API key, or Drive API listing is used.
+ * The game consumes an "Anyone with the link" file directly.
+ *
+ * Supply a direct file URL with:
+ *   VITE_PUBLIC_MODEL_URL=https://drive.google.com/file/d/<id>/view
+ * or append ?model=<url> to the preview URL.
+ */
+function normalizePublicDriveUrl(raw: string): string {
+  const value = raw.trim();
+  if (!value) return value;
+
+  try {
+    const url = new URL(value);
+
+    // Drive file view/open URLs can be converted to Google's public media endpoint.
+    if (url.hostname === 'drive.google.com') {
+      const fileMatch = url.pathname.match(/^\/file\/d\/([^/]+)/);
+      const id = fileMatch?.[1] ?? url.searchParams.get('id');
+      if (id) {
+        return `https://drive.usercontent.google.com/download?id=${encodeURIComponent(id)}&export=download&confirm=t`;
+      }
+    }
+
+    return value;
+  } catch {
+    return value;
+  }
+}
+
+function getConfiguredModelUrl(): string | null {
+  const queryUrl = new URLSearchParams(window.location.search).get('model');
+  const envUrl = import.meta.env.VITE_PUBLIC_MODEL_URL as string | undefined;
+  const storedUrl = window.localStorage.getItem('brutal-fist.public-model-url');
+  const raw = queryUrl || envUrl || storedUrl;
+  return raw ? normalizePublicDriveUrl(raw) : null;
+}
 
 export function useDriveModel(startFetch: boolean) {
   const [modelUrl, setModelUrl] = useState<string | null>(null);
@@ -9,55 +46,45 @@ export function useDriveModel(startFetch: boolean) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!startFetch) return;
+    if (!startFetch || modelUrl) return;
+
+    const sourceUrl = getConfiguredModelUrl();
+    if (!sourceUrl) {
+      setError('No public fighter model URL configured. Set VITE_PUBLIC_MODEL_URL or use ?model=.');
+      return;
+    }
+
     let active = true;
+    let objectUrl: string | null = null;
 
     async function loadModel() {
       setLoading(true);
+      setError(null);
       try {
-        const token = await getAccessToken();
-        if (!token) throw new Error("Not authenticated");
+        const response = await fetch(sourceUrl, { mode: 'cors' });
+        if (!response.ok) throw new Error(`Public fighter asset returned HTTP ${response.status}`);
 
-        // List files in the folder
-        const res = await fetch(`https://www.googleapis.com/drive/v3/files?q='${FOLDER_ID}'+in+parents+and+trashed=false&fields=files(id,name,mimeType)`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        
-        if (!res.ok) throw new Error("Failed to fetch from Drive");
-        const data = await res.json();
-        
-        // Find a .glb file
-        const glbFile = data.files?.find((f: any) => f.name.endsWith('.glb'));
-        if (!glbFile) {
-          throw new Error("No .glb file found in the specified Drive folder");
-        }
+        const blob = await response.blob();
+        if (!blob.size) throw new Error('Public fighter asset was empty');
 
-        // Download the file
-        const dlRes = await fetch(`https://www.googleapis.com/drive/v3/files/${glbFile.id}?alt=media`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        
-        if (!dlRes.ok) throw new Error("Failed to download model");
-        
-        const blob = await dlRes.blob();
+        objectUrl = URL.createObjectURL(blob);
+        if (active) setModelUrl(objectUrl);
+      } catch (err) {
+        console.error('Public fighter asset load failed:', err);
         if (active) {
-          const url = URL.createObjectURL(blob);
-          setModelUrl(url);
+          setError(err instanceof Error ? err.message : 'Failed to load public fighter asset');
         }
-      } catch (err: any) {
-        console.error(err);
-        if (active) setError(err.message);
+        if (objectUrl) URL.revokeObjectURL(objectUrl);
       } finally {
         if (active) setLoading(false);
       }
     }
 
-    if (!modelUrl) {
-      loadModel();
-    }
+    void loadModel();
 
     return () => {
       active = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
   }, [startFetch, modelUrl]);
 
