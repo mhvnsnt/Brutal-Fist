@@ -50,7 +50,7 @@ export class GameEngine {
   private p2Guard = false;
   private readonly commandBuffer = new SchwarzerblitzInputBuffer();
 
-  constructor(p1Fighter: BannonFighterProfile = getBannonFighter('bannon')!, p2Fighter: BannonFighterProfile = getBannonFighter('nexus_prime')!) {
+  constructor(p1Fighter: BannonFighterProfile = getBannonFighter('bannon')!, p2Fighter: BannonFighterProfile = getBannonFighter('maime')!) {
     this.p1Fighter = p1Fighter;
     this.p2Fighter = p2Fighter;
     this.p1MaxHealth = p1Fighter.hp;
