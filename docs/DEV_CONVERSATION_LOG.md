@@ -20,28 +20,45 @@ The user also explicitly corrected that Bannon characters can have more alternat
 - Do not fabricate stats, bios, moves, or other character facts when authoritative Bannon data is missing; mark them unknown/pending.
 - Prop GLBs and NPC/manager GLBs do not automatically become playable fighters.
 
-### 2026-09-15 — Enforcement implementation pass
+## 2026-09-15 — Enforcement implementation pass
 
 The GLB boundary was moved from documentation-only intent into runtime-facing enforcement:
 
-- `src/App.tsx` now sources Character Select from `BANNON_GLB_PLAYABLE_MODELS`, not the broad `BANNON_ROSTER`.
+- `src/App.tsx` sources Character Select from `BANNON_GLB_PLAYABLE_MODELS`, not the broad `BANNON_ROSTER`.
 - Character Select exposes only entries whose GLB catalog gate is `PASS`.
 - A zero-entry validated roster renders a locked state instead of inventing a fighter.
-- The old `FALLBACK ACTOR` UI path was removed. A failed fighter asset load now stays locked on the VS screen rather than silently transitioning to combat.
-- `tools/bannon/verify-and-build-roster.mjs` now emits fighter data only for GLB-backed records; excluded/no-GLB records contain only identity + `MISSING_ASSET` status and carry no fighter data.
+- The old fallback-actor path was removed. A failed fighter asset load stays locked on the VS screen rather than silently transitioning to combat.
+- `tools/bannon/verify-and-build-roster.mjs` emits fighter data only for GLB-backed records; excluded/no-GLB records contain only identity + `MISSING_ASSET` status and carry no fighter data.
 - The verifier records `noGlbNoCharacter`, `excludedRowsCarryNoFighterData`, and `attireCountUnbounded` in its generated policy.
-- `docs/AI_MASTER_HANDOFF.md` now makes the GLB boundary an explicit first-class agent rule and implementation sequence requirement.
+- `docs/AI_MASTER_HANDOFF.md` makes the GLB boundary a first-class agent rule and implementation sequence requirement.
+
+## 2026-09-15 — User escalation: prototype must become an actual game runtime
+
+User relayed the external assessment that Brutal Fist was still only a thin prototype and directed: **fix that**. The response is to stop treating the web cockpit as the game itself and make the existing runtime path materially use the real Bannon assets selected by the player.
+
+### Runtime hardening completed
+
+- `src/hooks/useDriveModel.ts` now accepts the manifest-selected GLB filename and loads that exact Bannon asset rather than one hard-coded generic Drive model.
+- Drive remains only an unbound development override when no fighter model is supplied; a selected fighter always resolves from its manifest model filename.
+- `src/App.tsx` now creates separate asset loads for P1 and P2, keyed by their exact selected GLBs.
+- Combat cannot begin until both selected fighter GLBs have actually loaded; any load failure fails closed.
+- `src/components/PSXCanvas.tsx` now receives separate P1/P2 model URLs and renders the actual selected models independently. The old architecture rendered the same generic model for both fighters, which was a prototype limitation.
+- `server.ts` now exposes the checked-out `BannonSource` tree for runtime GLB delivery and marks GLBs as immutable cached binary assets. The route does not create or substitute actors.
+
+### Non-negotiable meaning of this pass
+
+Character Select → exact Bannon GLB → two independent fighter instances → fixed-rate combat simulation → real rendered fighters is now the intended vertical slice. A missing/failed asset blocks the match rather than producing a fake body. The next work must deepen this into the full Schwarzerblitz-native game flow and systems: native character slots, real animation/move data, grapples/throws/pins/escapes, hit reactions/poise/ragdoll, stages, audio, menus/options, arcade progression, training, versus, save/state, and measured QA.
 
 ### Evidence captured from Bannon
 
-Bannon's `tools/rigready/bank_map.json` explicitly records additional variants, including Pablo attires 1–3, Triple XXX attires 1–4, Edwin Kennedy attires 1 and 3, Tyneshia attires 1–2, and Cipher's God Within/minion output. The map also explicitly marks weapon/prop GLBs as `prop:true`, so those must never become fighters. fileciteturn485file0L2-L2
+Bannon's `tools/rigready/bank_map.json` explicitly records additional variants, including Pablo attires 1–3, Triple XXX attires 1–4, Edwin Kennedy attires 1 and 3, Tyneshia attires 1–2, and Cipher's God Within/minion output. The map also explicitly marks weapon/prop GLBs as `prop:true`, so those must never become fighters.
 
-The current 2026-09-15 Bannon Drive-sync manifest also contains newly observed incoming character GLBs: six Bannon variants (`BANNON_alt_rigready (1)`, `BANNON_masked_rigready`, `BANNON_v1_clean`, `BANNON_v1_rigready`, `BANNON_v2_split`, `BANNON_v3_split`), plus a truncated `BANNON_alt_rigready` upload that is explicitly not promotable. It also records new/variant uploads for Cipher, Cain Elias, Echo, Edwin Kennedy, Hollow, Maime, Cody, and Pablo. These are now preserved as evidence-only entries in `src/data/bannonGlbSourceInventory.ts`; they do not bypass the playable rig/QA gates. fileciteturn472file1L1-L1 fileciteturn472file2L1-L1 fileciteturn472file3L1-L1 fileciteturn472file4L1-L1 fileciteturn472file5L1-L1 fileciteturn472file6L1-L1 fileciteturn472file7L1-L1
+The current 2026-09-15 Bannon Drive-sync manifest contains incoming GLBs including multiple Bannon variants (`BANNON_alt_rigready (1)`, `BANNON_masked_rigready`, `BANNON_v1_clean`, `BANNON_v1_rigready`, `BANNON_v2_split`, `BANNON_v3_split`) and a truncated `BANNON_alt_rigready` upload that is not promotable. It also contains additional incoming/variant uploads that still require identity and QA mapping before promotion. These remain evidence until validated.
 
 ### Repository enforcement
 
-The hard rule is encoded in `docs/BANNON_GLB_CHARACTER_LAW.md`, `docs/BANNON_GLB_INVENTORY.md`, `src/data/bannonGlbRoster.ts`, and `tools/bannon/verify-and-build-roster.mjs`. `src/data/bannonGlbSourceInventory.ts` is the evidence ledger for newly discovered Drive-sync GLBs and explicitly separates props/truncated assets from fighter evidence.
+The hard rule is encoded in `docs/BANNON_GLB_CHARACTER_LAW.md`, `docs/BANNON_GLB_INVENTORY.md`, `src/data/bannonGlbRoster.ts`, and `tools/bannon/verify-and-build-roster.mjs`. `src/data/bannonGlbSourceInventory.ts` is the evidence ledger for newly discovered Drive-sync GLBs and separates props/truncated assets from fighter evidence.
 
-The package now exposes `npm run bannon:verify`, so the GLB roster gate is directly runnable instead of being an undocumented helper. The dependency versions were preserved while adding this command.
+`npm run bannon:verify` is the runnable GLB roster gate. Dependency versions remain unchanged.
 
-This record is intentionally explicit so a future agent reading the development history understands that the GLB-only boundary and unlimited-attire inventory requirement are user-directed requirements, not optional implementation preferences.
+This record is intentionally explicit so future agents understand that the GLB-only boundary, unlimited-attire inventory requirement, and move from generic prototype rendering to exact selected Bannon fighter instances are user-directed requirements, not optional implementation preferences.
