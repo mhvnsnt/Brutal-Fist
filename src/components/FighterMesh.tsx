@@ -11,6 +11,7 @@ interface FighterMeshProps {
   modelUrl: string | null;
   position: [number, number, number];
   facing: 1 | -1;
+  rotationY?: number;
   tint?: string;
 }
 
@@ -25,7 +26,7 @@ const animationAliases: Record<string, string[]> = {
   ko: ['ko', 'KO', 'knockout', 'Knockout', 'death', 'Death']
 };
 
-export function FighterMesh({ state, animation, modelUrl, position, facing, tint }: FighterMeshProps) {
+export function FighterMesh({ state, animation, modelUrl, position, facing, rotationY = 0, tint }: FighterMeshProps) {
   const groupRef = useRef<THREE.Group>(null);
   const mixerRef = useRef<THREE.AnimationMixer | null>(null);
   const actionsRef = useRef<Record<string, THREE.AnimationAction>>({});
@@ -62,9 +63,7 @@ export function FighterMesh({ state, animation, modelUrl, position, facing, tint
 
       mixerRef.current = new THREE.AnimationMixer(cloned);
       actionsRef.current = {};
-      for (const clip of gltf.animations) {
-        actionsRef.current[clip.name] = mixerRef.current.clipAction(clip);
-      }
+      for (const clip of gltf.animations) actionsRef.current[clip.name] = mixerRef.current.clipAction(clip);
       setModel(cloned);
     }, undefined, (error) => console.error('Fighter GLB load failed:', error));
     return () => { active = false; mixerRef.current?.stopAllAction(); mixerRef.current = null; actionsRef.current = {}; };
@@ -87,10 +86,10 @@ export function FighterMesh({ state, animation, modelUrl, position, facing, tint
     const attacking = state === 'Startup' || state === 'Active';
     const bob = state === 'Neutral' ? Math.sin(clock.elapsedTime * 5) * 0.025 : 0;
     groupRef.current.position.set(position[0], position[1] + bob, position[2]);
+    groupRef.current.rotation.y = rotationY;
     groupRef.current.scale.x = facing * (attacking ? 1.03 : 1);
   });
 
   if (!model) return null;
-
   return <group ref={groupRef} position={position}><primitive object={model} /></group>;
 }
