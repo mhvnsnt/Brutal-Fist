@@ -2,6 +2,7 @@ import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  allowedDevOrigins: ['brutalfis4201.builtwithrocket.new'],
   transpilePackages: ['three', '@react-three/fiber', '@react-three/drei'],
   turbopack: {},
   typescript: {
