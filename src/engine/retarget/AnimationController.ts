@@ -2,9 +2,7 @@ import * as THREE from 'three';
 import { retargetClipByRestPose, validateRetargetedClip } from './ClipRetarget';
 
 export type FighterMotionState =
-  | 'idle' | 'walkForward' | 'walkBackward'
-  | 'strafeLeft' | 'strafeRight' | 'crouch' | 'guard'
-  | 'lightAttack' | 'heavyAttack' | 'hit' | 'knockdown' | 'wake';
+  | 'idle' | 'walkForward' | 'walkBackward' |'strafeLeft'| 'strafeRight' | 'crouch' | 'guard' |'lightAttack' | 'heavyAttack' | 'hit' | 'knockdown' | 'wake';
 
 export interface RetargetedAnimationSet {
   clips: Map<FighterMotionState, THREE.AnimationClip>;

@@ -4,11 +4,7 @@ export type InputSample = InputBitmask & { frame: number };
 
 export type MotionCommand =
   | 'forward'
-  | 'back'
-  | 'forward-forward'
-  | 'back-back'
-  | 'quarter-forward'
-  | 'quarter-back';
+  | 'back' |'forward-forward' |'back-back' |'quarter-forward' |'quarter-back';
 
 const MAX_SAMPLES = 24;
 

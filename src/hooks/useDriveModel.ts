@@ -4,7 +4,7 @@ const DEFAULT_PUBLIC_DRIVE_URL = 'https://drive.google.com/file/d/19k_jmuiUYsAub
 
 function getConfiguredUrl(modelFile?: string) {
   const queryUrl = new URLSearchParams(window.location.search).get('model');
-  const envUrl = import.meta.env.VITE_PUBLIC_MODEL_URL;
+  const envUrl = process.env.NEXT_PUBLIC_MODEL_URL;
   if (queryUrl && queryUrl !== 'undefined') return queryUrl;
   if (modelFile) return `/BannonSource/assets/models/${encodeURIComponent(modelFile)}`;
   if (envUrl && envUrl !== 'undefined') return envUrl;
