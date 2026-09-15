@@ -1,18 +1,12 @@
 import { FighterState, FighterAnimation, FighterSnapshot, InputBitmask, FrameData, Hurtbox, Hitbox } from '../types';
+import { getMove, SchwarzerblitzMoveDefinition } from './SchwarzerblitzMoveCatalog';
+import { SchwarzerblitzInputBuffer } from './SchwarzerblitzInput';
 
 const EMPTY_INPUT: InputBitmask = { up: false, down: false, left: false, right: false, light: false, heavy: false, guard: false };
 const DEFAULT_HURTBOX: Hurtbox = { offsetX: 0, offsetZ: 0, width: 0.82, depth: 0.72 };
 
-const LIGHT: FrameData = {
-  startup: 4, active: 3, recovery: 10, damage: 10, hitAdvantage: 4, blockAdvantage: -2, pushback: 0.6,
-  hitstun: 15, blockstun: 9, animation: 'light',
-  hitbox: { offsetX: 0.82, offsetZ: 0, width: 1.05, depth: 0.62, damage: 10, hitstun: 15, blockstun: 9, pushback: 0.6, launch: 0 }
-};
-const HEAVY: FrameData = {
-  startup: 12, active: 4, recovery: 20, damage: 25, hitAdvantage: 2, blockAdvantage: -6, pushback: 1.1,
-  hitstun: 24, blockstun: 13, animation: 'heavy',
-  hitbox: { offsetX: 1.0, offsetZ: 0, width: 1.25, depth: 0.72, damage: 25, hitstun: 24, blockstun: 13, pushback: 1.1, launch: 0.2 }
-};
+const LIGHT = getMove('light');
+const HEAVY = getMove('heavy');
 
 export class GameEngine {
   public inputBuffer: InputBitmask[] = [];
@@ -46,6 +40,7 @@ export class GameEngine {
   private p2Blockstun = 0;
   private p1Guard = false;
   private p2Guard = false;
+  private readonly commandBuffer = new SchwarzerblitzInputBuffer();
 
   constructor() {
     for (let i = 0; i < this.maxBufferSize; i++) this.inputBuffer.push({ ...EMPTY_INPUT });
@@ -56,6 +51,7 @@ export class GameEngine {
     this.currentFrame++;
     this.inputBuffer.shift();
     this.inputBuffer.push({ ...currentInput });
+    this.commandBuffer.push(this.currentFrame, currentInput);
     this.updateFacing();
     this.updatePlayer(currentInput);
     this.updateCpu();
@@ -98,13 +94,20 @@ export class GameEngine {
 
     if (this.state !== FighterState.Neutral) return;
     if (this.p1Guard) { this.p1Animation = 'guard'; return; }
-    if (input.light) { this.startPlayerMove(LIGHT); return; }
-    if (input.heavy) { this.startPlayerMove(HEAVY); return; }
+    if (input.light && this.canStartMove(LIGHT)) { this.startPlayerMove(LIGHT); return; }
+    if (input.heavy && this.canStartMove(HEAVY)) { this.startPlayerMove(HEAVY); return; }
     this.movePlayer(input);
     this.p1Animation = (input.left || input.right || input.up || input.down) ? 'walk' : 'idle';
   }
 
   private startPlayerMove(move: FrameData) { this.currentMove = move; this.state = FighterState.Startup; this.stateFrameCounter = 0; }
+
+  private canStartMove(move: FrameData | null) {
+    const candidate = move as SchwarzerblitzMoveDefinition | null;
+    if (!candidate) return false;
+    const distance = Math.hypot(this.p2X - this.p1X, this.p2Z - this.p1Z);
+    return distance >= candidate.minRange && distance <= candidate.maxRange;
+  }
 
   private movePlayer(input: InputBitmask) {
     if (input.left) this.p1X -= this.walkSpeed;
@@ -141,12 +144,21 @@ export class GameEngine {
       if (Math.abs(dz) > 0.08) this.p2Z += Math.sign(dz) * this.sidestepSpeed * 0.5;
       this.p2Animation = 'walk';
     } else if (this.currentFrame % 75 === 0) {
-      this.p2Move = this.currentFrame % 150 === 0 ? { ...HEAVY, damage: 18 } : { ...LIGHT, damage: 9 };
+      const preferred = this.currentFrame % 150 === 0 ? HEAVY : LIGHT;
+      if (!this.canStartCpuMove(preferred)) return;
+      this.p2Move = { ...preferred, damage: this.currentFrame % 150 === 0 ? 18 : 9 };
       this.p2State = FighterState.Startup; this.p2StateFrameCounter = 0;
     } else {
       this.p2Animation = 'idle';
     }
     this.clampP2();
+  }
+
+  private canStartCpuMove(move: FrameData | null) {
+    const candidate = move as SchwarzerblitzMoveDefinition | null;
+    if (!candidate) return false;
+    const distance = Math.hypot(this.p2X - this.p1X, this.p2Z - this.p1Z);
+    return distance >= candidate.minRange && distance <= candidate.maxRange;
   }
 
   private tryHit(attackerIsP1: boolean, move: FrameData) {
