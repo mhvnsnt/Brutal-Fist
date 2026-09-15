@@ -4,19 +4,23 @@ import { InputBitmask } from '../types';
 
 export function useGameLoop() {
   const engineRef = useRef(new GameEngine());
-  const [engineState, setEngineState] = useState({
-    frame: 0,
-    state: 'Neutral',
-    p2State: 'Neutral',
-    stateFrameCounter: 0,
-    p2StateFrameCounter: 0,
-    buffer: [] as InputBitmask[],
-    p1Health: 250,
-    p2Health: 250,
-    p1X: -2.25,
-    p1Z: 0,
-    p2X: 2.25,
-    p2Z: 0
+  const [engineState, setEngineState] = useState(() => {
+    const snapshot = engineRef.current.getSnapshot();
+    return {
+      ...snapshot,
+      p1Health: snapshot.p1.health,
+      p2Health: snapshot.p2.health,
+      p1X: snapshot.p1.x,
+      p1Z: snapshot.p1.z,
+      p2X: snapshot.p2.x,
+      p2Z: snapshot.p2.z,
+      state: snapshot.p1.state,
+      p2State: snapshot.p2.state,
+      p1Facing: snapshot.p1.facing,
+      p2Facing: snapshot.p2.facing,
+      p1Animation: snapshot.p1.animation,
+      p2Animation: snapshot.p2.animation
+    };
   });
 
   const inputRef = useRef<InputBitmask>({
@@ -49,37 +53,35 @@ export function useGameLoop() {
     let raf = 0;
     let last = performance.now();
     let accumulator = 0;
-    const step = 1000 / 60;
+    const fixedStepMs = 1000 / 60;
+
+    const publish = () => {
+      const snapshot = engineRef.current.getSnapshot();
+      setEngineState({
+        ...snapshot,
+        p1Health: snapshot.p1.health,
+        p2Health: snapshot.p2.health,
+        p1X: snapshot.p1.x,
+        p1Z: snapshot.p1.z,
+        p2X: snapshot.p2.x,
+        p2Z: snapshot.p2.z,
+        state: snapshot.p1.state,
+        p2State: snapshot.p2.state,
+        p1Facing: snapshot.p1.facing,
+        p2Facing: snapshot.p2.facing,
+        p1Animation: snapshot.p1.animation,
+        p2Animation: snapshot.p2.animation
+      });
+    };
 
     const loop = (time: number) => {
       accumulator += Math.min(100, time - last);
       last = time;
-
-      let ticked = false;
-      while (accumulator >= step) {
-        engineRef.current.tick(inputRef.current);
-        accumulator -= step;
-        ticked = true;
+      while (accumulator >= fixedStepMs) {
+        engineRef.current.tick({ ...inputRef.current });
+        accumulator -= fixedStepMs;
       }
-
-      if (ticked) {
-        const engine = engineRef.current;
-        setEngineState({
-          frame: engine.currentFrame,
-          state: engine.state,
-          p2State: engine.p2State,
-          stateFrameCounter: engine.stateFrameCounter,
-          p2StateFrameCounter: engine.p2StateFrameCounter,
-          buffer: [...engine.inputBuffer],
-          p1Health: engine.p1Health,
-          p2Health: engine.p2Health,
-          p1X: engine.p1X,
-          p1Z: engine.p1Z,
-          p2X: engine.p2X,
-          p2Z: engine.p2Z
-        });
-      }
-
+      publish();
       raf = requestAnimationFrame(loop);
     };
 
