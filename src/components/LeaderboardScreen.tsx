@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { createClient } from '../lib/supabase/client';
 import { TIER_COLOR, TIER_LABEL } from '../lib/statsService';
 
@@ -51,114 +51,158 @@ export default function LeaderboardScreen({ onBack }: { onBack: () => void }) {
   const [seasonRows, setSeasonRows] = useState<SeasonRankRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [liveConnected, setLiveConnected] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [flashRow, setFlashRow] = useState<string | null>(null);
+  const channelRef = useRef<ReturnType<ReturnType<typeof createClient>['channel']> | null>(null);
 
-  useEffect(() => {
-    async function load() {
-      setLoading(true);
-      setError(null);
-      const supabase = createClient();
-      try {
-        // Top 10 players by win rate (from fighter_stats aggregated per user)
-        const { data: fsData, error: fsErr } = await supabase
-          .from('fighter_stats')
-          .select('user_id, total_wins, total_losses, total_draws, total_matches')
-          .order('total_wins', { ascending: false })
-          .limit(50);
+  async function loadData(silent = false) {
+    if (!silent) setLoading(true);
+    setError(null);
+    const supabase = createClient();
+    try {
+      // Top 10 players by win rate (from fighter_stats aggregated per user)
+      const { data: fsData, error: fsErr } = await supabase
+        .from('fighter_stats')
+        .select('user_id, total_wins, total_losses, total_draws, total_matches')
+        .order('total_wins', { ascending: false })
+        .limit(50);
 
-        if (fsErr) throw fsErr;
+      if (fsErr) throw fsErr;
 
-        // Aggregate per user
-        const userMap: Record<string, { wins: number; losses: number; draws: number; matches: number }> = {};
-        for (const row of fsData ?? []) {
-          if (!userMap[row.user_id]) {
-            userMap[row.user_id] = { wins: 0, losses: 0, draws: 0, matches: 0 };
-          }
-          userMap[row.user_id].wins += row.total_wins ?? 0;
-          userMap[row.user_id].losses += row.total_losses ?? 0;
-          userMap[row.user_id].draws += row.total_draws ?? 0;
-          userMap[row.user_id].matches += row.total_matches ?? 0;
+      const userMap: Record<string, { wins: number; losses: number; draws: number; matches: number }> = {};
+      for (const row of fsData ?? []) {
+        if (!userMap[row.user_id]) {
+          userMap[row.user_id] = { wins: 0, losses: 0, draws: 0, matches: 0 };
         }
-
-        const playerList: PlayerWinRateRow[] = Object.entries(userMap)
-          .map(([userId, s]) => ({
-            userId,
-            displayName: `PLAYER_${userId.slice(0, 6).toUpperCase()}`,
-            wins: s.wins,
-            losses: s.losses,
-            draws: s.draws,
-            totalMatches: s.matches,
-            winRate: s.matches > 0 ? (s.wins / s.matches) * 100 : 0,
-          }))
-          .sort((a, b) => b.winRate - a.winRate)
-          .slice(0, 10);
-
-        setPlayerRows(playerList);
-
-        // Top 10 fighters by total wins (aggregated across all users)
-        const { data: fData, error: fErr } = await supabase
-          .from('fighter_stats')
-          .select('fighter_id, fighter_name, total_wins, total_matches')
-          .order('total_wins', { ascending: false })
-          .limit(100);
-
-        if (fErr) throw fErr;
-
-        const fighterMap: Record<string, { name: string; wins: number; matches: number }> = {};
-        for (const row of fData ?? []) {
-          if (!fighterMap[row.fighter_id]) {
-            fighterMap[row.fighter_id] = { name: row.fighter_name, wins: 0, matches: 0 };
-          }
-          fighterMap[row.fighter_id].wins += row.total_wins ?? 0;
-          fighterMap[row.fighter_id].matches += row.total_matches ?? 0;
-        }
-
-        const fighterList: FighterWinsRow[] = Object.entries(fighterMap)
-          .map(([fighterId, s]) => ({
-            fighterId,
-            fighterName: s.name,
-            totalWins: s.wins,
-            totalMatches: s.matches,
-          }))
-          .sort((a, b) => b.totalWins - a.totalWins)
-          .slice(0, 10);
-
-        setFighterRows(fighterList);
-
-        // Seasonal rank tier standings (latest rank per user)
-        const { data: rankData, error: rankErr } = await supabase
-          .from('player_ranks')
-          .select('user_id, rank_points, rank_tier, recorded_at')
-          .order('rank_points', { ascending: false })
-          .limit(100);
-
-        if (rankErr) throw rankErr;
-
-        // Deduplicate — keep highest rank_points per user
-        const rankMap: Record<string, { points: number; tier: string }> = {};
-        for (const row of rankData ?? []) {
-          if (!rankMap[row.user_id] || row.rank_points > rankMap[row.user_id].points) {
-            rankMap[row.user_id] = { points: row.rank_points, tier: row.rank_tier };
-          }
-        }
-
-        const seasonList: SeasonRankRow[] = Object.entries(rankMap)
-          .map(([userId, r]) => ({
-            userId,
-            displayName: `PLAYER_${userId.slice(0, 6).toUpperCase()}`,
-            rankPoints: r.points,
-            rankTier: r.tier,
-          }))
-          .sort((a, b) => b.rankPoints - a.rankPoints)
-          .slice(0, 10);
-
-        setSeasonRows(seasonList);
-      } catch (e: any) {
-        setError(e?.message ?? 'Failed to load leaderboard');
-      } finally {
-        setLoading(false);
+        userMap[row.user_id].wins += row.total_wins ?? 0;
+        userMap[row.user_id].losses += row.total_losses ?? 0;
+        userMap[row.user_id].draws += row.total_draws ?? 0;
+        userMap[row.user_id].matches += row.total_matches ?? 0;
       }
+
+      const playerList: PlayerWinRateRow[] = Object.entries(userMap)
+        .map(([userId, s]) => ({
+          userId,
+          displayName: `PLAYER_${userId.slice(0, 6).toUpperCase()}`,
+          wins: s.wins,
+          losses: s.losses,
+          draws: s.draws,
+          totalMatches: s.matches,
+          winRate: s.matches > 0 ? (s.wins / s.matches) * 100 : 0,
+        }))
+        .sort((a, b) => b.winRate - a.winRate)
+        .slice(0, 10);
+
+      setPlayerRows(playerList);
+
+      // Top 10 fighters by total wins
+      const { data: fData, error: fErr } = await supabase
+        .from('fighter_stats')
+        .select('fighter_id, fighter_name, total_wins, total_matches')
+        .order('total_wins', { ascending: false })
+        .limit(100);
+
+      if (fErr) throw fErr;
+
+      const fighterMap: Record<string, { name: string; wins: number; matches: number }> = {};
+      for (const row of fData ?? []) {
+        if (!fighterMap[row.fighter_id]) {
+          fighterMap[row.fighter_id] = { name: row.fighter_name, wins: 0, matches: 0 };
+        }
+        fighterMap[row.fighter_id].wins += row.total_wins ?? 0;
+        fighterMap[row.fighter_id].matches += row.total_matches ?? 0;
+      }
+
+      const fighterList: FighterWinsRow[] = Object.entries(fighterMap)
+        .map(([fighterId, s]) => ({
+          fighterId,
+          fighterName: s.name,
+          totalWins: s.wins,
+          totalMatches: s.matches,
+        }))
+        .sort((a, b) => b.totalWins - a.totalWins)
+        .slice(0, 10);
+
+      setFighterRows(fighterList);
+
+      // Seasonal rank tier standings
+      const { data: rankData, error: rankErr } = await supabase
+        .from('player_ranks')
+        .select('user_id, rank_points, rank_tier, recorded_at')
+        .order('rank_points', { ascending: false })
+        .limit(100);
+
+      if (rankErr) throw rankErr;
+
+      const rankMap: Record<string, { points: number; tier: string }> = {};
+      for (const row of rankData ?? []) {
+        if (!rankMap[row.user_id] || row.rank_points > rankMap[row.user_id].points) {
+          rankMap[row.user_id] = { points: row.rank_points, tier: row.rank_tier };
+        }
+      }
+
+      const seasonList: SeasonRankRow[] = Object.entries(rankMap)
+        .map(([userId, r]) => ({
+          userId,
+          displayName: `PLAYER_${userId.slice(0, 6).toUpperCase()}`,
+          rankPoints: r.points,
+          rankTier: r.tier,
+        }))
+        .sort((a, b) => b.rankPoints - a.rankPoints)
+        .slice(0, 10);
+
+      setSeasonRows(seasonList);
+      setLastUpdated(new Date());
+    } catch (e: any) {
+      setError(e?.message ?? 'Failed to load leaderboard');
+    } finally {
+      setLoading(false);
     }
-    load();
+  }
+
+  // Subscribe to real-time changes on fighter_stats and player_ranks
+  useEffect(() => {
+    loadData();
+
+    const supabase = createClient();
+
+    const channel = supabase
+      .channel('leaderboard-live')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'fighter_stats' },
+        (payload) => {
+          // Flash the changed row and reload silently
+          const changedUserId = (payload.new as any)?.user_id ?? (payload.old as any)?.user_id;
+          if (changedUserId) {
+            setFlashRow(changedUserId);
+            setTimeout(() => setFlashRow(null), 1200);
+          }
+          loadData(true);
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'player_ranks' },
+        (payload) => {
+          const changedUserId = (payload.new as any)?.user_id ?? (payload.old as any)?.user_id;
+          if (changedUserId) {
+            setFlashRow(changedUserId);
+            setTimeout(() => setFlashRow(null), 1200);
+          }
+          loadData(true);
+        }
+      )
+      .subscribe((status) => {
+        setLiveConnected(status === 'SUBSCRIBED');
+      });
+
+    channelRef.current = channel;
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   return (
@@ -168,7 +212,28 @@ export default function LeaderboardScreen({ onBack }: { onBack: () => void }) {
         {/* Header */}
         <div className="mb-6">
           <div className="text-[9px] tracking-[0.5em] text-zinc-500 mb-1">GLOBAL</div>
-          <div className="text-3xl font-black tracking-widest">LEADERBOARD</div>
+          <div className="flex items-center justify-between">
+            <div className="text-3xl font-black tracking-widest">LEADERBOARD</div>
+            {/* Live indicator */}
+            <div className="flex items-center gap-2">
+              <div
+                className="w-2 h-2 rounded-full"
+                style={{
+                  background: liveConnected ? '#22c55e' : '#52525b',
+                  boxShadow: liveConnected ? '0 0 6px #22c55e' : 'none',
+                  animation: liveConnected ? 'pulse 2s infinite' : 'none',
+                }}
+              />
+              <span className="text-[8px] tracking-widest" style={{ color: liveConnected ? '#22c55e' : '#52525b' }}>
+                {liveConnected ? 'LIVE' : 'OFFLINE'}
+              </span>
+            </div>
+          </div>
+          {lastUpdated && (
+            <div className="text-[7px] text-zinc-700 mt-1">
+              UPDATED {lastUpdated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+            </div>
+          )}
           <div className="mt-1 h-px bg-zinc-800" />
         </div>
 
@@ -217,7 +282,11 @@ export default function LeaderboardScreen({ onBack }: { onBack: () => void }) {
                     {playerRows.map((row, i) => (
                       <div
                         key={row.userId}
-                        className="flex items-center gap-3 border border-zinc-800 px-3 py-2 hover:border-zinc-600 transition-all"
+                        className="flex items-center gap-3 border px-3 py-2 transition-all duration-300"
+                        style={{
+                          borderColor: flashRow === row.userId ? '#facc15' : '#27272a',
+                          background: flashRow === row.userId ? 'rgba(250,204,21,0.06)' : 'transparent',
+                        }}
                       >
                         <div
                           className="w-6 h-6 flex items-center justify-center text-[10px] font-black border"
@@ -326,7 +395,11 @@ export default function LeaderboardScreen({ onBack }: { onBack: () => void }) {
                       return (
                         <div
                           key={row.userId}
-                          className="flex items-center gap-3 border border-zinc-800 px-3 py-2 hover:border-zinc-600 transition-all"
+                          className="flex items-center gap-3 border px-3 py-2 transition-all duration-300"
+                          style={{
+                            borderColor: flashRow === row.userId ? '#facc15' : '#27272a',
+                            background: flashRow === row.userId ? 'rgba(250,204,21,0.06)' : 'transparent',
+                          }}
                         >
                           <div
                             className="w-6 h-6 flex items-center justify-center text-[10px] font-black border"

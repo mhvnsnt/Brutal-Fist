@@ -17,6 +17,7 @@ const PostTournamentScreen = dynamic(() => import('./components/PostTournamentSc
 const PlayerProfileScreen = dynamic(() => import('./components/PlayerProfileScreen'), { ssr: false });
 const TournamentSettingsScreen = dynamic(() => import('./components/TournamentSettingsScreen'), { ssr: false });
 const LeaderboardScreen = dynamic(() => import('./components/LeaderboardScreen'), { ssr: false });
+const PracticeArenaScreen = dynamic(() => import('./components/PracticeArenaScreen'), { ssr: false });
 
 export default function App() {
   const { user, loading: authLoading, signOut } = useAuth();
@@ -123,10 +124,11 @@ export default function App() {
               <span className="ml-3 text-[10px] text-yellow-400 tracking-widest">BRACKET MODE</span>
             </button>
             <button
-              onClick={() => { setGameMode('versus'); setScreen(AppScreen?.Select); }}
+              onClick={() => setScreen('practice' as any)}
               className="block w-full border border-slate-600 px-6 py-4 text-left text-xl font-black tracking-widest hover:bg-white hover:text-black transition-all"
             >
               TRAINING
+              <span className="ml-3 text-[10px] text-green-400 tracking-widest">PRACTICE ARENA</span>
             </button>
             <button
               onClick={() => setScreen('leaderboard' as any)}
@@ -188,6 +190,11 @@ export default function App() {
   // ── Leaderboard ──
   if ((screen as any) === 'leaderboard') {
     return <LeaderboardScreen onBack={() => setScreen(AppScreen?.MainMenu)} />;
+  }
+
+  // ── Practice Arena ──
+  if ((screen as any) === 'practice') {
+    return <PracticeArenaScreen onBack={() => setScreen(AppScreen?.MainMenu)} />;
   }
 
   // ── Tournament Stats (auth-gated) ──

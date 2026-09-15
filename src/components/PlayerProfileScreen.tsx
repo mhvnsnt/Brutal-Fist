@@ -29,27 +29,259 @@ function getRankColor(tier: string): string {
   return RANK_TIERS.find(r => r.tier === tier.toUpperCase())?.color ?? '#94a3b8';
 }
 
-/** Compute mastery level (1–10) from wins */
 function getMasteryLevel(wins: number): number {
   return Math.min(10, 1 + Math.floor(wins / 3));
 }
 
-/** Compute unlocked cosmetics based on wins and mastery */
-function getUnlockedCosmetics(wins: number, isChampion: boolean): Array<{ name: string; type: string; color: string; unlocked: boolean }> {
+// ── Rarity system ─────────────────────────────────────────────────────────────
+type Rarity = 'COMMON' | 'RARE' | 'EPIC' | 'LEGENDARY';
+type CosmeticCategory = 'OUTFIT' | 'EFFECT' | 'BANNER' | 'ACCESSORY' | 'TITLE' | 'BADGE' | 'BUNDLE';
+
+interface CosmeticItem {
+  id: string;
+  name: string;
+  type: CosmeticCategory;
+  rarity: Rarity;
+  color: string;
+  price: number;           // in Brutal Coins
+  unlocked: boolean;
+  purchased: boolean;
+  milestoneReq?: string;   // e.g. "5 wins with Bannon"
+  masteryReq?: number;     // mastery level required
+  seasonal?: boolean;
+  seasonTag?: string;
+  bundleItems?: string[];  // for bundles
+  description: string;
+}
+
+const RARITY_COLOR: Record<Rarity, string> = {
+  COMMON:    '#94a3b8',
+  RARE:      '#3b82f6',
+  EPIC:      '#a855f7',
+  LEGENDARY: '#facc15',
+};
+
+const RARITY_GLOW: Record<Rarity, string> = {
+  COMMON:    'transparent',
+  RARE:      'rgba(59,130,246,0.15)',
+  EPIC:      'rgba(168,85,247,0.15)',
+  LEGENDARY: 'rgba(250,204,21,0.15)',
+};
+
+function buildMarketplace(totalWins: number, isChampion: boolean, masteryMap: Record<string, number>): CosmeticItem[] {
+  const maxMastery = Math.max(0, ...Object.values(masteryMap));
   return [
-    { name: 'DEFAULT ATTIRE', type: 'OUTFIT', color: '#94a3b8', unlocked: true },
-    { name: 'FACTION BANNER', type: 'BANNER', color: '#3b82f6', unlocked: wins >= 1 },
-    { name: 'IRON FIST GLOVES', type: 'ACCESSORY', color: '#6b7280', unlocked: wins >= 3 },
-    { name: 'BRUTAL AURA', type: 'EFFECT', color: '#ef4444', unlocked: wins >= 5 },
-    { name: 'CHAMPION CROWN', type: 'TITLE', color: '#facc15', unlocked: isChampion },
-    { name: 'GOLD AURA', type: 'EFFECT', color: '#fbbf24', unlocked: isChampion },
-    { name: 'SHADOW ATTIRE', type: 'OUTFIT', color: '#7c3aed', unlocked: wins >= 10 },
-    { name: 'LEGEND BADGE', type: 'BADGE', color: '#f97316', unlocked: wins >= 20 },
+    // ── COMMON ──
+    {
+      id: 'default_attire',
+      name: 'DEFAULT ATTIRE',
+      type: 'OUTFIT',
+      rarity: 'COMMON',
+      color: '#94a3b8',
+      price: 0,
+      unlocked: true,
+      purchased: true,
+      description: 'Standard issue fighter uniform.',
+    },
+    {
+      id: 'faction_banner',
+      name: 'FACTION BANNER',
+      type: 'BANNER',
+      rarity: 'COMMON',
+      color: '#3b82f6',
+      price: 200,
+      unlocked: totalWins >= 1,
+      purchased: totalWins >= 1,
+      milestoneReq: '1 tournament win',
+      description: 'Display your faction allegiance in the arena.',
+    },
+    {
+      id: 'iron_gloves',
+      name: 'IRON FIST GLOVES',
+      type: 'ACCESSORY',
+      rarity: 'COMMON',
+      color: '#6b7280',
+      price: 350,
+      unlocked: totalWins >= 3,
+      purchased: totalWins >= 3,
+      milestoneReq: '3 tournament wins',
+      description: 'Reinforced combat gloves for serious fighters.',
+    },
+    // ── RARE ──
+    {
+      id: 'brutal_aura',
+      name: 'BRUTAL AURA',
+      type: 'EFFECT',
+      rarity: 'RARE',
+      color: '#ef4444',
+      price: 750,
+      unlocked: totalWins >= 5,
+      purchased: totalWins >= 5,
+      milestoneReq: '5 tournament wins',
+      description: 'A crimson energy field that pulses with every hit.',
+    },
+    {
+      id: 'shadow_attire',
+      name: 'SHADOW ATTIRE',
+      type: 'OUTFIT',
+      rarity: 'RARE',
+      color: '#7c3aed',
+      price: 900,
+      unlocked: totalWins >= 10,
+      purchased: totalWins >= 10,
+      milestoneReq: '10 tournament wins',
+      description: 'Dark tactical outfit worn by underground champions.',
+    },
+    {
+      id: 'mastery_badge_3',
+      name: 'VETERAN BADGE',
+      type: 'BADGE',
+      rarity: 'RARE',
+      color: '#0ea5e9',
+      price: 600,
+      unlocked: maxMastery >= 3,
+      purchased: maxMastery >= 3,
+      masteryReq: 3,
+      milestoneReq: 'Reach Mastery LV 3 with any fighter',
+      description: 'Awarded to fighters who have mastered the basics.',
+    },
+    // ── EPIC ──
+    {
+      id: 'void_aura',
+      name: 'VOID AURA',
+      type: 'EFFECT',
+      rarity: 'EPIC',
+      color: '#8b5cf6',
+      price: 1500,
+      unlocked: totalWins >= 15,
+      purchased: false,
+      milestoneReq: '15 tournament wins',
+      description: 'Dimensional rift energy — your strikes tear through reality.',
+    },
+    {
+      id: 'mastery_outfit_5',
+      name: 'ELITE COMBAT SUIT',
+      type: 'OUTFIT',
+      rarity: 'EPIC',
+      color: '#06b6d4',
+      price: 1800,
+      unlocked: maxMastery >= 5,
+      purchased: false,
+      masteryReq: 5,
+      milestoneReq: 'Reach Mastery LV 5 with any fighter',
+      description: 'High-tech suit worn only by elite-tier combatants.',
+    },
+    {
+      id: 'legend_badge',
+      name: 'LEGEND BADGE',
+      type: 'BADGE',
+      rarity: 'EPIC',
+      color: '#f97316',
+      price: 2000,
+      unlocked: totalWins >= 20,
+      purchased: totalWins >= 20,
+      milestoneReq: '20 tournament wins',
+      description: 'Reserved for those who have left their mark on the circuit.',
+    },
+    // ── LEGENDARY ──
+    {
+      id: 'champion_crown',
+      name: 'CHAMPION CROWN',
+      type: 'TITLE',
+      rarity: 'LEGENDARY',
+      color: '#facc15',
+      price: 0,
+      unlocked: isChampion,
+      purchased: isChampion,
+      milestoneReq: 'Win a full tournament bracket',
+      description: 'Only true champions may wear this. Cannot be purchased.',
+    },
+    {
+      id: 'gold_aura',
+      name: 'GOLD AURA',
+      type: 'EFFECT',
+      rarity: 'LEGENDARY',
+      color: '#fbbf24',
+      price: 3500,
+      unlocked: isChampion,
+      purchased: false,
+      milestoneReq: 'Win a tournament bracket',
+      description: 'The aura of a champion — blinding golden energy.',
+    },
+    {
+      id: 'mastery_legendary',
+      name: 'GRANDMASTER ATTIRE',
+      type: 'OUTFIT',
+      rarity: 'LEGENDARY',
+      color: '#facc15',
+      price: 5000,
+      unlocked: maxMastery >= 8,
+      purchased: false,
+      masteryReq: 8,
+      milestoneReq: 'Reach Mastery LV 8 with any fighter',
+      description: 'The ultimate fighter aesthetic. Worn only by grandmasters.',
+    },
+    // ── SEASONAL ──
+    {
+      id: 'season1_outfit',
+      name: 'SEASON 1: IRON CIRCUIT',
+      type: 'OUTFIT',
+      rarity: 'EPIC',
+      color: '#f97316',
+      price: 2500,
+      unlocked: totalWins >= 8,
+      purchased: false,
+      seasonal: true,
+      seasonTag: 'SEASON 1',
+      milestoneReq: '8 wins during Season 1',
+      description: 'Limited season outfit from the inaugural Iron Circuit.',
+    },
+    {
+      id: 'season1_banner',
+      name: 'SEASON 1: IRON BANNER',
+      type: 'BANNER',
+      rarity: 'RARE',
+      color: '#f97316',
+      price: 1200,
+      unlocked: totalWins >= 5,
+      purchased: false,
+      seasonal: true,
+      seasonTag: 'SEASON 1',
+      milestoneReq: '5 wins during Season 1',
+      description: 'Commemorative banner from the first season.',
+    },
+    // ── BUNDLES ──
+    {
+      id: 'bundle_starter',
+      name: 'ROOKIE BUNDLE',
+      type: 'BUNDLE',
+      rarity: 'RARE',
+      color: '#22c55e',
+      price: 800,
+      unlocked: totalWins >= 1,
+      purchased: false,
+      milestoneReq: '1 tournament win',
+      bundleItems: ['Faction Banner', 'Iron Fist Gloves', 'Veteran Badge'],
+      description: 'Everything a new champion needs. 3 items at a discount.',
+    },
+    {
+      id: 'bundle_elite',
+      name: 'ELITE BUNDLE',
+      type: 'BUNDLE',
+      rarity: 'EPIC',
+      color: '#a855f7',
+      price: 3200,
+      unlocked: maxMastery >= 5,
+      purchased: false,
+      masteryReq: 5,
+      milestoneReq: 'Mastery LV 5 + 15 wins',
+      bundleItems: ['Void Aura', 'Elite Combat Suit', 'Legend Badge'],
+      description: 'The elite fighter package. Mastery LV 5 required.',
+    },
   ];
 }
 
-/** Season achievements */
-function getSeasonAchievements(wins: number, losses: number, draws: number, isChampion: boolean, streak: number): Array<{ name: string; desc: string; color: string; earned: boolean }> {
+function getSeasonAchievements(wins: number, losses: number, draws: number, isChampion: boolean, streak: number) {
   return [
     { name: 'FIRST BLOOD', desc: 'Win your first tournament match', color: '#ef4444', earned: wins >= 1 },
     { name: 'ON A ROLL', desc: 'Win 3 matches in a row', color: '#f97316', earned: streak >= 3 },
@@ -72,6 +304,8 @@ interface FighterStatRow {
   tournamentWon: boolean;
 }
 
+type MarketFilter = 'ALL' | 'OUTFIT' | 'EFFECT' | 'BUNDLE' | 'SEASONAL' | 'UNLOCKED';
+
 export default function PlayerProfileScreen({ onBack }: PlayerProfileScreenProps) {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<'career' | 'mastery' | 'cosmetics' | 'season'>('career');
@@ -79,6 +313,10 @@ export default function PlayerProfileScreen({ onBack }: PlayerProfileScreenProps
   const [rankPoints, setRankPoints] = useState(0);
   const [rankTier, setRankTier] = useState('BRONZE');
   const [loading, setLoading] = useState(true);
+  const [marketFilter, setMarketFilter] = useState<MarketFilter>('ALL');
+  const [selectedItem, setSelectedItem] = useState<CosmeticItem | null>(null);
+  const [purchasedIds, setPurchasedIds] = useState<Set<string>>(new Set());
+  const [brutalCoins] = useState(1250); // simulated wallet
 
   useEffect(() => {
     if (!user?.id) { setLoading(false); return; }
@@ -86,7 +324,6 @@ export default function PlayerProfileScreen({ onBack }: PlayerProfileScreenProps
       statsService.getFighterStats(user.id),
       statsService.getCurrentRank(user.id),
     ]).then(([fs, rank]) => {
-      // Map FighterStat[] to FighterStatRow[]
       const rows: FighterStatRow[] = (fs ?? []).map((f: any) => ({
         fighterId: f.fighterId,
         fighterName: f.fighterName,
@@ -105,7 +342,6 @@ export default function PlayerProfileScreen({ onBack }: PlayerProfileScreenProps
     }).catch(() => setLoading(false));
   }, [user?.id]);
 
-  // Aggregate career totals
   const totalWins = fighterStats.reduce((s, f) => s + (f.wins ?? 0), 0);
   const totalLosses = fighterStats.reduce((s, f) => s + (f.losses ?? 0), 0);
   const totalDraws = fighterStats.reduce((s, f) => s + (f.draws ?? 0), 0);
@@ -115,10 +351,36 @@ export default function PlayerProfileScreen({ onBack }: PlayerProfileScreenProps
   const maxStreak = fighterStats.reduce((m, f) => Math.max(m, f.streak ?? 0), 0);
   const rankColor = getRankColor(rankTier);
 
-  const cosmetics = getUnlockedCosmetics(totalWins, isChampion);
+  // Build mastery map
+  const masteryMap: Record<string, number> = {};
+  for (const fs of fighterStats) {
+    masteryMap[fs.fighterId] = getMasteryLevel(fs.wins);
+  }
+
+  const marketplace = buildMarketplace(totalWins, isChampion, masteryMap);
   const achievements = getSeasonAchievements(totalWins, totalLosses, totalDraws, isChampion, maxStreak);
-  const unlockedCount = cosmetics.filter(c => c.unlocked).length;
   const earnedCount = achievements.filter(a => a.earned).length;
+
+  // Merge purchased state
+  const allItems = marketplace.map(item => ({
+    ...item,
+    purchased: item.purchased || purchasedIds.has(item.id),
+  }));
+
+  const filteredItems = allItems.filter(item => {
+    if (marketFilter === 'ALL') return true;
+    if (marketFilter === 'SEASONAL') return item.seasonal;
+    if (marketFilter === 'BUNDLE') return item.type === 'BUNDLE';
+    if (marketFilter === 'UNLOCKED') return item.unlocked;
+    return item.type === marketFilter;
+  });
+
+  function handlePurchase(item: CosmeticItem) {
+    if (!item.unlocked || item.purchased || item.price === 0) return;
+    if (brutalCoins < item.price) return;
+    setPurchasedIds(prev => new Set([...prev, item.id]));
+    setSelectedItem(null);
+  }
 
   if (loading) {
     return (
@@ -202,8 +464,6 @@ export default function PlayerProfileScreen({ onBack }: PlayerProfileScreenProps
         {activeTab === 'career' && (
           <div className="space-y-4">
             <div className="text-[8px] tracking-[0.3em] text-zinc-600 mb-3">CAREER RECORD</div>
-
-            {/* Overall record */}
             <div className="border border-zinc-900 p-4 space-y-3">
               <div className="text-[8px] tracking-widest text-zinc-600">OVERALL</div>
               <div className="flex items-center gap-3">
@@ -214,7 +474,6 @@ export default function PlayerProfileScreen({ onBack }: PlayerProfileScreenProps
                 <div className="text-3xl font-black text-zinc-500">{totalDraws}</div>
               </div>
               <div className="text-[8px] text-zinc-600">W - L - D</div>
-              {/* Win rate bar */}
               <div className="mt-2">
                 <div className="flex justify-between text-[7px] text-zinc-600 mb-1">
                   <span>WIN RATE</span><span>{winRate}%</span>
@@ -225,7 +484,6 @@ export default function PlayerProfileScreen({ onBack }: PlayerProfileScreenProps
               </div>
             </div>
 
-            {/* Per-fighter breakdown */}
             {fighterStats.length > 0 ? (
               <div>
                 <div className="text-[8px] tracking-[0.3em] text-zinc-600 mb-3">PER FIGHTER</div>
@@ -286,7 +544,6 @@ export default function PlayerProfileScreen({ onBack }: PlayerProfileScreenProps
                       <div className="text-[7px] text-zinc-600">{wins} WINS</div>
                     </div>
                   </div>
-                  {/* Mastery bar */}
                   <div className="flex gap-0.5">
                     {Array.from({ length: 10 }).map((_, i) => (
                       <div key={i} className="flex-1 h-2 transition-all"
@@ -305,34 +562,161 @@ export default function PlayerProfileScreen({ onBack }: PlayerProfileScreenProps
           </div>
         )}
 
-        {/* COSMETICS TAB */}
+        {/* COSMETICS MARKETPLACE TAB */}
         {activeTab === 'cosmetics' && (
           <div className="space-y-4">
-            <div className="flex items-center justify-between mb-3">
-              <div className="text-[8px] tracking-[0.3em] text-zinc-600">UNLOCKED COSMETICS</div>
-              <div className="text-[8px] text-zinc-500">{unlockedCount} / {cosmetics.length}</div>
+            {/* Wallet + header */}
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-[8px] tracking-[0.3em] text-zinc-600">COSMETICS MARKETPLACE</div>
+                <div className="text-[7px] text-zinc-700 mt-0.5">{allItems.filter(i => i.purchased).length} / {allItems.length} OWNED</div>
+              </div>
+              <div className="border border-yellow-900 bg-yellow-900/20 px-3 py-1.5 text-right">
+                <div className="text-[7px] text-yellow-700">BRUTAL COINS</div>
+                <div className="text-sm font-black text-yellow-400">{brutalCoins.toLocaleString()}</div>
+              </div>
             </div>
-            <div className="grid grid-cols-2 gap-2">
-              {cosmetics.map((c, i) => (
-                <div key={i} className="border p-3 transition-all"
+
+            {/* Filter pills */}
+            <div className="flex gap-1 flex-wrap">
+              {(['ALL', 'OUTFIT', 'EFFECT', 'BUNDLE', 'SEASONAL', 'UNLOCKED'] as MarketFilter[]).map(f => (
+                <button
+                  key={f}
+                  onClick={() => setMarketFilter(f)}
+                  className="px-2 py-1 text-[7px] tracking-widest border transition-all"
                   style={{
-                    borderColor: c.unlocked ? `${c.color}40` : '#27272a',
-                    background: c.unlocked ? `${c.color}08` : 'transparent',
-                    opacity: c.unlocked ? 1 : 0.4,
+                    borderColor: marketFilter === f ? '#facc15' : '#27272a',
+                    color: marketFilter === f ? '#facc15' : '#52525b',
+                    background: marketFilter === f ? 'rgba(250,204,21,0.08)' : 'transparent',
                   }}
                 >
-                  <div className="text-[7px] tracking-widest mb-1" style={{ color: c.unlocked ? c.color : '#52525b' }}>
-                    {c.type}
-                  </div>
-                  <div className="text-[10px] font-black" style={{ color: c.unlocked ? '#fff' : '#52525b' }}>
-                    {c.name}
-                  </div>
-                  <div className="mt-1 text-[7px]" style={{ color: c.unlocked ? c.color : '#3f3f46' }}>
-                    {c.unlocked ? '✓ UNLOCKED' : '🔒 LOCKED'}
-                  </div>
-                </div>
+                  {f}
+                </button>
               ))}
             </div>
+
+            {/* Item grid */}
+            <div className="grid grid-cols-2 gap-2">
+              {filteredItems.map((item) => {
+                const rarityColor = RARITY_COLOR[item.rarity];
+                const rarityGlow = RARITY_GLOW[item.rarity];
+                const isOwned = item.purchased;
+                const canBuy = item.unlocked && !isOwned && item.price > 0 && brutalCoins >= item.price;
+                const locked = !item.unlocked;
+
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => setSelectedItem(selectedItem?.id === item.id ? null : item)}
+                    className="text-left border p-3 transition-all relative overflow-hidden"
+                    style={{
+                      borderColor: selectedItem?.id === item.id ? rarityColor : locked ? '#1c1c1e' : `${rarityColor}40`,
+                      background: locked ? 'transparent' : rarityGlow,
+                      opacity: locked ? 0.45 : 1,
+                    }}
+                  >
+                    {/* Rarity stripe */}
+                    <div className="absolute top-0 left-0 right-0 h-0.5" style={{ background: locked ? '#27272a' : rarityColor }} />
+
+                    {/* Tags */}
+                    <div className="flex items-center gap-1 mb-1.5">
+                      <span className="text-[6px] tracking-widest font-black px-1 py-0.5"
+                        style={{ color: rarityColor, background: `${rarityColor}20` }}>
+                        {item.rarity}
+                      </span>
+                      {item.seasonal && (
+                        <span className="text-[6px] tracking-widest font-black px-1 py-0.5 text-orange-400 bg-orange-400/10">
+                          {item.seasonTag}
+                        </span>
+                      )}
+                      {item.type === 'BUNDLE' && (
+                        <span className="text-[6px] tracking-widest font-black px-1 py-0.5 text-green-400 bg-green-400/10">
+                          BUNDLE
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="text-[7px] text-zinc-500 mb-0.5">{item.type}</div>
+                    <div className="text-[10px] font-black leading-tight" style={{ color: locked ? '#52525b' : '#fff' }}>
+                      {item.name}
+                    </div>
+
+                    {/* Price / status */}
+                    <div className="mt-2">
+                      {isOwned ? (
+                        <div className="text-[7px] font-black" style={{ color: rarityColor }}>✓ OWNED</div>
+                      ) : locked ? (
+                        <div className="text-[7px] text-zinc-700">🔒 {item.milestoneReq ?? `MASTERY LV ${item.masteryReq}`}</div>
+                      ) : item.price === 0 ? (
+                        <div className="text-[7px] text-zinc-500">FREE UNLOCK</div>
+                      ) : (
+                        <div className="text-[8px] font-black text-yellow-400">{item.price.toLocaleString()} BC</div>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Item detail panel */}
+            {selectedItem && (
+              <div
+                className="border p-4 mt-2"
+                style={{
+                  borderColor: RARITY_COLOR[selectedItem.rarity],
+                  background: RARITY_GLOW[selectedItem.rarity],
+                }}
+              >
+                <div className="flex items-start justify-between mb-2">
+                  <div>
+                    <div className="text-[7px] tracking-widest mb-1" style={{ color: RARITY_COLOR[selectedItem.rarity] }}>
+                      {selectedItem.rarity} · {selectedItem.type}
+                      {selectedItem.seasonal && ` · ${selectedItem.seasonTag}`}
+                    </div>
+                    <div className="text-sm font-black">{selectedItem.name}</div>
+                  </div>
+                  <button onClick={() => setSelectedItem(null)} className="text-zinc-600 hover:text-zinc-400 text-xs">✕</button>
+                </div>
+                <div className="text-[8px] text-zinc-400 mb-3">{selectedItem.description}</div>
+                {selectedItem.bundleItems && (
+                  <div className="mb-3">
+                    <div className="text-[7px] text-zinc-600 mb-1">INCLUDES:</div>
+                    {selectedItem.bundleItems.map((bi, i) => (
+                      <div key={i} className="text-[8px] text-zinc-400">· {bi}</div>
+                    ))}
+                  </div>
+                )}
+                {selectedItem.milestoneReq && (
+                  <div className="text-[7px] text-zinc-600 mb-3">REQUIREMENT: {selectedItem.milestoneReq}</div>
+                )}
+                {!selectedItem.purchased && selectedItem.unlocked && selectedItem.price > 0 && (
+                  <button
+                    onClick={() => handlePurchase(selectedItem)}
+                    disabled={brutalCoins < selectedItem.price}
+                    className="w-full py-2 text-[9px] font-black tracking-widest border transition-all"
+                    style={{
+                      borderColor: brutalCoins >= selectedItem.price ? RARITY_COLOR[selectedItem.rarity] : '#27272a',
+                      color: brutalCoins >= selectedItem.price ? RARITY_COLOR[selectedItem.rarity] : '#3f3f46',
+                      background: brutalCoins >= selectedItem.price ? `${RARITY_COLOR[selectedItem.rarity]}15` : 'transparent',
+                    }}
+                  >
+                    {brutalCoins >= selectedItem.price
+                      ? `PURCHASE — ${selectedItem.price.toLocaleString()} BC`
+                      : `INSUFFICIENT COINS (NEED ${(selectedItem.price - brutalCoins).toLocaleString()} MORE)`}
+                  </button>
+                )}
+                {selectedItem.purchased && (
+                  <div className="text-center text-[9px] font-black py-2" style={{ color: RARITY_COLOR[selectedItem.rarity] }}>
+                    ✓ ALREADY OWNED
+                  </div>
+                )}
+                {!selectedItem.unlocked && (
+                  <div className="text-center text-[9px] text-zinc-600 py-2">
+                    🔒 MILESTONE REQUIRED
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 
@@ -344,7 +728,6 @@ export default function PlayerProfileScreen({ onBack }: PlayerProfileScreenProps
               <div className="text-[8px] text-zinc-500">{earnedCount} / {achievements.length}</div>
             </div>
 
-            {/* Season rank progress */}
             <div className="border border-zinc-900 p-4" style={{ background: `${rankColor}08` }}>
               <div className="text-[8px] tracking-widest text-zinc-600 mb-2">SEASON RANK</div>
               <div className="flex items-center justify-between mb-2">
@@ -368,7 +751,6 @@ export default function PlayerProfileScreen({ onBack }: PlayerProfileScreenProps
               </div>
             </div>
 
-            {/* Achievement list */}
             <div className="space-y-2">
               {achievements.map((a, i) => (
                 <div key={i} className="flex items-center gap-3 border p-3 transition-all"
