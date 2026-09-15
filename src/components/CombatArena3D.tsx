@@ -5,13 +5,18 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { FighterMesh } from './FighterMesh';
 import { type BannonFighterProfile } from '../data/bannonRoster';
+import { TrainingStage } from './TrainingStage';
+import { UrbanNightStage } from './UrbanNightStage';
+
+// ── Stage IDs ─────────────────────────────────────────────────────────────────
+export type StageId = 'urban_night' | 'training';
 
 // ── Stage geometry constants ──────────────────────────────────────────────────
-const FLOOR_WIDTH = 24;
 const FLOOR_DEPTH = 10;
-const P1_X = -3;
-const P2_X = 3;
-const Z_RANGE = 2.0; // max Z sidestep distance from center
+// Mobile-safe spawn positions — inward to X: ±1.8
+const P1_X = -1.8;
+const P2_X = 1.8;
+const Z_RANGE = 2.0;
 
 // ── Cinematic phases ──────────────────────────────────────────────────────────
 export type CinematicPhase = 'sweep' | 'intro' | 'fight' | 'victory';
@@ -81,7 +86,6 @@ function CinematicCamera({
     phaseTimeRef.current += delta;
 
     if (phase === 'sweep') {
-      // Panoramic sweep around the stage
       sweepAngleRef.current += delta * 0.6;
       const angle = sweepAngleRef.current;
       const radius = 10;
@@ -91,7 +95,6 @@ function CinematicCamera({
       cam.lookAt(0, 1.5, 0);
       cam.updateProjectionMatrix();
     } else if (phase === 'intro') {
-      // Low dramatic angle looking up at fighters
       const t = Math.min(1, phaseTimeRef.current / 1.5);
       const targetX = 0;
       const targetY = 1.0 + (1 - t) * 2;
@@ -102,11 +105,9 @@ function CinematicCamera({
       cam.lookAt(0, 1.2, 0);
       cam.updateProjectionMatrix();
     } else if (phase === 'fight') {
-      // Dynamic midpoint tracking — Tekken-style zoom based on fighter distance
       const midX = (p1X + p2X) / 2;
       const midZ = (p1Z + p2Z) / 2;
       const dist = Math.sqrt(Math.pow(p2X - p1X, 2) + Math.pow(p2Z - p1Z, 2));
-      // Camera pulls back as fighters spread apart, pushes in as they close
       const targetCamZ = Math.max(4.5, Math.min(11, dist * 1.05 + 3.0));
       const targetCamY = 2.0 + dist * 0.05;
       cam.position.x += (midX - cam.position.x) * 0.1;
@@ -115,7 +116,6 @@ function CinematicCamera({
       cam.lookAt(midX, 1.1, midZ * 0.15);
       cam.updateProjectionMatrix();
     } else if (phase === 'victory') {
-      // Close-up on winner (P1 side for now — caller can pass winner position)
       const targetX = p1X;
       const targetY = 1.8;
       const targetZ = 3.5;
@@ -143,7 +143,7 @@ function BlobShadow({ x, z, scale = 1 }: { x: number; z: number; scale?: number 
 // ── Impact particle system (canvas overlay) ───────────────────────────────────
 interface VFXOverlayProps {
   particles: Particle[];
-  screenFlash: number; // 0-1 intensity
+  screenFlash: number;
   hitStopActive: boolean;
 }
 
@@ -158,19 +158,16 @@ function VFXOverlay({ particles, screenFlash, hitStopActive }: VFXOverlayProps) 
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Screen flash
     if (screenFlash > 0.01) {
       ctx.fillStyle = `rgba(255,255,255,${screenFlash * 0.35})`;
       ctx.fillRect(0, 0, canvas.width, canvas.height);
     }
 
-    // Hit stop chromatic aberration tint
     if (hitStopActive) {
       ctx.fillStyle = 'rgba(255,50,50,0.06)';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
     }
 
-    // Particles
     for (const p of particles) {
       const alpha = p.life / p.maxLife;
       ctx.globalAlpha = alpha;
@@ -204,46 +201,8 @@ function VFXOverlay({ particles, screenFlash, hitStopActive }: VFXOverlayProps) 
   );
 }
 
-// ── Arena stage ───────────────────────────────────────────────────────────────
-function ArenaStage({ p1Color, p2Color }: { p1Color: string; p2Color: string }) {
-  return (
-    <group>
-      {/* Floor plane */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} receiveShadow>
-        <planeGeometry args={[FLOOR_WIDTH, FLOOR_DEPTH]} />
-        <meshStandardMaterial color="#111111" roughness={0.85} metalness={0.15} />
-      </mesh>
-      {/* Floor grid */}
-      <gridHelper args={[FLOOR_WIDTH, 24, '#222222', '#1a1a1a']} position={[0, 0.002, 0]} />
-      {/* Center line */}
-      <mesh position={[0, 0.003, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <planeGeometry args={[0.04, FLOOR_DEPTH]} />
-        <meshStandardMaterial color="#facc15" emissive="#facc15" emissiveIntensity={0.4} />
-      </mesh>
-      {/* Back wall */}
-      <mesh position={[0, 3, -FLOOR_DEPTH / 2]} receiveShadow>
-        <planeGeometry args={[FLOOR_WIDTH, 8]} />
-        <meshStandardMaterial color="#0a0a0a" roughness={1} />
-      </mesh>
-      {/* Side walls */}
-      <mesh position={[-FLOOR_WIDTH / 2, 3, 0]} rotation={[0, Math.PI / 2, 0]}>
-        <planeGeometry args={[FLOOR_DEPTH, 8]} />
-        <meshStandardMaterial color="#080808" roughness={1} />
-      </mesh>
-      <mesh position={[FLOOR_WIDTH / 2, 3, 0]} rotation={[0, -Math.PI / 2, 0]}>
-        <planeGeometry args={[FLOOR_DEPTH, 8]} />
-        <meshStandardMaterial color="#080808" roughness={1} />
-      </mesh>
-      {/* Faction floor glows */}
-      <pointLight position={[P1_X, 0.5, 0]} intensity={1.2} color={p1Color} distance={4} decay={2} />
-      <pointLight position={[P2_X, 0.5, 0]} intensity={1.2} color={p2Color} distance={4} decay={2} />
-      <pointLight position={[0, 6, -4]} intensity={0.6} color="#1a1a2e" distance={20} decay={1} />
-    </group>
-  );
-}
-
-// ── Arena lighting ────────────────────────────────────────────────────────────
-function ArenaLighting({ p1Color, p2Color }: { p1Color: string; p2Color: string }) {
+// ── Training stage lighting ───────────────────────────────────────────────────
+function TrainingLighting({ p1Color, p2Color }: { p1Color: string; p2Color: string }) {
   return (
     <>
       <ambientLight intensity={0.3} color="#c8d0e0" />
@@ -265,7 +224,7 @@ function ArenaLighting({ p1Color, p2Color }: { p1Color: string; p2Color: string 
   );
 }
 
-// ── Intro animation overlay (2D cinematic bars + text) ────────────────────────
+// ── Intro animation overlay ───────────────────────────────────────────────────
 function IntroOverlay({
   phase,
   p1Name,
@@ -279,7 +238,6 @@ function IntroOverlay({
 
   return (
     <div className="absolute inset-0 z-30 pointer-events-none">
-      {/* Cinematic letterbox bars */}
       <div className="absolute top-0 left-0 right-0 h-[12%] bg-black" />
       <div className="absolute bottom-0 left-0 right-0 h-[12%] bg-black" />
 
@@ -356,19 +314,15 @@ export interface CombatArena3DProps {
   hitStopActive: boolean;
   p1SkinTint?: string;
   p2SkinTint?: string;
-  /** Z-axis positions for sidestepping */
   p1Z?: number;
   p2Z?: number;
-  /** Cinematic phase control */
   cinematicPhase?: CinematicPhase;
-  /** Winner name for victory pose */
   winnerName?: string;
-  /** Camera FOV override */
   cameraFov?: number;
-  /** Whether announcer is enabled */
   announcerEnabled?: boolean;
-  /** Damage event to trigger VFX — increment to fire */
   damageEvent?: { count: number; player: 'p1' | 'p2'; damage: number; isCounter: boolean; factionColor: string };
+  /** Stage selection — defaults to 'urban_night' */
+  stageId?: StageId;
 }
 
 export default function CombatArena3D({
@@ -390,18 +344,16 @@ export default function CombatArena3D({
   cameraFov = 55,
   announcerEnabled = true,
   damageEvent,
+  stageId = 'urban_night',
 }: CombatArena3DProps) {
-  // ── Particles state ──────────────────────────────────────────────────────────
   const [particles, setParticles] = useState<Particle[]>([]);
   const [screenFlash, setScreenFlash] = useState(0);
   const particleIdRef = useRef(0);
   const flashRafRef = useRef<number>(0);
   const prevDamageEventRef = useRef<typeof damageEvent>(undefined);
 
-  // ── Announcer ────────────────────────────────────────────────────────────────
   const { speak } = useAnnouncer(announcerEnabled);
 
-  // Announce phase changes
   useEffect(() => {
     if (cinematicPhase === 'intro') {
       const t1 = setTimeout(() => speak('Round 1', 0.7, 0.85), 800);
@@ -414,7 +366,6 @@ export default function CombatArena3D({
     }
   }, [cinematicPhase, winnerName, speak]);
 
-  // ── VFX: spawn particles on damage ──────────────────────────────────────────
   useEffect(() => {
     if (!damageEvent) return;
     if (prevDamageEventRef.current?.count === damageEvent.count) return;
@@ -427,12 +378,10 @@ export default function CombatArena3D({
 
     const newParticles: Particle[] = [];
 
-    // Impact sparks
     for (let i = 0; i < 12; i++) {
       newParticles.push({
         id: ++particleIdRef.current,
-        x: screenX,
-        y: screenY,
+        x: screenX, y: screenY,
         vx: (Math.random() - 0.5) * 8,
         vy: (Math.random() - 0.5) * 8 - 3,
         life: 0.6 + Math.random() * 0.4,
@@ -443,21 +392,16 @@ export default function CombatArena3D({
       });
     }
 
-    // Faction-colored burst ring
     newParticles.push({
       id: ++particleIdRef.current,
-      x: screenX,
-      y: screenY,
-      vx: 0,
-      vy: 0,
-      life: 0.5,
-      maxLife: 0.5,
+      x: screenX, y: screenY,
+      vx: 0, vy: 0,
+      life: 0.5, maxLife: 0.5,
       color: factionColor,
       size: damage > 300 ? 30 : 18,
       type: 'burst',
     });
 
-    // Knockback trail (heavy hits)
     if (damage > 200) {
       for (let i = 0; i < 6; i++) {
         newParticles.push({
@@ -466,8 +410,7 @@ export default function CombatArena3D({
           y: screenY + i * 4,
           vx: player === 'p2' ? 2 : -2,
           vy: -1,
-          life: 0.4,
-          maxLife: 0.4,
+          life: 0.4, maxLife: 0.4,
           color: factionColor,
           size: 4 - i * 0.5,
           type: 'trail',
@@ -476,8 +419,6 @@ export default function CombatArena3D({
     }
 
     setParticles(prev => [...prev.slice(-40), ...newParticles]);
-
-    // Screen flash
     setScreenFlash(damage > 300 ? 0.8 : 0.4);
     cancelAnimationFrame(flashRafRef.current);
     const fadeFlash = () => {
@@ -489,25 +430,15 @@ export default function CombatArena3D({
     };
     flashRafRef.current = requestAnimationFrame(fadeFlash);
 
-    // Announcer counter hit
-    if (isCounter) {
-      speak('Counter hit!', 0.75, 1.1);
-    }
+    if (isCounter) speak('Counter hit!', 0.75, 1.1);
   }, [damageEvent, speak]);
 
-  // Particle tick
   useEffect(() => {
     if (particles.length === 0) return;
     const interval = setInterval(() => {
       setParticles(prev => {
         const next = prev
-          .map(p => ({
-            ...p,
-            x: p.x + p.vx,
-            y: p.y + p.vy,
-            vy: p.vy + 0.3,
-            life: p.life - 0.016,
-          }))
+          .map(p => ({ ...p, x: p.x + p.vx, y: p.y + p.vy, vy: p.vy + 0.3, life: p.life - 0.016 }))
           .filter(p => p.life > 0);
         return next;
       });
@@ -515,35 +446,53 @@ export default function CombatArena3D({
     return () => clearInterval(interval);
   }, [particles.length]);
 
-  // Derive fighter X positions from state
   const p1XOffset = p1State === 'Startup' || p1State === 'Active' ? 0.3 : 0;
   const p2XOffset = p2State === 'Startup' || p2State === 'Active' ? -0.3 : 0;
   const p1FinalX = P1_X + p1XOffset;
   const p2FinalX = P2_X + p2XOffset;
-
-  // Clamp Z sidestep
   const p1FinalZ = Math.max(-Z_RANGE, Math.min(Z_RANGE, p1Z));
   const p2FinalZ = Math.max(-Z_RANGE, Math.min(Z_RANGE, p2Z));
+
+  // ── P2 rotation: always face P1 (face -X = Math.PI / 2 rotation toward P1) ──
+  // P1 at -X faces +X → rotationY = 0 (default, faces camera/+Z, then FighterMesh faces correctly)
+  // P2 at +X must face -X → rotationY = Math.PI
+  const p2RotationY = Math.PI;
+
+  // ── Stage-specific fog color ──────────────────────────────────────────────
+  const fogColor = stageId === 'urban_night' ? '#050508' : '#050508';
+  const bgColor = stageId === 'urban_night' ? '#030305' : '#050508';
 
   return (
     <div className="relative w-full h-full">
       <Canvas
         shadows
         gl={{ antialias: false, alpha: false }}
-        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', background: '#050505' }}
+        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', background: bgColor }}
         camera={{ position: [0, 2.2, 7], fov: cameraFov, near: 0.1, far: 200 }}
       >
-        <color attach="background" args={['#050508']} />
-        <fog attach="fog" args={['#050508', 18, 40]} />
+        <color attach="background" args={[bgColor]} />
+        {/* FogExp2 for urban night — dense smoggy atmosphere */}
+        {stageId === 'urban_night' ? (
+          <fogExp2 attach="fog" args={[fogColor, 0.028]} />
+        ) : (
+          <fog attach="fog" args={[fogColor, 18, 40]} />
+        )}
 
-        <ArenaLighting p1Color={p1Color} p2Color={p2Color} />
-        <ArenaStage p1Color={p1Color} p2Color={p2Color} />
+        {/* ── Stage switch ── */}
+        {stageId === 'urban_night' ? (
+          <UrbanNightStage p1Color={p1Color} p2Color={p2Color} />
+        ) : (
+          <>
+            <TrainingLighting p1Color={p1Color} p2Color={p2Color} />
+            <TrainingStage p1Color={p1Color} p2Color={p2Color} />
+          </>
+        )}
 
         {/* Blob shadows */}
         <BlobShadow x={p1FinalX} z={p1FinalZ} scale={p1State === 'KO' ? 0.7 : 1} />
         <BlobShadow x={p2FinalX} z={p2FinalZ} scale={p2State === 'KO' ? 0.7 : 1} />
 
-        {/* P1 Fighter */}
+        {/* P1 Fighter — faces +X (toward P2) */}
         <FighterMesh
           state={p1State}
           animation={p1Animation}
@@ -554,18 +503,17 @@ export default function CombatArena3D({
           tint={p1SkinTint ?? p1Color}
         />
 
-        {/* P2 Fighter */}
+        {/* P2 Fighter — faces -X (toward P1), rotationY = Math.PI */}
         <FighterMesh
           state={p2State}
           animation={p2Animation}
           modelUrl={p2Fighter.portraitUrl}
           position={[p2FinalX, 0, p2FinalZ]}
           facing={-1}
-          rotationY={Math.PI}
+          rotationY={p2RotationY}
           tint={p2SkinTint ?? p2Color}
         />
 
-        {/* Cinematic camera */}
         <CinematicCamera
           phase={cinematicPhase}
           p1X={p1FinalX}
@@ -575,25 +523,11 @@ export default function CombatArena3D({
           fov={cameraFov}
         />
 
-        {/* Hit-stop ambient flash */}
         {hitStopActive && <ambientLight intensity={0.8} color="#ffffff" />}
       </Canvas>
 
-      {/* 2D VFX overlay */}
-      <VFXOverlay
-        particles={particles}
-        screenFlash={screenFlash}
-        hitStopActive={hitStopActive}
-      />
-
-      {/* Cinematic intro overlay */}
-      <IntroOverlay
-        phase={cinematicPhase}
-        p1Name={p1Fighter.name}
-        p2Name={p2Fighter.name}
-      />
-
-      {/* Victory cinematic overlay */}
+      <VFXOverlay particles={particles} screenFlash={screenFlash} hitStopActive={hitStopActive} />
+      <IntroOverlay phase={cinematicPhase} p1Name={p1Fighter.name} p2Name={p2Fighter.name} />
       <VictoryOverlay phase={cinematicPhase} winnerName={winnerName} />
     </div>
   );

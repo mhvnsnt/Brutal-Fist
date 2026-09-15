@@ -18,6 +18,7 @@ const PlayerProfileScreen = dynamic(() => import('./components/PlayerProfileScre
 const TournamentSettingsScreen = dynamic(() => import('./components/TournamentSettingsScreen'), { ssr: false });
 const LeaderboardScreen = dynamic(() => import('./components/LeaderboardScreen'), { ssr: false });
 const PracticeArenaScreen = dynamic(() => import('./components/PracticeArenaScreen'), { ssr: false });
+const StoryModeScreen = dynamic(() => import('./components/StoryModeScreen'), { ssr: false });
 
 export default function App() {
   const { user, loading: authLoading, signOut } = useAuth();
@@ -131,6 +132,13 @@ export default function App() {
               <span className="ml-3 text-[10px] text-green-400 tracking-widest">PRACTICE ARENA</span>
             </button>
             <button
+              onClick={() => setScreen('story' as any)}
+              className="block w-full border border-slate-600 px-6 py-4 text-left text-xl font-black tracking-widest hover:bg-white hover:text-black transition-all"
+            >
+              STORY
+              <span className="ml-3 text-[10px] text-purple-400 tracking-widest">CHARACTER ARCS</span>
+            </button>
+            <button
               onClick={() => setScreen('leaderboard' as any)}
               className="block w-full border border-slate-600 px-6 py-4 text-left text-xl font-black tracking-widest hover:bg-white hover:text-black transition-all"
             >
@@ -195,6 +203,20 @@ export default function App() {
   // ── Practice Arena ──
   if ((screen as any) === 'practice') {
     return <PracticeArenaScreen onBack={() => setScreen(AppScreen?.MainMenu)} />;
+  }
+
+  // ── Story Mode ──
+  if ((screen as any) === 'story') {
+    return (
+      <StoryModeScreen
+        onBack={() => setScreen(AppScreen?.MainMenu)}
+        onStartStoryBattle={(p1f, p2f, chapterTitle) => {
+          setP1BannonFighter(p1f);
+          setP2BannonFighter(p2f);
+          setScreen(AppScreen?.Combat);
+        }}
+      />
+    );
   }
 
   // ── Tournament Stats (auth-gated) ──

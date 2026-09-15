@@ -16,23 +16,24 @@ interface FighterMeshProps {
 }
 
 const animationAliases: Record<string, string[]> = {
-  idle: ['idle', 'Idle', 'neutral', 'Neutral', 'standing', 'Standing', 'bind', 'T-pose', 'TPose'],
+  idle: ['idle', 'Idle', 'neutral', 'Neutral', 'standing', 'Standing', 'bind', 'T-pose', 'TPose', 'tpose', 'rest', 'Rest'],
   walk: ['walk', 'Walk', 'walking', 'Walking', 'run', 'Run'],
-  light: ['light', 'Light', 'punch', 'Punch', 'attack', 'Attack'],
-  heavy: ['heavy', 'Heavy', 'strong', 'Strong', 'heavy_attack', 'HeavyAttack'],
+  light: ['light', 'Light', 'punch', 'Punch', 'attack', 'Attack', 'jab', 'Jab'],
+  heavy: ['heavy', 'Heavy', 'strong', 'Strong', 'heavy_attack', 'HeavyAttack', 'cross', 'Cross'],
   guard: ['guard', 'Guard', 'block', 'Block'],
-  hit: ['hit', 'Hit', 'hurt', 'Hurt', 'flinch', 'Flinch'],
+  hit: ['hit', 'Hit', 'hurt', 'Hurt', 'flinch', 'Flinch', 'hitstun', 'Hitstun'],
   block: ['block', 'Block', 'guard', 'Guard'],
-  ko: ['ko', 'KO', 'knockout', 'Knockout', 'death', 'Death']
+  ko: ['ko', 'KO', 'knockout', 'Knockout', 'death', 'Death', 'fall', 'Fall'],
 };
 
 /**
- * FighterMesh — Bannon-reference orientation contract:
- * - Normalize to 2.8 units tall (arena scale)
- * - Root placed at Y=0 (floor), centered on X/Z
- * - No additional Y rotation applied — Bannon faces +Z (toward camera)
- * - P2 facing is handled by the parent via rotationY = Math.PI (180°)
- *   so P2 faces -Z (toward P1 who is at -Z side)
+ * FighterMesh — Dynamic bounding-box normalization for ALL roster models.
+ * - Every loaded GLB is normalized to 2.8 units tall regardless of export scale.
+ * - Root placed at Y=0 (floor), centered on X/Z.
+ * - P1 (facing=1): rotationY=0 — faces +Z (toward camera), correct for left-side fighter.
+ * - P2 (facing=-1): rotationY=Math.PI — faces -Z (toward P1), correct for right-side fighter.
+ * - AnimationMixer is updated inside useFrame every frame so animations play on all models.
+ * - Default idle clip plays on mount via reset().play().
  */
 export function FighterMesh({ state, animation, modelUrl, position, facing, rotationY = 0, tint }: FighterMeshProps) {
   const groupRef = useRef<THREE.Group>(null);
@@ -50,26 +51,29 @@ export function FighterMesh({ state, animation, modelUrl, position, facing, rota
       if (!active) return;
       const cloned = gltf.scene.clone(true);
 
-      // ── Bannon-reference normalization ──────────────────────────────────
+      // ── Dynamic bounding-box normalization — works for ALL roster models ──
+      // Recompute after clone to get accurate world-space bounds
       const box = new THREE.Box3().setFromObject(cloned);
       const size = box.getSize(new THREE.Vector3());
       const center = box.getCenter(new THREE.Vector3());
 
-      // Normalize to 2.8 units tall (arena scale, matches Bannon)
-      const scale = size.y > 0 ? 2.8 / size.y : 1;
+      // Normalize every fighter to 2.8 units tall (arena scale)
+      // This handles models exported at any unit scale (cm, m, unscaled)
+      const targetHeight = 2.8;
+      const scale = size.y > 0.01 ? targetHeight / size.y : 1;
       cloned.scale.setScalar(scale);
 
-      // Center X/Z, root at Y=0 (floor placement)
+      // Re-center: align X/Z to origin, align bottom of bounding box to Y=0 (floor)
       cloned.position.set(
         -center.x * scale,
         -box.min.y * scale,
-        -center.z * scale
+        -center.z * scale,
       );
 
-      // No additional rotation — Bannon faces +Z, all models must match
+      // Clear any rotation baked into the root — facing is controlled by parent group
       cloned.rotation.set(0, 0, 0);
 
-      // Apply PSX vertex snapping + optional tint
+      // Apply PSX vertex snapping + optional tint to all meshes
       cloned.traverse((child) => {
         if (!(child as THREE.Mesh).isMesh) return;
         const mesh = child as THREE.Mesh;
@@ -82,7 +86,6 @@ export function FighterMesh({ state, animation, modelUrl, position, facing, rota
             mat.map.generateMipmaps = false;
             mat.needsUpdate = true;
           }
-          // PSX vertex snapping shader
           mat.onBeforeCompile = (shader) => {
             shader.vertexShader = shader.vertexShader.replace(
               '#include <project_vertex>',
@@ -98,23 +101,46 @@ export function FighterMesh({ state, animation, modelUrl, position, facing, rota
         });
       });
 
-      mixerRef.current = new THREE.AnimationMixer(cloned);
+      // ── AnimationMixer setup — required for skeletal animations ──
+      const mixer = new THREE.AnimationMixer(cloned);
+      mixerRef.current = mixer;
       actionsRef.current = {};
+
       for (const clip of gltf.animations) {
-        actionsRef.current[clip.name] = mixerRef.current.clipAction(clip);
+        actionsRef.current[clip.name] = mixer.clipAction(clip);
       }
+
+      // ── Auto-play idle on mount ──
+      // Find the best idle clip and start it immediately
+      const idleAliases = animationAliases['idle'];
+      const idleClipName = Object.keys(actionsRef.current).find(
+        (name) => idleAliases.some((alias) => name.toLowerCase() === alias.toLowerCase())
+      ) ?? Object.keys(actionsRef.current).find(
+        (name) => name.toLowerCase().includes('idle')
+      ) ?? Object.keys(actionsRef.current)[0];
+
+      if (idleClipName && actionsRef.current[idleClipName]) {
+        const idleAction = actionsRef.current[idleClipName];
+        idleAction.setLoop(THREE.LoopRepeat, Infinity);
+        idleAction.reset().play();
+        activeActionRef.current = idleAction;
+      }
+
       setModel(cloned);
-    }, undefined, (error) => console.error('Fighter GLB load failed:', error));
+    }, undefined, (error) => console.error('Fighter GLB load failed:', modelUrl, error));
 
     return () => {
       active = false;
       mixerRef.current?.stopAllAction();
       mixerRef.current = null;
       actionsRef.current = {};
+      activeActionRef.current = null;
     };
   }, [modelUrl]);
 
+  // ── Animation state transitions ──────────────────────────────────────────
   useEffect(() => {
+    if (!model) return;
     const key = animation ?? state.toLowerCase();
     const aliases = animationAliases[key] ?? [key];
     const name = Object.keys(actionsRef.current).find(
@@ -126,22 +152,25 @@ export function FighterMesh({ state, animation, modelUrl, position, facing, rota
     if (next === activeActionRef.current) return;
     activeActionRef.current?.fadeOut(0.08);
     if (next) {
+      const isLoop = key === 'idle' || key === 'walk';
+      next.setLoop(isLoop ? THREE.LoopRepeat : THREE.LoopOnce, isLoop ? Infinity : 1);
       next.reset().fadeIn(0.08).play();
-      next.setLoop(
-        key === 'idle' || key === 'walk' ? THREE.LoopRepeat : THREE.LoopOnce,
-        key === 'idle' || key === 'walk' ? Infinity : 1
-      );
     }
     activeActionRef.current = next;
   }, [animation, state, model]);
 
+  // ── AnimationMixer update — MUST run inside useFrame for animations to play ──
   useFrame(({ clock }, delta) => {
+    // Update mixer every frame — this is what drives skeletal animation playback
     mixerRef.current?.update(delta);
+
     if (!groupRef.current) return;
     const attacking = state === 'Startup' || state === 'Active';
     const bob = state === 'Neutral' ? Math.sin(clock.elapsedTime * 5) * 0.025 : 0;
     groupRef.current.position.set(position[0], position[1] + bob, position[2]);
-    // rotationY from parent controls facing direction (Bannon-reference: 0 = faces camera)
+    // rotationY from parent controls facing direction
+    // P1: rotationY=0 (faces +Z toward camera, left side)
+    // P2: rotationY=Math.PI (faces -Z toward P1, right side)
     groupRef.current.rotation.y = rotationY;
     groupRef.current.scale.x = Math.abs(groupRef.current.scale.x) * (facing < 0 ? -1 : 1) * (attacking ? 1.03 : 1);
   });
