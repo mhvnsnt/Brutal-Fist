@@ -23,9 +23,15 @@ interface CharacterPortrait3DProps {
  * - Scale is normalized to 2.0 units tall
  * - Root is centered on X/Z axes
  * - Bannon faces +Z (toward camera) by default — all other models must match this
- * - Bust camera: looks at Y=1.4, positioned at Z=3.2 with FOV 28
- * - Full camera: looks at Y=1.0, positioned at Z=4.5 with FOV 40
+ * - Bust camera: looks at ~70% of model height (head/chest zone), positioned at Z=3.2 with FOV 28
+ * - Full camera: looks at 50% of model height, positioned at Z=4.5 with FOV 40
  * - No auto-rotation — models face forward (Bannon orientation)
+ *
+ * VERTICAL ALIGNMENT FIX:
+ * The camera look-at Y is computed dynamically from the model's actual normalized
+ * bounding box height, not a hardcoded value. This ensures all characters (Cody,
+ * Cain Elias, Echo, etc.) frame correctly regardless of skeleton root height or
+ * bounding box origin in the source GLB.
  */
 function PortraitModel({
   modelUrl,
@@ -37,6 +43,8 @@ function PortraitModel({
   const groupRef = useRef<THREE.Group>(null);
   const mixerRef = useRef<THREE.AnimationMixer | null>(null);
   const [model, setModel] = useState<THREE.Group | null>(null);
+  // Store the normalized model height so camera can frame correctly
+  const [normalizedHeight, setNormalizedHeight] = useState<number>(2.0);
   const { camera } = useThree();
 
   useEffect(() => {
@@ -67,12 +75,17 @@ function PortraitModel({
         );
 
         // 4. Ensure model faces +Z (Bannon forward direction)
-        //    GLB models from Bannon repo are authored facing +Z.
-        //    We do NOT apply any additional Y rotation here — Bannon is the reference.
-        //    If a model appears backwards, it's a source asset issue, not a code issue.
         cloned.rotation.set(0, 0, 0);
 
-        // 5. Apply faction color tint to emissive (subtle, preserves original textures)
+        // 5. Compute the actual normalized height AFTER scale+position are applied
+        //    so the camera can target the correct vertical zone for this specific model.
+        //    We re-measure the bounding box after normalization to get the true height.
+        const normalizedBox = new THREE.Box3().setFromObject(cloned);
+        const normalizedSize = normalizedBox.getSize(new THREE.Vector3());
+        // Store the actual height (should be ~2.0 but may vary due to accessories/props)
+        setNormalizedHeight(normalizedSize.y);
+
+        // 6. Apply faction color tint to emissive (subtle, preserves original textures)
         const color = new THREE.Color(factionColor);
         cloned.traverse((child) => {
           if (!(child as THREE.Mesh).isMesh) return;
@@ -88,7 +101,7 @@ function PortraitModel({
           });
         });
 
-        // 6. Start idle animation if available
+        // 7. Start idle animation if available
         if (gltf.animations.length > 0) {
           mixerRef.current = new THREE.AnimationMixer(cloned);
           const idleClip =
@@ -114,27 +127,36 @@ function PortraitModel({
     };
   }, [modelUrl, factionColor]);
 
-  // ── Camera framing (Bannon-reference positions) ──────────────────────────
+  // ── Camera framing — dynamically computed from actual model height ──────────
+  // This is the core fix: instead of hardcoding Y=1.4 (which only works for Bannon/Maime),
+  // we compute the look-at Y as a fraction of the model's actual normalized height.
+  // Bust mode targets the head/upper-chest zone (~72% up from feet).
+  // Full mode targets the center of mass (~50% up from feet).
   useEffect(() => {
     const cam = camera as THREE.PerspectiveCamera;
     if (mode === 'bust') {
-      // Tight bust crop — matches Bannon's head/chest framing
+      // Target the head/chest zone: 72% of model height from the floor (Y=0)
+      // For a 2.0-unit model this gives Y≈1.44, matching Bannon's reference.
+      // For taller/shorter normalized models it scales proportionally.
+      const lookAtY = normalizedHeight * 0.72;
+      // Camera sits slightly above the look-at point to create a natural bust angle
+      const camY = lookAtY + 0.15;
       cam.fov = 28;
-      camera.position.set(0, 1.55, 3.2);
-      camera.lookAt(0, 1.4, 0);
+      camera.position.set(0, camY, 3.2);
+      camera.lookAt(0, lookAtY, 0);
     } else {
-      // Full body — shows full character from feet to head
+      // Full body — center of mass at 50% height
+      const lookAtY = normalizedHeight * 0.50;
+      const camY = lookAtY;
       cam.fov = 40;
-      camera.position.set(0, 1.0, 4.5);
-      camera.lookAt(0, 1.0, 0);
+      camera.position.set(0, camY, 4.5);
+      camera.lookAt(0, lookAtY, 0);
     }
     cam.updateProjectionMatrix();
-  }, [mode, camera]);
+  }, [mode, camera, normalizedHeight]);
 
   useFrame((_, delta) => {
     mixerRef.current?.update(delta);
-    // No auto-rotation — models face forward per Bannon orientation contract
-    // Flip is handled at group scale level (see group below)
   });
 
   if (!model) return null;
@@ -142,8 +164,6 @@ function PortraitModel({
   return (
     <group
       ref={groupRef}
-      // P2 side: mirror on X axis to face inward (toward P1)
-      // This is the correct Bannon-reference flip — only X scale is inverted
       scale={flip ? [-1, 1, 1] : [1, 1, 1]}
     >
       <primitive object={model} />
