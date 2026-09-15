@@ -1,37 +1,63 @@
 import { Canvas } from '@react-three/fiber';
-import { OrthographicCamera } from '@react-three/drei';
+import { PerspectiveCamera } from '@react-three/drei';
 import { FighterMesh } from './FighterMesh';
 
 interface PSXCanvasProps {
   fighterState: string;
+  opponentState: string;
   modelUrl: string | null;
+  p1X: number;
+  p1Z: number;
+  p2X: number;
+  p2Z: number;
 }
 
-export function PSXCanvas({ fighterState, modelUrl }: PSXCanvasProps) {
-  return (
-    <div className="w-full h-full bg-slate-900 border-2 border-slate-700 relative overflow-hidden">
-      {/* Scanline overlay for retro effect */}
-      <div className="absolute inset-0 pointer-events-none bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0IiBoZWlnaHQ9IjQiPjxyZWN0IHdpZHRoPSI0IiBoZWlnaHQ9IjIiIGZpbGw9IiMwMDAiIGZpbGwtb3BhY2l0eT0iMC4xNSIvPjwvc3ZnPg==')] z-10" />
-      
-      <Canvas
-        dpr={0.5} // Force lower resolution for chunky pixels
-        gl={{
-          antialias: false,
-          powerPreference: 'high-performance',
-        }}
-      >
-        <OrthographicCamera makeDefault position={[0, 1.5, 5]} zoom={50} />
-        {/* Unshaded materials used in FighterMesh to mimic PSX Gouraud/baked lighting */}
-        <FighterMesh state={fighterState} modelUrl={modelUrl} />
-        
-        {/* Ground drop shadow (fake) */}
-        <mesh position={[0, -0.49, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-          <circleGeometry args={[1, 16]} />
-          <meshBasicMaterial color="#000000" transparent opacity={0.4} />
-        </mesh>
+export function PSXCanvas({ fighterState, opponentState, modelUrl, p1X, p1Z, p2X, p2Z }: PSXCanvasProps) {
+  const p1Facing: 1 | -1 = p1X < p2X ? 1 : -1;
+  const p2Facing: 1 | -1 = p2X < p1X ? 1 : -1;
 
-        <gridHelper args={[10, 10, '#334455', '#223344']} position={[0, -0.5, 0]} />
+  return (
+    <div className="absolute inset-0 overflow-hidden bg-black">
+      <Canvas
+        dpr={[0.7, 1.25]}
+        shadows
+        gl={{ antialias: false, powerPreference: 'high-performance' }}
+        camera={{ position: [0, 3.1, 10], fov: 38 }}
+      >
+        <PerspectiveCamera makeDefault position={[0, 3.0, 10]} fov={38} />
+        <color attach="background" args={['#10131a']} />
+        <fog attach="fog" args={['#10131a', 11, 28]} />
+
+        <ambientLight intensity={1.8} />
+        <directionalLight position={[3, 8, 6]} intensity={3.5} castShadow />
+        <directionalLight position={[-6, 4, -2]} intensity={1.2} />
+
+        <group position={[0, 0, 0]}>
+          <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+            <planeGeometry args={[16, 9]} />
+            <meshStandardMaterial color="#252933" roughness={1} flatShading />
+          </mesh>
+
+          <gridHelper args={[16, 16, '#4a5360', '#303640']} position={[0, 0.012, 0]} />
+
+          <FighterMesh
+            state={fighterState}
+            modelUrl={modelUrl}
+            position={[p1X, 0, p1Z]}
+            facing={p1Facing}
+            tint="#d9d9d9"
+          />
+          <FighterMesh
+            state={opponentState}
+            modelUrl={modelUrl}
+            position={[p2X, 0, p2Z]}
+            facing={p2Facing}
+            tint="#7d8796"
+          />
+        </group>
       </Canvas>
+
+      <div className="pointer-events-none absolute inset-0 opacity-20 bg-[linear-gradient(rgba(255,255,255,.08)_1px,transparent_1px)] bg-[size:100%_4px]" />
     </div>
   );
 }
