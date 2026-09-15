@@ -4,7 +4,10 @@ const DEFAULT_PUBLIC_DRIVE_URL = 'https://drive.google.com/file/d/19k_jmuiUYsAub
 
 function getConfiguredUrl() {
   const queryUrl = new URLSearchParams(window.location.search).get('model');
-  return queryUrl || import.meta.env.VITE_PUBLIC_MODEL_URL || DEFAULT_PUBLIC_DRIVE_URL;
+  const envUrl = import.meta.env.VITE_PUBLIC_MODEL_URL;
+  if (queryUrl && queryUrl !== 'undefined') return queryUrl;
+  if (envUrl && envUrl !== 'undefined') return envUrl;
+  return DEFAULT_PUBLIC_DRIVE_URL;
 }
 
 /** Loads a public Google Drive model without OAuth, Firebase, or a Drive API token. */

@@ -35,7 +35,7 @@ async function startServer() {
   app.get('/api/public-model', async (req, res) => {
     try {
       const raw = String(req.query.url || '');
-      if (!raw) return res.status(400).send('Missing public model URL');
+      if (!raw || raw === 'undefined') return res.status(400).send('Missing public model URL');
       const target = publicDriveDownloadUrl(raw);
       const upstream = await fetch(target, { redirect: 'follow' });
       if (!upstream.ok) return res.status(upstream.status).send(`Public asset download failed: ${upstream.status}`);
@@ -47,7 +47,7 @@ async function startServer() {
       Readable.fromWeb(upstream.body as any).pipe(res);
       return undefined;
     } catch (error) {
-      console.error('Public model proxy error:', error);
+      console.error('Public model proxy error. raw URL:', raw, error);
       return res.status(400).send(error instanceof Error ? error.message : 'Invalid public model URL');
     }
   });
