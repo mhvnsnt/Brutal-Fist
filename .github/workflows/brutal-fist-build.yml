@@ -1,0 +1,33 @@
+name: Brutal Fist build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  pwa:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - run: bun run build
+
+  schwarzerblitz-native:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Locate Visual Studio
+        uses: microsoft/setup-msbuild@v2
+      - name: Build Schwarzerblitz native engine
+        shell: pwsh
+        run: |
+          $sln = Get-ChildItem -Path SchwarzerblitzEngine -Filter '*.sln' -Recurse | Select-Object -First 1
+          if (-not $sln) { throw 'Schwarzerblitz solution not found' }
+          msbuild $sln.FullName /m /p:Configuration=Release /p:Platform=Win32
