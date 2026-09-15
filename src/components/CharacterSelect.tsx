@@ -6,6 +6,7 @@ import { getCharacterMoveSet } from '../engine/CharacterMoveSetSystem';
 import dynamic from 'next/dynamic';
 
 const MoveSetCustomizer = dynamic(() => import('./MoveSetCustomizer'), { ssr: false });
+const CharacterPortrait3D = dynamic(() => import('./CharacterPortrait3D'), { ssr: false });
 
 interface CharacterSelectProps {
   onSelectP1?: (fighter: BannonFighterProfile) => void;
@@ -75,32 +76,33 @@ function FighterPortrait({
       {/* Faction-colored backdrop */}
       <div className={`absolute inset-0 bg-gradient-to-b ${factionBg}`} />
       {/* Scanline overlay */}
-      <div className="absolute inset-0 opacity-10" style={{
+      <div className="absolute inset-0 opacity-10 pointer-events-none" style={{
         backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.4) 2px, rgba(0,0,0,0.4) 4px)'
       }} />
       {/* Animated glow pulse */}
-      <div className="absolute inset-0 animate-pulse opacity-20"
+      <div className="absolute inset-0 animate-pulse opacity-20 pointer-events-none"
         style={{ background: `radial-gradient(ellipse at center, ${factionColor}55 0%, transparent 70%)` }}
       />
-      {/* Character "bust" — large initial letter as stylized portrait */}
-      <div className="relative z-10 flex flex-col items-center justify-center h-full w-full">
-        <div
-          className="font-black text-[7rem] md:text-[10rem] leading-none select-none"
-          style={{
-            color: factionColor,
-            textShadow: `0 0 40px ${factionColor}88, 0 0 80px ${factionColor}44`,
-            fontFamily: 'monospace',
-            filter: 'drop-shadow(0 4px 24px rgba(0,0,0,0.8))',
-          }}
-        >
-          {fighter.name.charAt(0)}
-        </div>
-        <div className="text-zinc-400 font-mono text-[10px] tracking-[0.25em] mt-1 uppercase">
+
+      {/* 3D Character bust portrait from Bannon repo GLB */}
+      <div className="absolute inset-0 z-10">
+        <CharacterPortrait3D
+          modelUrl={fighter.portraitUrl}
+          factionColor={factionColor}
+          mode="bust"
+          flip={!isP1}
+        />
+      </div>
+
+      {/* Role label at bottom */}
+      <div className="relative z-20 w-full flex justify-center pb-2 pointer-events-none">
+        <div className="text-zinc-400 font-mono text-[9px] tracking-[0.25em] uppercase bg-black/50 px-2 py-0.5">
           {fighter.role.split('/')[0].trim()}
         </div>
       </div>
+
       {/* Slot label */}
-      <div className={`absolute top-3 ${isP1 ? 'left-3' : 'right-3'} z-20`}>
+      <div className={`absolute top-3 ${isP1 ? 'left-3' : 'right-3'} z-30`}>
         <span className={`font-mono text-xs font-black tracking-[0.3em] px-2 py-1 border ${isP1 ? 'border-blue-500 text-blue-300 bg-blue-950/80' : 'border-red-500 text-red-300 bg-red-950/80'}`}>
           {slot}
         </span>
@@ -152,30 +154,32 @@ function RosterSlot({
         backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.5) 2px, rgba(0,0,0,0.5) 4px)'
       }} />
 
-      {/* Character initial */}
-      <div
-        className="font-black text-2xl md:text-3xl leading-none font-mono"
-        style={{
-          color: cursorOn ? factionColor : '#71717a',
-          textShadow: cursorOn ? `0 0 12px ${factionColor}` : undefined,
-        }}
-      >
-        {fighter.name.charAt(0)}
+      {/* 3D character portrait from Bannon repo GLB */}
+      <div className="absolute inset-0 z-0">
+        <CharacterPortrait3D
+          modelUrl={fighter.portraitUrl}
+          factionColor={factionColor}
+          mode="full"
+        />
       </div>
-      <div className="text-[8px] font-mono text-zinc-500 mt-0.5 tracking-widest truncate w-full text-center px-1">
-        {fighter.name.toUpperCase()}
+
+      {/* Name label overlay */}
+      <div className="absolute bottom-0 left-0 right-0 z-10 bg-black/70 py-0.5">
+        <div className="text-[7px] font-mono text-zinc-300 tracking-widest truncate w-full text-center px-1">
+          {fighter.name.toUpperCase()}
+        </div>
       </div>
 
       {/* P1/P2 badge */}
       {p1Selected && (
-        <div className="absolute top-0.5 left-0.5 text-[7px] font-mono font-black text-blue-300 bg-blue-900/80 px-1">P1</div>
+        <div className="absolute top-0.5 left-0.5 z-20 text-[7px] font-mono font-black text-blue-300 bg-blue-900/80 px-1">P1</div>
       )}
       {p2Selected && (
-        <div className="absolute top-0.5 right-0.5 text-[7px] font-mono font-black text-red-300 bg-red-900/80 px-1">P2</div>
+        <div className="absolute top-0.5 right-0.5 z-20 text-[7px] font-mono font-black text-red-300 bg-red-900/80 px-1">P2</div>
       )}
       {/* Customized dot */}
       {isCustomized && (
-        <div className="absolute bottom-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-green-400" />
+        <div className="absolute bottom-4 right-0.5 z-20 w-1.5 h-1.5 rounded-full bg-green-400" />
       )}
     </button>
   );

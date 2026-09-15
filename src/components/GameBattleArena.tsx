@@ -8,6 +8,9 @@ import { getMoveById } from '../engine/BrutalFistMoveCatalog';
 import { FighterState, type InputBitmask } from '../types';
 import MoveExecutionFeedback from './MoveExecutionFeedback';
 import { MobileControls } from './MobileControls';
+import dynamic from 'next/dynamic';
+
+const CharacterPortrait3D = dynamic(() => import('./CharacterPortrait3D'), { ssr: false });
 
 interface GameBattleArenaProps {
   p1Fighter: BannonFighterProfile;
@@ -359,59 +362,83 @@ export default function GameBattleArena({ p1Fighter, p2Fighter, onMatchEnd, onBa
         </div>
       </div>
 
-      {/* ── Fighter representations ── */}
-      <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
-        <div className="relative w-full max-w-2xl flex items-end justify-between px-8 pb-[20%]">
-          {/* P1 fighter */}
-          <div className="flex flex-col items-center"
+      {/* ── Fighter 3D portrait panels (faction-colored) ── */}
+      <div className="absolute inset-0 flex items-end justify-between z-10 pointer-events-none px-4 pb-[18%]">
+        {/* P1 fighter — faction-colored portrait panel */}
+        <div
+          className="relative flex flex-col items-center"
+          style={{
+            width: 'clamp(120px, 22vw, 220px)',
+            height: 'clamp(180px, 32vw, 320px)',
+            opacity: p1State === 'KO' ? 0.4 : 1,
+            transition: 'opacity 0.3s',
+            transform: p1State === 'Hitstun' ? 'translateX(6px) rotate(2deg)' : 'none',
+          }}
+        >
+          {/* Faction-colored border panel */}
+          <div
+            className="absolute inset-0 border-2"
             style={{
-              filter: hitStopActive ? 'brightness(1.5)' : undefined,
-              transition: 'filter 0.05s',
+              borderColor: p1Color,
+              boxShadow: `0 0 20px ${p1Color}44, inset 0 0 20px ${p1Color}11`,
+              background: `linear-gradient(180deg, #0a0a0a 0%, ${p1Color}18 100%)`,
             }}
-          >
-            <div
-              className="font-black leading-none select-none"
-              style={{
-                fontSize: 'clamp(4rem, 12vw, 8rem)',
-                color: p1Color,
-                textShadow: `0 0 30px ${p1Color}88, 0 4px 20px rgba(0,0,0,0.8)`,
-                fontFamily: 'monospace',
-                transform: p1State === 'Hitstun' ? 'translateX(8px) rotate(3deg)' : 'none',
-                transition: 'transform 0.1s',
-                opacity: p1State === 'KO' ? 0.4 : 1,
-              }}
-            >
-              {p1Fighter.name.charAt(0)}
-            </div>
-            <div className="text-[8px] text-zinc-600 tracking-widest mt-1">
-              {p1Fighter.name.toUpperCase()}
-            </div>
+          />
+          {/* 3D portrait from Bannon repo GLB */}
+          <div className="absolute inset-0">
+            <CharacterPortrait3D
+              modelUrl={p1Fighter.portraitUrl}
+              factionColor={p1Color}
+              mode="bust"
+              flash={hitStopActive}
+              flip={false}
+            />
           </div>
-
-          {/* P2 fighter */}
-          <div className="flex flex-col items-center"
-            style={{
-              filter: hitStopActive ? 'brightness(1.5)' : undefined,
-              transition: 'filter 0.05s',
-            }}
+          {/* Fighter name tag */}
+          <div
+            className="absolute bottom-0 left-0 right-0 text-center py-0.5 text-[8px] font-black tracking-widest"
+            style={{ background: `${p1Color}cc`, color: '#000' }}
           >
-            <div
-              className="font-black leading-none select-none"
-              style={{
-                fontSize: 'clamp(4rem, 12vw, 8rem)',
-                color: p2Color,
-                textShadow: `0 0 30px ${p2Color}88, 0 4px 20px rgba(0,0,0,0.8)`,
-                fontFamily: 'monospace',
-                transform: p2State === 'Hitstun' ? 'translateX(-8px) rotate(-3deg)' : 'none',
-                transition: 'transform 0.1s',
-                opacity: p2State === 'KO' ? 0.4 : 1,
-              }}
-            >
-              {p2Fighter.name.charAt(0)}
-            </div>
-            <div className="text-[8px] text-zinc-600 tracking-widest mt-1">
-              {p2Fighter.name.toUpperCase()}
-            </div>
+            {p1Fighter.name.toUpperCase()}
+          </div>
+        </div>
+
+        {/* P2 fighter — faction-colored portrait panel */}
+        <div
+          className="relative flex flex-col items-center"
+          style={{
+            width: 'clamp(120px, 22vw, 220px)',
+            height: 'clamp(180px, 32vw, 320px)',
+            opacity: p2State === 'KO' ? 0.4 : 1,
+            transition: 'opacity 0.3s',
+            transform: p2State === 'Hitstun' ? 'translateX(-6px) rotate(-2deg)' : 'none',
+          }}
+        >
+          {/* Faction-colored border panel */}
+          <div
+            className="absolute inset-0 border-2"
+            style={{
+              borderColor: p2Color,
+              boxShadow: `0 0 20px ${p2Color}44, inset 0 0 20px ${p2Color}11`,
+              background: `linear-gradient(180deg, #0a0a0a 0%, ${p2Color}18 100%)`,
+            }}
+          />
+          {/* 3D portrait from Bannon repo GLB */}
+          <div className="absolute inset-0">
+            <CharacterPortrait3D
+              modelUrl={p2Fighter.portraitUrl}
+              factionColor={p2Color}
+              mode="bust"
+              flash={hitStopActive}
+              flip={true}
+            />
+          </div>
+          {/* Fighter name tag */}
+          <div
+            className="absolute bottom-0 left-0 right-0 text-center py-0.5 text-[8px] font-black tracking-widest"
+            style={{ background: `${p2Color}cc`, color: '#000' }}
+          >
+            {p2Fighter.name.toUpperCase()}
           </div>
         </div>
       </div>
