@@ -34,12 +34,14 @@ The GLB boundary was moved from documentation-only intent into runtime-facing en
 
 ### Evidence captured from Bannon
 
-Bannon's `tools/rigready/bank_map.json` explicitly records additional variants, including Pablo attires 1–3, Triple XXX attires 1–4, Edwin Kennedy attires 1 and 3, and Tyneshia attires 1–2. Therefore the BF roster must remain open-ended and exhaustive with respect to actual GLBs.
+Bannon's `tools/rigready/bank_map.json` explicitly records additional variants, including Pablo attires 1–3, Triple XXX attires 1–4, Edwin Kennedy attires 1 and 3, Tyneshia attires 1–2, and Cipher's God Within/minion output. The map also explicitly marks weapon/prop GLBs as `prop:true`, so those must never become fighters. fileciteturn485file0L2-L2
 
-Bannon's model documentation/QA also establishes additional GLB-backed identities beyond the original core roster. The BF inventory must continue to be audited against Bannon's committed model tree, incoming/banked GLBs, canonical model documentation, rig bank map, and measured model QA.
+The current 2026-09-15 Bannon Drive-sync manifest also contains newly observed incoming character GLBs: six Bannon variants (`BANNON_alt_rigready (1)`, `BANNON_masked_rigready`, `BANNON_v1_clean`, `BANNON_v1_rigready`, `BANNON_v2_split`, `BANNON_v3_split`), plus a truncated `BANNON_alt_rigready` upload that is explicitly not promotable. It also records new/variant uploads for Cipher, Cain Elias, Echo, Edwin Kennedy, Hollow, Maime, Cody, and Pablo. These are now preserved as evidence-only entries in `src/data/bannonGlbSourceInventory.ts`; they do not bypass the playable rig/QA gates. fileciteturn472file1L1-L1 fileciteturn472file2L1-L1 fileciteturn472file3L1-L1 fileciteturn472file4L1-L1 fileciteturn472file5L1-L1 fileciteturn472file6L1-L1 fileciteturn472file7L1-L1
 
 ### Repository enforcement
 
-The hard rule is encoded in `docs/BANNON_GLB_CHARACTER_LAW.md`, `docs/BANNON_GLB_INVENTORY.md`, `src/data/bannonGlbRoster.ts`, and `tools/bannon/verify-and-build-roster.mjs`. Future agents must read those files before changing Character Select, roster data, attires, movesets, fighter stats/bios, match spawning, or native character conversion.
+The hard rule is encoded in `docs/BANNON_GLB_CHARACTER_LAW.md`, `docs/BANNON_GLB_INVENTORY.md`, `src/data/bannonGlbRoster.ts`, and `tools/bannon/verify-and-build-roster.mjs`. `src/data/bannonGlbSourceInventory.ts` is the evidence ledger for newly discovered Drive-sync GLBs and explicitly separates props/truncated assets from fighter evidence.
+
+The package now exposes `npm run bannon:verify`, so the GLB roster gate is directly runnable instead of being an undocumented helper. The dependency versions were preserved while adding this command.
 
 This record is intentionally explicit so a future agent reading the development history understands that the GLB-only boundary and unlimited-attire inventory requirement are user-directed requirements, not optional implementation preferences.
