@@ -16,70 +16,41 @@ export enum FighterState {
   Recovery = 'Recovery',
   Hitstun = 'Hitstun',
   Blockstun = 'Blockstun',
+  Grappled = 'Grappled',
+  Pinned = 'Pinned',
   KO = 'KO'
 }
 
 export type FighterAnimation =
-  | 'idle'
-  | 'walk'
-  | 'light'
-  | 'heavy'
-  | 'guard'
-  | 'hit'
-  | 'block'
-  | 'ko';
+  | 'idle' | 'walk' | 'light' | 'heavy' | 'guard' | 'hit' | 'block'
+  | 'grapple' | 'throw' | 'pin' | 'ko';
 
 export interface InputBitmask {
-  up: boolean;
-  down: boolean;
-  left: boolean;
-  right: boolean;
-  light: boolean;
-  heavy: boolean;
-  guard: boolean;
+  up: boolean; down: boolean; left: boolean; right: boolean;
+  light: boolean; heavy: boolean; guard: boolean;
+  grapple?: boolean;
+  escape?: boolean;
+  pin?: boolean;
 }
 
 export interface Hitbox {
-  offsetX: number;
-  offsetZ: number;
-  width: number;
-  depth: number;
-  damage: number;
-  hitstun: number;
-  blockstun: number;
-  pushback: number;
-  launch: number;
+  offsetX: number; offsetZ: number; width: number; depth: number;
+  damage: number; hitstun: number; blockstun: number; pushback: number; launch: number;
 }
 
-export interface Hurtbox {
-  offsetX: number;
-  offsetZ: number;
-  width: number;
-  depth: number;
-}
+export interface Hurtbox { offsetX: number; offsetZ: number; width: number; depth: number; }
 
 export interface FrameData {
-  startup: number;
-  active: number;
-  recovery: number;
-  damage: number;
-  hitAdvantage: number;
-  blockAdvantage: number;
-  pushback: number;
-  hitstun?: number;
-  blockstun?: number;
-  hitbox?: Hitbox;
-  hurtbox?: Hurtbox;
+  startup: number; active: number; recovery: number; damage: number;
+  hitAdvantage: number; blockAdvantage: number; pushback: number;
+  hitstun?: number; blockstun?: number; hitbox?: Hitbox; hurtbox?: Hurtbox;
   animation?: FighterAnimation;
 }
 
 export interface FighterSnapshot {
-  health: number;
-  x: number;
-  z: number;
-  facing: 1 | -1;
-  state: FighterState;
-  stateFrame: number;
-  animation: FighterAnimation;
+  health: number; x: number; z: number; facing: 1 | -1;
+  state: FighterState; stateFrame: number; animation: FighterAnimation;
   move: FrameData | null;
+  grapplePhase?: string;
+  grappleEscapeMeter?: number;
 }
