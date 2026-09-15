@@ -6,11 +6,14 @@ import dynamic from 'next/dynamic';
 
 const CharacterSelect = dynamic(() => import('./components/CharacterSelect'), { ssr: false });
 const GameBattleArena = dynamic(() => import('./components/GameBattleArena'), { ssr: false });
+const TournamentBracket = dynamic(() => import('./components/TournamentBracket'), { ssr: false });
 
 export default function App() {
   const [screen, setScreen] = useState<AppScreen>(AppScreen?.Boot);
   const [p1BannonFighter, setP1BannonFighter] = useState<BannonFighterProfile | null>(null);
   const [p2BannonFighter, setP2BannonFighter] = useState<BannonFighterProfile | null>(null);
+  const [matchWinner, setMatchWinner] = useState<'p1' | 'p2' | 'draw' | null>(null);
+  const [gameMode, setGameMode] = useState<'arcade' | 'versus' | 'tournament'>('versus');
 
   useEffect(() => {
     if (screen !== AppScreen?.Boot) return;
@@ -66,20 +69,27 @@ export default function App() {
           <div className="mb-10 text-xs tracking-[0.45em] text-slate-500">3D FIGHTING GAME</div>
           <div className="space-y-2">
             <button
-              onClick={() => setScreen(AppScreen?.Select)}
-              className="block w-full border border-slate-600 px-6 py-4 text-left text-xl font-black tracking-widest hover:bg-white hover:text-black"
+              onClick={() => { setGameMode('arcade'); setScreen(AppScreen?.Select); }}
+              className="block w-full border border-slate-600 px-6 py-4 text-left text-xl font-black tracking-widest hover:bg-white hover:text-black transition-all"
             >
               ARCADE
             </button>
             <button
-              onClick={() => setScreen(AppScreen?.Select)}
-              className="block w-full border border-slate-600 px-6 py-4 text-left text-xl font-black tracking-widest hover:bg-white hover:text-black"
+              onClick={() => { setGameMode('versus'); setScreen(AppScreen?.Select); }}
+              className="block w-full border border-slate-600 px-6 py-4 text-left text-xl font-black tracking-widest hover:bg-white hover:text-black transition-all"
             >
               VERSUS
             </button>
             <button
-              onClick={() => setScreen(AppScreen?.Select)}
-              className="block w-full border border-slate-600 px-6 py-4 text-left text-xl font-black tracking-widest hover:bg-white hover:text-black"
+              onClick={() => { setGameMode('tournament'); setScreen(AppScreen?.Select); }}
+              className="block w-full border border-slate-600 px-6 py-4 text-left text-xl font-black tracking-widest hover:bg-white hover:text-black transition-all"
+            >
+              TOURNAMENT
+              <span className="ml-3 text-[10px] text-yellow-400 tracking-widest">BRACKET MODE</span>
+            </button>
+            <button
+              onClick={() => { setGameMode('versus'); setScreen(AppScreen?.Select); }}
+              className="block w-full border border-slate-600 px-6 py-4 text-left text-xl font-black tracking-widest hover:bg-white hover:text-black transition-all"
             >
               TRAINING
             </button>
@@ -96,8 +106,23 @@ export default function App() {
         onStartMatch={(p1f, p2f) => {
           setP1BannonFighter(p1f);
           setP2BannonFighter(p2f);
-          setScreen(AppScreen?.Combat);
+          if (gameMode === 'tournament') {
+            setScreen('tournament' as any);
+          } else {
+            setScreen(AppScreen?.Combat);
+          }
         }}
+      />
+    );
+  }
+
+  // ── Tournament Bracket ──
+  if ((screen as any) === 'tournament') {
+    const player = p1BannonFighter ?? getBannonFighter('bannon')!;
+    return (
+      <TournamentBracket
+        playerFighter={player}
+        onExit={() => setScreen(AppScreen?.MainMenu)}
       />
     );
   }
@@ -111,6 +136,7 @@ export default function App() {
         p1Fighter={p1}
         p2Fighter={p2}
         onMatchEnd={(winner) => {
+          setMatchWinner(winner);
           setScreen(AppScreen?.PostMatch);
         }}
         onBack={() => setScreen(AppScreen?.Select)}
@@ -120,20 +146,28 @@ export default function App() {
 
   // ── Post Match ──
   if (screen === AppScreen?.PostMatch) {
+    const p1 = p1BannonFighter ?? getBannonFighter('bannon')!;
+    const p2 = p2BannonFighter ?? getBannonFighter('maime')!;
+    const winnerName = matchWinner === 'p1' ? p1.name : matchWinner === 'p2' ? p2.name : null;
     return (
       <div className="fixed inset-0 bg-black text-white flex flex-col items-center justify-center font-mono gap-6">
         <div className="text-xs tracking-[0.45em] text-slate-500">MATCH COMPLETE</div>
-        <div className="text-4xl font-black tracking-widest text-yellow-400">BRUTAL FIST</div>
+        {winnerName ? (
+          <div className="text-3xl font-black tracking-widest text-yellow-400">{winnerName.toUpperCase()} WINS</div>
+        ) : (
+          <div className="text-3xl font-black tracking-widest text-zinc-400">DRAW</div>
+        )}
+        <div className="text-4xl font-black tracking-widest text-white">BRUTAL FIST</div>
         <div className="flex gap-4 mt-4">
           <button
             onClick={() => setScreen(AppScreen?.Select)}
-            className="border border-slate-600 px-6 py-3 text-sm font-black tracking-widest hover:bg-white hover:text-black"
+            className="border border-slate-600 px-6 py-3 text-sm font-black tracking-widest hover:bg-white hover:text-black transition-all"
           >
             REMATCH
           </button>
           <button
             onClick={() => setScreen(AppScreen?.MainMenu)}
-            className="border border-slate-600 px-6 py-3 text-sm font-black tracking-widest hover:bg-white hover:text-black"
+            className="border border-slate-600 px-6 py-3 text-sm font-black tracking-widest hover:bg-white hover:text-black transition-all"
           >
             MAIN MENU
           </button>

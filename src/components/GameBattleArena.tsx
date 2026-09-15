@@ -8,6 +8,7 @@ import { getMoveById } from '../engine/BrutalFistMoveCatalog';
 import { FighterState, type InputBitmask } from '../types';
 import MoveExecutionFeedback from './MoveExecutionFeedback';
 import { MobileControls } from './MobileControls';
+import { useSoundEffects } from '../hooks/useSoundEffects';
 import dynamic from 'next/dynamic';
 
 const CharacterPortrait3D = dynamic(() => import('./CharacterPortrait3D'), { ssr: false });
@@ -17,6 +18,8 @@ interface GameBattleArenaProps {
   p2Fighter: BannonFighterProfile;
   onMatchEnd?: (winner: 'p1' | 'p2' | 'draw') => void;
   onBack?: () => void;
+  /** Optional label shown in the round indicator (e.g. "ROUND 2 / 7") */
+  roundLabel?: string;
 }
 
 const EMPTY_INPUT: InputBitmask = {
@@ -32,7 +35,7 @@ const FACTION_COLOR: Record<string, string> = {
   independent: '#d97706',
 };
 
-export default function GameBattleArena({ p1Fighter, p2Fighter, onMatchEnd, onBack }: GameBattleArenaProps) {
+export default function GameBattleArena({ p1Fighter, p2Fighter, onMatchEnd, onBack, roundLabel }: GameBattleArenaProps) {
   const engineRef = useRef<GameEngine | null>(null);
   const inputRef = useRef<InputBitmask>({ ...EMPTY_INPUT });
   const rafRef = useRef<number>(0);
@@ -47,6 +50,12 @@ export default function GameBattleArena({ p1Fighter, p2Fighter, onMatchEnd, onBa
   const [winner, setWinner] = useState<'p1' | 'p2' | 'draw' | null>(null);
   const [roundTimer, setRoundTimer] = useState(99);
   const [hitStopActive, setHitStopActive] = useState(false);
+  const koHandledRef = useRef(false);
+  const roundStartedRef = useRef(false);
+
+  // Sound effects
+  const sfx = useSoundEffects();
+
   // Move execution feedback events
   const [feedbackEvents, setFeedbackEvents] = useState<Array<{
     id: number;
@@ -63,14 +72,11 @@ export default function GameBattleArena({ p1Fighter, p2Fighter, onMatchEnd, onBa
 
   // Build engine with customized move sets
   useEffect(() => {
-    // Apply customized move sets to fighters before creating engine
     const p1MoveSet = getCharacterMoveSet(p1Fighter.id);
     const p2MoveSet = getCharacterMoveSet(p2Fighter.id);
 
-    // Create engine — it uses fighter profiles directly
     const engine = new GameEngine(p1Fighter, p2Fighter);
 
-    // Patch engine's move resolution to use customized move sets
     if (p1MoveSet?.isCustomized) {
       const lightMove = getMoveById(p1MoveSet.lightAttack);
       const heavyMove = getMoveById(p1MoveSet.heavyAttack);
@@ -85,11 +91,27 @@ export default function GameBattleArena({ p1Fighter, p2Fighter, onMatchEnd, onBa
     setKo(false);
     setWinner(null);
     setRoundTimer(99);
+    koHandledRef.current = false;
+    roundStartedRef.current = false;
 
     return () => {
       cancelAnimationFrame(rafRef.current);
     };
   }, [p1Fighter, p2Fighter]);
+
+  // Round start bell (once per mount)
+  useEffect(() => {
+    if (roundStartedRef.current) return;
+    roundStartedRef.current = true;
+    const t = window.setTimeout(() => sfx.playRoundStart(), 300);
+    return () => window.clearTimeout(t);
+  }, [sfx]);
+
+  // Track previous states for sound triggering
+  const prevP1StateRef = useRef<string>('Neutral');
+  const prevP2StateRef = useRef<string>('Neutral');
+  const prevP1HealthRef = useRef<number>(p1Fighter.hp);
+  const prevP2HealthRef = useRef<number>(p2Fighter.hp);
 
   // Game loop
   useEffect(() => {
@@ -103,21 +125,46 @@ export default function GameBattleArena({ p1Fighter, p2Fighter, onMatchEnd, onBa
       if (now - lastTime < FRAME_MS - 1) return;
       lastTime = now;
 
-      const prevP1Health = engine.p1Health;
-      const prevP2Health = engine.p2Health;
-      const prevP1State = engine.state;
-      const prevP2State = engine.p2State;
+      const prevP1Health = prevP1HealthRef.current;
+      const prevP2Health = prevP2HealthRef.current;
+      const prevP1State = prevP1StateRef.current;
+      const prevP2State = prevP2StateRef.current;
 
       engine.tick(inputRef.current);
 
-      // Detect hits for feedback
       const p1Dmg = prevP1Health - engine.p1Health;
       const p2Dmg = prevP2Health - engine.p2Health;
 
+      // ── Sound: move execution (when entering Startup) ──
+      if (engine.state === FighterState.Startup && prevP1State !== FighterState.Startup) {
+        sfx.playMoveExec();
+      }
+      if (engine.p2State === FighterState.Startup && prevP2State !== FighterState.Startup) {
+        sfx.playMoveExec();
+      }
+
+      // ── Sound: grapple ──
+      if (engine.state === 'Grappled' && prevP1State !== 'Grappled') {
+        sfx.playGrapple();
+      }
+
+      // ── Sound + feedback: P2 takes damage ──
       if (p2Dmg > 0 && engine.currentMove) {
         const move = engine.currentMove;
         const isBlocked = engine.p2State === FighterState.Blockstun;
         const isCounter = prevP2State === FighterState.Startup || prevP2State === FighterState.Active;
+
+        // Sound selection
+        if (isBlocked) {
+          sfx.playBlock();
+        } else if (isCounter) {
+          sfx.playCounter();
+        } else if (p2Dmg > 300) {
+          sfx.playHeavyHit();
+        } else {
+          sfx.playLightHit();
+        }
+
         setFeedbackEvents(prev => [...prev.slice(-6), {
           id: ++feedbackIdRef.current,
           moveId: (move as any).id ?? 'hit',
@@ -130,10 +177,23 @@ export default function GameBattleArena({ p1Fighter, p2Fighter, onMatchEnd, onBa
           y: 20 + Math.random() * 20,
         }]);
       }
+
+      // ── Sound + feedback: P1 takes damage ──
       if (p1Dmg > 0 && engine.p2Move) {
         const move = engine.p2Move;
         const isBlocked = engine.state === FighterState.Blockstun;
         const isCounter = prevP1State === FighterState.Startup || prevP1State === FighterState.Active;
+
+        if (isBlocked) {
+          sfx.playBlock();
+        } else if (isCounter) {
+          sfx.playCounter();
+        } else if (p1Dmg > 300) {
+          sfx.playHeavyHit();
+        } else {
+          sfx.playLightHit();
+        }
+
         setFeedbackEvents(prev => [...prev.slice(-6), {
           id: ++feedbackIdRef.current,
           moveId: (move as any).id ?? 'hit',
@@ -147,6 +207,12 @@ export default function GameBattleArena({ p1Fighter, p2Fighter, onMatchEnd, onBa
         }]);
       }
 
+      // Update refs for next frame
+      prevP1HealthRef.current = engine.p1Health;
+      prevP2HealthRef.current = engine.p2Health;
+      prevP1StateRef.current = engine.state;
+      prevP2StateRef.current = engine.p2State;
+
       setFrame(engine.currentFrame);
       setP1Health(engine.p1Health);
       setP2Health(engine.p2Health);
@@ -156,19 +222,25 @@ export default function GameBattleArena({ p1Fighter, p2Fighter, onMatchEnd, onBa
       setP2Animation(engine.p2Animation);
       setHitStopActive(engine.hitStopFrames > 0);
 
-      if (engine.isMatchOver() && !ko) {
+      if (engine.isMatchOver() && !koHandledRef.current) {
+        koHandledRef.current = true;
         setKo(true);
         const w = engine.p1Health <= 0 && engine.p2Health <= 0 ? 'draw'
           : engine.p1Health <= 0 ? 'p2' : 'p1';
         setWinner(w);
         cancelAnimationFrame(rafRef.current);
-        setTimeout(() => onMatchEnd?.(w), 2500);
+        // KO sound
+        sfx.playKO();
+        setTimeout(() => {
+          if (w !== 'draw') sfx.playVictory();
+          onMatchEnd?.(w);
+        }, 2500);
       }
     };
 
     rafRef.current = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(rafRef.current);
-  }, [ko, onMatchEnd]);
+  }, [ko, onMatchEnd, sfx]);
 
   // Round timer
   useEffect(() => {
@@ -176,15 +248,19 @@ export default function GameBattleArena({ p1Fighter, p2Fighter, onMatchEnd, onBa
     const t = window.setInterval(() => {
       setRoundTimer(prev => {
         if (prev <= 1) {
-          // Time out — higher health wins
           const engine = engineRef.current;
-          if (engine) {
+          if (engine && !koHandledRef.current) {
+            koHandledRef.current = true;
             const w = engine.p1Health > engine.p2Health ? 'p1'
               : engine.p2Health > engine.p1Health ? 'p2' : 'draw';
             setKo(true);
             setWinner(w);
             cancelAnimationFrame(rafRef.current);
-            setTimeout(() => onMatchEnd?.(w), 2500);
+            sfx.playKO();
+            setTimeout(() => {
+              if (w !== 'draw') sfx.playVictory();
+              onMatchEnd?.(w);
+            }, 2500);
           }
           return 0;
         }
@@ -192,7 +268,7 @@ export default function GameBattleArena({ p1Fighter, p2Fighter, onMatchEnd, onBa
       });
     }, 1000);
     return () => window.clearInterval(t);
-  }, [ko, onMatchEnd]);
+  }, [ko, onMatchEnd, sfx]);
 
   // Keyboard input
   useEffect(() => {
@@ -253,31 +329,26 @@ export default function GameBattleArena({ p1Fighter, p2Fighter, onMatchEnd, onBa
     <div className="fixed inset-0 bg-black text-white overflow-hidden touch-none select-none font-mono">
       {/* ── Arena background ── */}
       <div className="absolute inset-0">
-        {/* Floor */}
         <div className="absolute bottom-0 left-0 right-0 h-[35%]"
           style={{
             background: 'linear-gradient(180deg, #1a1a1a 0%, #111 60%, #0a0a0a 100%)',
             borderTop: '2px solid #333',
           }}
         />
-        {/* Arena walls */}
         <div className="absolute inset-0"
           style={{
             background: 'radial-gradient(ellipse at 50% 60%, #1c1c1e 0%, #0a0a0a 70%)',
           }}
         />
-        {/* Industrial grid lines */}
         <div className="absolute inset-0 opacity-10" style={{
           backgroundImage: `
             repeating-linear-gradient(90deg, rgba(255,255,255,0.1) 0px, rgba(255,255,255,0.1) 1px, transparent 1px, transparent 80px),
             repeating-linear-gradient(0deg, rgba(255,255,255,0.1) 0px, rgba(255,255,255,0.1) 1px, transparent 1px, transparent 80px)
           `
         }} />
-        {/* Scanlines */}
         <div className="absolute inset-0 opacity-5 pointer-events-none" style={{
           backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.5) 2px, rgba(0,0,0,0.5) 4px)'
         }} />
-        {/* Faction color atmosphere */}
         <div className="absolute inset-0 pointer-events-none"
           style={{
             background: `radial-gradient(ellipse at 25% 50%, ${p1Color}15 0%, transparent 50%), radial-gradient(ellipse at 75% 50%, ${p2Color}15 0%, transparent 50%)`
@@ -297,7 +368,6 @@ export default function GameBattleArena({ p1Fighter, p2Fighter, onMatchEnd, onBa
               <span className="text-[8px] text-zinc-500">{Math.ceil(p1Health).toLocaleString()}</span>
             </div>
             <div className="h-4 border border-zinc-700 bg-zinc-900 relative overflow-hidden">
-              {/* Health fill — grows from left */}
               <div
                 className="absolute left-0 top-0 h-full transition-all duration-75"
                 style={{
@@ -306,26 +376,26 @@ export default function GameBattleArena({ p1Fighter, p2Fighter, onMatchEnd, onBa
                   boxShadow: `0 0 8px ${getHealthBarColor(p1Pct)}88`,
                 }}
               />
-              {/* Danger flash */}
               {p1Pct <= 25 && (
                 <div className="absolute inset-0 animate-pulse bg-red-500/10" />
               )}
             </div>
-            {/* State indicator */}
             <div className="text-[7px] text-zinc-600 tracking-widest h-3">
               {getStateLabel(p1State, p1Animation)}
             </div>
           </div>
 
           {/* Center: Timer + Round */}
-          <div className="flex flex-col items-center shrink-0 w-16">
-            <div className="text-[7px] text-zinc-600 tracking-widest">ROUND 1</div>
+          <div className="flex flex-col items-center shrink-0 w-20">
+            <div className="text-[7px] text-zinc-600 tracking-widest text-center leading-tight">
+              {roundLabel ?? 'ROUND 1'}
+            </div>
             <div
               className="text-2xl font-black tabular-nums leading-none"
               style={{
                 color: roundTimer <= 10 ? '#ef4444' : '#facc15',
                 textShadow: roundTimer <= 10
-                  ? '0 0 12px #ef4444' :'0 0 12px #facc15',
+                  ? '0 0 12px #ef4444' : '0 0 12px #facc15',
               }}
             >
               {String(roundTimer).padStart(2, '0')}
@@ -342,7 +412,6 @@ export default function GameBattleArena({ p1Fighter, p2Fighter, onMatchEnd, onBa
               </span>
             </div>
             <div className="h-4 border border-zinc-700 bg-zinc-900 relative overflow-hidden">
-              {/* Health fill — grows from right */}
               <div
                 className="absolute right-0 top-0 h-full transition-all duration-75"
                 style={{
@@ -364,7 +433,7 @@ export default function GameBattleArena({ p1Fighter, p2Fighter, onMatchEnd, onBa
 
       {/* ── Fighter 3D portrait panels (faction-colored) ── */}
       <div className="absolute inset-0 flex items-end justify-between z-10 pointer-events-none px-4 pb-[18%]">
-        {/* P1 fighter — faction-colored portrait panel */}
+        {/* P1 fighter */}
         <div
           className="relative flex flex-col items-center"
           style={{
@@ -375,7 +444,6 @@ export default function GameBattleArena({ p1Fighter, p2Fighter, onMatchEnd, onBa
             transform: p1State === 'Hitstun' ? 'translateX(6px) rotate(2deg)' : 'none',
           }}
         >
-          {/* Faction-colored border panel */}
           <div
             className="absolute inset-0 border-2"
             style={{
@@ -384,7 +452,6 @@ export default function GameBattleArena({ p1Fighter, p2Fighter, onMatchEnd, onBa
               background: `linear-gradient(180deg, #0a0a0a 0%, ${p1Color}18 100%)`,
             }}
           />
-          {/* 3D portrait from Bannon repo GLB */}
           <div className="absolute inset-0">
             <CharacterPortrait3D
               modelUrl={p1Fighter.portraitUrl}
@@ -394,7 +461,6 @@ export default function GameBattleArena({ p1Fighter, p2Fighter, onMatchEnd, onBa
               flip={false}
             />
           </div>
-          {/* Fighter name tag */}
           <div
             className="absolute bottom-0 left-0 right-0 text-center py-0.5 text-[8px] font-black tracking-widest"
             style={{ background: `${p1Color}cc`, color: '#000' }}
@@ -403,7 +469,7 @@ export default function GameBattleArena({ p1Fighter, p2Fighter, onMatchEnd, onBa
           </div>
         </div>
 
-        {/* P2 fighter — faction-colored portrait panel */}
+        {/* P2 fighter */}
         <div
           className="relative flex flex-col items-center"
           style={{
@@ -414,7 +480,6 @@ export default function GameBattleArena({ p1Fighter, p2Fighter, onMatchEnd, onBa
             transform: p2State === 'Hitstun' ? 'translateX(-6px) rotate(-2deg)' : 'none',
           }}
         >
-          {/* Faction-colored border panel */}
           <div
             className="absolute inset-0 border-2"
             style={{
@@ -423,7 +488,6 @@ export default function GameBattleArena({ p1Fighter, p2Fighter, onMatchEnd, onBa
               background: `linear-gradient(180deg, #0a0a0a 0%, ${p2Color}18 100%)`,
             }}
           />
-          {/* 3D portrait from Bannon repo GLB */}
           <div className="absolute inset-0">
             <CharacterPortrait3D
               modelUrl={p2Fighter.portraitUrl}
@@ -433,7 +497,6 @@ export default function GameBattleArena({ p1Fighter, p2Fighter, onMatchEnd, onBa
               flip={true}
             />
           </div>
-          {/* Fighter name tag */}
           <div
             className="absolute bottom-0 left-0 right-0 text-center py-0.5 text-[8px] font-black tracking-widest"
             style={{ background: `${p2Color}cc`, color: '#000' }}
