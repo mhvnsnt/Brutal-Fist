@@ -1,5 +1,7 @@
 import type { FighterAnimation, FighterState, FrameData, InputBitmask } from '../types';
 import { SCHWARZERBLITZ_RUNTIME_MANIFEST } from './SchwarzerblitzRuntimeManifest';
+import { BANNON_COMBAT_CONTRACT } from './BannonCombatContract';
+import { GrappleSystem } from './GrappleSystem';
 
 export interface SchwarzerblitzFighterSnapshot {
   x: number;
@@ -23,11 +25,21 @@ export interface SchwarzerblitzRuntime {
   getSnapshot(): SchwarzerblitzMatchSnapshot;
 }
 
+/**
+ * Explicit browser/native boundary.
+ * React remains presentation-only; shared combat contracts are data/system
+ * boundaries that can be implemented by the native Schwarzerblitz runtime.
+ */
 export const SCHWARZERBLITZ_ENGINE_CONTRACT = {
   ...SCHWARZERBLITZ_RUNTIME_MANIFEST,
   coordinateSystem: 'x-fighting-lane/z-sidestep-lane',
   browserRenderer: 'threejs',
   nativeRenderer: 'schwarzerlicht/irrlicht',
   simulationAuthority: 'fixed-60hz',
-  reactRole: 'presentation-only'
+  reactRole: 'presentation-only',
+  combat: BANNON_COMBAT_CONTRACT,
+  grapple: {
+    implementation: GrappleSystem.name,
+    pinVerification: 'physical-shoulder-distance-and-ring-mat-contact'
+  }
 } as const;
