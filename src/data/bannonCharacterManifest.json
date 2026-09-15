@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "generatedFrom": "BannonSource/roster.json + BannonSource/assets/models/**/*.glb",
+  "policy": {
+    "realGlbOnly": true,
+    "proceduralModelsExcluded": true,
+    "preserveRosterIdentity": true,
+    "preserveBio": true
+  },
+  "characters": []
+}
