@@ -159,8 +159,14 @@ function PortraitModel({
           -scaledCenter.z
         );
 
-        // ── Step 7: Reset any source rotation on the mesh ─────────────────────
+        // ── Step 7: Reset source rotation on root AND all top-level children ──
+        // Ensures every character starts from the same neutral facing direction.
+        // The group wrapper's rotation (flip ? Math.PI : 0) is the sole control
+        // for P1/P2 facing — no per-character overrides allowed.
         cloned.rotation.set(0, 0, 0);
+        cloned.children.forEach((child) => {
+          child.rotation.set(0, 0, 0);
+        });
 
         // ── Step 8: Apply faction color tint ──────────────────────────────────
         const color = new THREE.Color(factionColor);
