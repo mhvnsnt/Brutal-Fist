@@ -30,13 +30,13 @@ jobs:
       - name: Verify native source checkout
         shell: pwsh
         run: |
-          if (-not (Test-Path 'vendor/SchwarzerblitzEngine')) { throw 'SchwarzerblitzEngine submodule is missing' }
+          if (-not (Test-Path 'SchwarzerblitzEngine')) { throw 'SchwarzerblitzEngine submodule is missing' }
           if (-not (Test-Path 'BannonSource')) { throw 'BannonSource submodule is missing' }
       - name: Locate Visual Studio
         uses: microsoft/setup-msbuild@v2
       - name: Build Schwarzerblitz native engine
         shell: pwsh
         run: |
-          $sln = Get-ChildItem -Path vendor/SchwarzerblitzEngine -Filter '*.sln' -Recurse | Select-Object -First 1
+          $sln = Get-ChildItem -Path SchwarzerblitzEngine -Filter '*.sln' -Recurse | Select-Object -First 1
           if (-not $sln) { throw 'Schwarzerblitz solution not found' }
           msbuild $sln.FullName /m /p:Configuration=Release /p:Platform=Win32
