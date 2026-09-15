@@ -4,6 +4,7 @@ import { BANNON_GLB_PLAYABLE_MODELS } from './data/bannonGlbRoster';
 import { type BannonFighterProfile, getBannonFighter } from './data/bannonRoster';
 import dynamic from 'next/dynamic';
 import { useAuth } from './contexts/AuthContext';
+import { type TournamentEndData } from './components/TournamentBracket';
 
 const CharacterSelect = dynamic(() => import('./components/CharacterSelect'), { ssr: false });
 const GameBattleArena = dynamic(() => import('./components/GameBattleArena'), { ssr: false });
@@ -11,6 +12,8 @@ const TournamentBracket = dynamic(() => import('./components/TournamentBracket')
 const TournamentStatsScreen = dynamic(() => import('./components/TournamentStatsScreen'), { ssr: false });
 const TournamentBrowserScreen = dynamic(() => import('./components/TournamentBrowserScreen'), { ssr: false });
 const AuthScreen = dynamic(() => import('./components/AuthScreen'), { ssr: false });
+const PostTournamentScreen = dynamic(() => import('./components/PostTournamentScreen'), { ssr: false });
+const PlayerProfileScreen = dynamic(() => import('./components/PlayerProfileScreen'), { ssr: false });
 
 export default function App() {
   const { user, loading: authLoading, signOut } = useAuth();
@@ -19,6 +22,7 @@ export default function App() {
   const [p2BannonFighter, setP2BannonFighter] = useState<BannonFighterProfile | null>(null);
   const [matchWinner, setMatchWinner] = useState<'p1' | 'p2' | 'draw' | null>(null);
   const [gameMode, setGameMode] = useState<'arcade' | 'versus' | 'tournament'>('versus');
+  const [tournamentEndData, setTournamentEndData] = useState<TournamentEndData | null>(null);
 
   useEffect(() => {
     if (screen !== AppScreen?.Boot) return;
@@ -133,6 +137,19 @@ export default function App() {
               STATS
               <span className="ml-3 text-[10px] text-zinc-500 tracking-widest">RECORDS & RANK</span>
             </button>
+            <button
+              onClick={() => {
+                if (!user) {
+                  setScreen('auth' as any);
+                } else {
+                  setScreen('profile' as any);
+                }
+              }}
+              className="block w-full border border-slate-600 px-6 py-4 text-left text-xl font-black tracking-widest hover:bg-white hover:text-black transition-all"
+            >
+              PROFILE
+              <span className="ml-3 text-[10px] text-zinc-500 tracking-widest">MASTERY & COSMETICS</span>
+            </button>
           </div>
         </div>
       </div>
@@ -173,6 +190,34 @@ export default function App() {
     );
   }
 
+  // ── Player Profile Screen ──
+  if ((screen as any) === 'profile') {
+    if (!user) {
+      return <AuthScreen onSuccess={() => setScreen('profile' as any)} />;
+    }
+    return (
+      <PlayerProfileScreen
+        onBack={() => setScreen(AppScreen?.MainMenu)}
+      />
+    );
+  }
+
+  // ── Post Tournament Screen ──
+  if ((screen as any) === 'post_tournament' && tournamentEndData) {
+    return (
+      <PostTournamentScreen
+        playerFighter={tournamentEndData.playerFighter}
+        results={tournamentEndData.results}
+        stats={tournamentEndData.stats}
+        isChampion={tournamentEndData.isChampion}
+        rankPointsEarned={tournamentEndData.rankPointsEarned}
+        rankTier={tournamentEndData.rankTier}
+        onMainMenu={() => { setTournamentEndData(null); setScreen(AppScreen?.MainMenu); }}
+        onPlayAgain={() => { setTournamentEndData(null); setScreen('tournament_browser' as any); }}
+      />
+    );
+  }
+
   // ── Character Select (Tekken 3 layout) ──
   if (screen === AppScreen?.Select) {
     return (
@@ -197,6 +242,10 @@ export default function App() {
       <TournamentBracket
         playerFighter={player}
         onExit={() => setScreen(AppScreen?.MainMenu)}
+        onTournamentEnd={(data) => {
+          setTournamentEndData(data);
+          setScreen('post_tournament' as any);
+        }}
       />
     );
   }

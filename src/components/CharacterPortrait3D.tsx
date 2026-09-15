@@ -173,7 +173,7 @@ function PortraitModel({
 }: CharacterPortrait3DProps) {
   const groupRef = useRef<THREE.Group>(null);
   const mixerRef = useRef<THREE.AnimationMixer | null>(null);
-  const [model, setModel] = useState<THREE.Group | null>(null);
+  const [model, setModel] = useState<{ scene: THREE.Group; nudgeY: number } | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -200,31 +200,18 @@ function PortraitModel({
         const scaledBox = new THREE.Box3().setFromObject(cloned);
         const scaledCenter = scaledBox.getCenter(new THREE.Vector3());
 
-        // ── Step 5: Compute Y offset so vertical center lands at Y=1.0 ────────
-        const baseOffsetY = 1.0 - scaledCenter.y;
+        // ── Step 5: Center the mesh horizontally and vertically at Y=0 ────────
+        // The child scene stays at Y=0 so the animation mixer never fights us.
+        // X and Z centering is applied directly to the cloned scene.
+        cloned.position.set(-scaledCenter.x, 1.0 - scaledCenter.y, -scaledCenter.z);
 
-        // ── Step 6: Apply universal Y nudge ───────────────────────────────────
-        // getYNudge returns 0 ONLY for Bannon and Maime (reference baseline).
-        // ALL other characters — Hall Nighter, Stick-Up, Static, Cody, Echo,
-        // Onyx, Cain Elias, and every future fighter — get +1.15 universally.
-        // No per-character table entries needed; the default covers everyone.
-        const nudge = getYNudge(modelUrl);
-        const offsetY = baseOffsetY + nudge;
-
-        cloned.position.set(
-          -scaledCenter.x,
-          offsetY,
-          -scaledCenter.z
-        );
-
-        // ── Step 7: Reset source rotation on root AND all top-level children ──
-        // P1/P2 facing is controlled solely by the group wrapper rotation below.
+        // ── Step 6: Reset source rotation on root AND all top-level children ──
         cloned.rotation.set(0, 0, 0);
         cloned.children.forEach((child) => {
           child.rotation.set(0, 0, 0);
         });
 
-        // ── Step 8: Apply faction color tint ──────────────────────────────────
+        // ── Step 7: Apply faction color tint ──────────────────────────────────
         const color = new THREE.Color(factionColor);
         cloned.traverse((child) => {
           if (!(child as THREE.Mesh).isMesh) return;
@@ -240,11 +227,9 @@ function PortraitModel({
           });
         });
 
-        // ── Step 9: Idle animation ─────────────────────────────────────────────
-        // Mixer is created on the cloned scene. Clips from gltf.animations are
-        // retargeted to the cloned scene's bone hierarchy (same names, new UUIDs).
-        // selectIdleClip picks the best idle/stand/neutral clip, falling back to
-        // the first available animation so every character animates — never T-pose.
+        // ── Step 8: Idle animation ─────────────────────────────────────────────
+        // Mixer is created on the cloned scene. The mixer runs at Y=0 inside
+        // the parent group — it cannot override the parent group's Y offset.
         if (gltf.animations && gltf.animations.length > 0) {
           const retargeted = retargetClips(gltf.animations, gltf.scene, cloned);
           mixerRef.current = new THREE.AnimationMixer(cloned);
@@ -255,7 +240,15 @@ function PortraitModel({
           action.play();
         }
 
-        setModel(cloned);
+        // ── Step 9: Compute the Y nudge for the PARENT group ──────────────────
+        // getYNudge returns 0 ONLY for Bannon and Maime (reference baseline).
+        // ALL other characters get +1.15 universally.
+        // This offset is applied to the parent THREE.Group, NOT to the cloned
+        // scene, so the animation mixer running on the child at Y=0 can never
+        // override it. This is the correct structural fix.
+        const nudgeY = getYNudge(modelUrl);
+
+        setModel({ scene: cloned, nudgeY });
       },
       undefined,
       (err) => console.warn('Portrait GLB load failed:', modelUrl, err)
@@ -274,12 +267,15 @@ function PortraitModel({
   if (!model) return null;
 
   return (
+    // OUTER GROUP: holds the UI layout offset (nudgeY) — never touched by the animation mixer
     <group
       ref={groupRef}
+      position={[0, model.nudgeY, 0]}
       // P2 side: rotate 180° on Y-axis so the character faces toward P1.
       rotation={[0, flip ? Math.PI : 0, 0]}
     >
-      <primitive object={model} />
+      {/* INNER SCENE: animation mixer runs here at Y=0, cannot override parent offset */}
+      <primitive object={model.scene} />
     </group>
   );
 }
