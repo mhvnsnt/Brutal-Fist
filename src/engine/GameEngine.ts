@@ -1,14 +1,18 @@
 import { FighterState, FighterAnimation, FighterSnapshot, InputBitmask, FrameData, Hurtbox, Hitbox } from '../types';
-import { getMove, SchwarzerblitzMoveDefinition } from './SchwarzerblitzMoveCatalog';
 import { SchwarzerblitzInputBuffer } from './SchwarzerblitzInput';
 import { BannonFighterProfile, getBannonFighter } from '../data/bannonRoster';
 import { GrappleSystem } from './GrappleSystem';
 import { hitStopFramesForImpact } from './BannonCombatContract';
+import { getMoveById } from './BrutalFistMoveCatalog';
+
+
+// Re-export getMove for backward compat
+export { getMoveById as getMove } from './BrutalFistMoveCatalog';
 
 const EMPTY_INPUT: InputBitmask = { up: false, down: false, left: false, right: false, light: false, heavy: false, guard: false, grapple: false, escape: false, pin: false };
 const DEFAULT_HURTBOX: Hurtbox = { offsetX: 0, offsetZ: 0, width: 0.82, depth: 0.72 };
-const LIGHT = getMove('light');
-const HEAVY = getMove('heavy');
+const LIGHT = getMoveById('light');
+const HEAVY = getMoveById('heavy');
 
 export class GameEngine {
   public inputBuffer: InputBitmask[] = [];
@@ -50,7 +54,7 @@ export class GameEngine {
   private p2Guard = false;
   private readonly commandBuffer = new SchwarzerblitzInputBuffer();
 
-  constructor(p1Fighter: BannonFighterProfile = getBannonFighter('bannon')!, p2Fighter: BannonFighterProfile = getBannonFighter('nexus_prime')!) {
+  constructor(p1Fighter: BannonFighterProfile = getBannonFighter('bannon')!, p2Fighter: BannonFighterProfile = getBannonFighter('maime')!) {
     this.p1Fighter = p1Fighter;
     this.p2Fighter = p2Fighter;
     this.p1MaxHealth = p1Fighter.hp;

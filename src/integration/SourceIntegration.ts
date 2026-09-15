@@ -1,14 +1,5 @@
 export type BrutalFistSourceId =
-  | 'schwarzerblitz-engine'
-  | 'grok-v6'
-  | 'grok-v5'
-  | 'grok-v4'
-  | 'grok-v3'
-  | 'grok-v2'
-  | 'grok-v1'
-  | 'night-sky-engine'
-  | 'combat-rpg'
-  | 'bannon';
+  | 'schwarzerblitz-engine' |'grok-v6' |'grok-v5' |'grok-v4' |'grok-v3' |'grok-v2' |'grok-v1' |'night-sky-engine' |'combat-rpg' |'bannon';
 
 export interface SourceProvenance {
   source: BrutalFistSourceId;

@@ -8,8 +8,7 @@
  */
 
 export type AppScreen =
-  | "boot" | "title" | "menu" | "options" | "select" | "details"
-  | "stage" | "versus" | "combat" | "result" | "arcade-end";
+  | "boot" | "title" | "menu" | "options" | "select" | "details" |"stage" | "versus" | "combat" | "result" | "arcade-end";
 
 export type GameMode = "arcade" | "versus" | "training";
 export type GraphicsProfile = "PS1_3D" | "RETRO8" | "HIGH_RES";
