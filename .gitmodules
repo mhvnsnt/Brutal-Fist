@@ -1,5 +1,5 @@
-[submodule "SchwarzerblitzEngine"]
-	path = SchwarzerblitzEngine
+[submodule "vendor/SchwarzerblitzEngine"]
+	path = vendor/SchwarzerblitzEngine
 	url = https://github.com/AndreaJens/SchwarzerblitzEngine.git
 
 [submodule "BannonSource"]
