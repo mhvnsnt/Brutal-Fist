@@ -1,0 +1,3 @@
+[submodule "SchwarzerblitzEngine"]
+	path = SchwarzerblitzEngine
+	url = https://github.com/AndreaJens/SchwarzerblitzEngine.git
