@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
+import { DEFAULT_PSX_RENDER } from '../render/psx';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 
 interface FighterMeshProps {
@@ -52,7 +53,7 @@ export function FighterMesh({ state, animation, modelUrl, position, facing, tint
           const mat = material as THREE.MeshStandardMaterial;
           if (mat.map) { mat.map.minFilter = THREE.NearestFilter; mat.map.magFilter = THREE.NearestFilter; mat.map.generateMipmaps = false; mat.needsUpdate = true; }
           mat.onBeforeCompile = (shader) => {
-            shader.vertexShader = shader.vertexShader.replace('#include <project_vertex>', `vec4 mvPosition = modelViewMatrix * vec4(transformed, 1.0); gl_Position = projectionMatrix * mvPosition; float snapRes = 160.0; gl_Position.xyz = floor(gl_Position.xyz * snapRes) / snapRes;`);
+            shader.vertexShader = shader.vertexShader.replace('#include <project_vertex>', `vec4 mvPosition = modelViewMatrix * vec4(transformed, 1.0); vec4 clipPosition = projectionMatrix * mvPosition; float snapRes = ${DEFAULT_PSX_RENDER.renderWidth.toFixed(1)}; vec2 ndc = clipPosition.xy / clipPosition.w; ndc = floor(ndc * snapRes + 0.5) / snapRes; clipPosition.xy = ndc * clipPosition.w; gl_Position = clipPosition;`);
           };
         });
       });
