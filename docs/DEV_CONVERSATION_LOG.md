@@ -20,6 +20,18 @@ The user also explicitly corrected that Bannon characters can have more alternat
 - Do not fabricate stats, bios, moves, or other character facts when authoritative Bannon data is missing; mark them unknown/pending.
 - Prop GLBs and NPC/manager GLBs do not automatically become playable fighters.
 
+### 2026-09-15 — Enforcement implementation pass
+
+The GLB boundary was moved from documentation-only intent into runtime-facing enforcement:
+
+- `src/App.tsx` now sources Character Select from `BANNON_GLB_PLAYABLE_MODELS`, not the broad `BANNON_ROSTER`.
+- Character Select exposes only entries whose GLB catalog gate is `PASS`.
+- A zero-entry validated roster renders a locked state instead of inventing a fighter.
+- The old `FALLBACK ACTOR` UI path was removed. A failed fighter asset load now stays locked on the VS screen rather than silently transitioning to combat.
+- `tools/bannon/verify-and-build-roster.mjs` now emits fighter data only for GLB-backed records; excluded/no-GLB records contain only identity + `MISSING_ASSET` status and carry no fighter data.
+- The verifier records `noGlbNoCharacter`, `excludedRowsCarryNoFighterData`, and `attireCountUnbounded` in its generated policy.
+- `docs/AI_MASTER_HANDOFF.md` now makes the GLB boundary an explicit first-class agent rule and implementation sequence requirement.
+
 ### Evidence captured from Bannon
 
 Bannon's `tools/rigready/bank_map.json` explicitly records additional variants, including Pablo attires 1–3, Triple XXX attires 1–4, Edwin Kennedy attires 1 and 3, and Tyneshia attires 1–2. Therefore the BF roster must remain open-ended and exhaustive with respect to actual GLBs.
@@ -28,6 +40,6 @@ Bannon's model documentation/QA also establishes additional GLB-backed identitie
 
 ### Repository enforcement
 
-The hard rule is encoded in `docs/BANNON_GLB_CHARACTER_LAW.md` and the GLB inventory/roster files. Future agents must read those files before changing Character Select, roster data, attires, movesets, fighter stats/bios, match spawning, or native character conversion.
+The hard rule is encoded in `docs/BANNON_GLB_CHARACTER_LAW.md`, `docs/BANNON_GLB_INVENTORY.md`, `src/data/bannonGlbRoster.ts`, and `tools/bannon/verify-and-build-roster.mjs`. Future agents must read those files before changing Character Select, roster data, attires, movesets, fighter stats/bios, match spawning, or native character conversion.
 
 This record is intentionally explicit so a future agent reading the development history understands that the GLB-only boundary and unlimited-attire inventory requirement are user-directed requirements, not optional implementation preferences.
