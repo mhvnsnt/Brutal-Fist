@@ -14,6 +14,7 @@ import {
   type CustomizedMoveSet,
 } from '../engine/CharacterMoveSetSystem';
 import { getMoveById, getAllMoves, type BrutalFistMove } from '../engine/BrutalFistMoveCatalog';
+import { getClipTaxon } from '../data/bannonClipTaxonomy';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -167,7 +168,7 @@ export default function MoveSetCustomizer({ onClose, onConfirm, initialCharacter
   const [activeCategory, setActiveCategory] = useState<string>('all');
   const [selectedSlot, setSelectedSlot] = useState<MoveSlot>('signature');
   const [libraryQuery, setLibraryQuery] = useState('');
-  const [libraryFilter, setLibraryFilter] = useState<'all' | 'bank' | 'authored'>('all');
+  const [libraryFilter, setLibraryFilter] = useState<'all' | 'bank' | 'authored' | 'solo' | '1v1' | 'tag' | 'taunt' | 'combined'>('all');
 
   const selectedFighter = useMemo(() => getBannonFighter(selectedId), [selectedId]);
   const selectedMoveSet = moveSets.get(selectedId);
@@ -213,6 +214,19 @@ export default function MoveSetCustomizer({ onClose, onConfirm, initialCharacter
     let list = getAllMoves();
     if (libraryFilter === 'bank') list = list.filter(m => m.id.startsWith('bf_bank_'));
     if (libraryFilter === 'authored') list = list.filter(m => !m.id.startsWith('bf_bank_'));
+    if (libraryFilter === 'solo' || libraryFilter === '1v1' || libraryFilter === 'tag' || libraryFilter === 'taunt' || libraryFilter === 'combined') {
+      list = list.filter((m) => {
+        const key = m.animation;
+        const t = getClipTaxon(key);
+        if (!t) return libraryFilter === 'solo' && !m.id.startsWith('bf_bank_');
+        if (libraryFilter === 'solo') return t.cast === 'solo' && t.skeleton !== 'combined_multi';
+        if (libraryFilter === '1v1') return t.cast === 'attacker' || t.cast === 'victim';
+        if (libraryFilter === 'tag') return t.cast === 'tag';
+        if (libraryFilter === 'taunt') return t.family === 'taunt';
+        if (libraryFilter === 'combined') return t.skeleton === 'combined_multi';
+        return true;
+      });
+    }
     const q = libraryQuery.trim().toLowerCase();
     if (q) {
       list = list.filter(m =>
@@ -418,8 +432,8 @@ export default function MoveSetCustomizer({ onClose, onConfirm, initialCharacter
                 placeholder="Search clips…"
                 className="w-full bg-gray-900 border border-gray-700 text-xs text-white font-mono px-2 py-1 rounded mb-2"
               />
-              <div className="flex gap-1">
-                {(['all', 'authored', 'bank'] as const).map((f) => (
+              <div className="flex gap-1 flex-wrap">
+                {(['all', 'authored', 'solo', '1v1', 'tag', 'taunt', 'combined'] as const).map((f) => (
                   <button
                     key={f}
                     onClick={() => setLibraryFilter(f)}
@@ -436,7 +450,17 @@ export default function MoveSetCustomizer({ onClose, onConfirm, initialCharacter
               </div>
             </div>
             <div className="flex-1 overflow-y-auto">
-              {libraryMoves.map((move) => (
+              {libraryMoves.map((move) => {
+                const taxon = getClipTaxon(move.animation);
+                const badge = taxon
+                  ? taxon.cast === 'tag' ? 'TAG'
+                    : taxon.cast === 'victim' ? 'RECV'
+                    : taxon.cast === 'attacker' ? '1v1'
+                    : taxon.family === 'taunt' ? 'TAUNT'
+                    : taxon.skeleton === 'combined_multi' ? 'MULTI'
+                    : taxon.family.toUpperCase()
+                  : move.id.startsWith('bf_bank_') ? 'BANK' : move.category.toUpperCase();
+                return (
                 <button
                   key={move.id}
                   onClick={() => handleAssign(selectedSlot, move.id)}
@@ -445,10 +469,11 @@ export default function MoveSetCustomizer({ onClose, onConfirm, initialCharacter
                 >
                   <div className="text-[11px] text-zinc-200 font-mono truncate">{move.displayName}</div>
                   <div className="text-[9px] text-zinc-600 font-mono truncate">
-                    {move.id.startsWith('bf_bank_') ? 'BANK' : move.category.toUpperCase()} · {move.animation}
+                    {badge} · {move.animation}{taxon ? ` · ${taxon.bones}b` : ''}
                   </div>
                 </button>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>
