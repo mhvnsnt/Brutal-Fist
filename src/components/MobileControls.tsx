@@ -1,5 +1,7 @@
-import { RefObject, useRef, useCallback } from 'react';
+import { RefObject, useRef, useCallback, useEffect } from 'react';
+import { useGesture } from '@use-gesture/react';
 import { InputBitmask } from '../types';
+import { useInputBuffer } from '../hooks/useInputBuffer';
 
 interface MobileControlsProps { inputRef: RefObject<InputBitmask>; }
 
@@ -19,89 +21,171 @@ interface MobileControlsProps { inputRef: RefObject<InputBitmask>; }
  *   1+2 (LP+RP) → Parry / Heavy Strike
  *   3+4 (LK+RK) → Heavy Kick Combo
  *
- * Multi-touch is handled by tracking which pointer IDs are pressing which buttons.
- * When two buttons are held simultaneously, the combination input fires.
+ * INPUT BUFFERING:
+ *   Every pointer event pushes a full InputBitmask snapshot into a 10-frame
+ *   ring-buffer via useInputBuffer(). The game loop (or a rAF drain loop here)
+ *   consumes the queue in order so simultaneous D-pad + button presses that
+ *   arrive in the same browser event batch are never silently dropped.
  *
  * CRITICAL pointer-events layering:
  * - The outer wrapper uses pointer-events: none so it doesn't block the 3D canvas.
  * - Each individual button/pad element uses pointer-events: auto so touches register.
  */
 export function MobileControls({ inputRef }: MobileControlsProps) {
-  // Track which pointer IDs are currently pressing which limb buttons
+  // ── Input buffer (10-frame queue) ──────────────────────────────────────────
+  const buffer = useInputBuffer();
+
+  // ── Local held-state mirrors (for combination detection) ──────────────────
   const activePointers = useRef<Map<number, keyof InputBitmask>>(new Map());
-  // Track currently held limb buttons for combination detection
   const heldLimbs = useRef<Set<string>>(new Set());
+  const heldDirs = useRef<Set<keyof InputBitmask>>(new Set());
 
   const COMBO_WINDOW_MS = 80;
   const limbPressTime = useRef<Record<string, number>>({});
 
-  const setInput = useCallback((key: keyof InputBitmask, value: boolean) => {
-    if (inputRef.current) (inputRef.current as any)[key] = value;
-  }, [inputRef]);
-
-  const updateCombinations = useCallback(() => {
+  // ── Snapshot builder ───────────────────────────────────────────────────────
+  /** Build a full InputBitmask snapshot from current held state. */
+  const buildSnapshot = useCallback((): InputBitmask => {
     const held = heldLimbs.current;
-    const inp = inputRef.current as any;
-    if (!inp) return;
-
+    const dirs = heldDirs.current;
     const now = performance.now();
+
     const lp = held.has('lp');
     const rp = held.has('rp');
     const lk = held.has('lk');
     const rk = held.has('rk');
 
-    // Check simultaneous presses within combo window
     const lpRpSimult = lp && rp && Math.abs((limbPressTime.current.lp ?? 0) - (limbPressTime.current.rp ?? 0)) <= COMBO_WINDOW_MS;
     const lkRkSimult = lk && rk && Math.abs((limbPressTime.current.lk ?? 0) - (limbPressTime.current.rk ?? 0)) <= COMBO_WINDOW_MS;
     const lpLkSimult = lp && lk && Math.abs((limbPressTime.current.lp ?? 0) - (limbPressTime.current.lk ?? 0)) <= COMBO_WINDOW_MS;
     const rpRkSimult = rp && rk && Math.abs((limbPressTime.current.rp ?? 0) - (limbPressTime.current.rk ?? 0)) <= COMBO_WINDOW_MS;
     const rpLkSimult = rp && lk && Math.abs((limbPressTime.current.rp ?? 0) - (limbPressTime.current.lk ?? 0)) <= COMBO_WINDOW_MS;
 
-    inp.heatBurst = rpLkSimult;
-    inp.leftThrow = lpLkSimult && !rpLkSimult;
-    inp.rightThrow = rpRkSimult && !rpLkSimult;
-    // 1+2 → heavy parry, 3+4 → heavy kick combo (both map to heavy)
-    inp.heavy = rp || rk || lpRpSimult || lkRkSimult;
-    inp.light = (lp || lk) && !lpLkSimult && !rpLkSimult;
-    inp.lp = lp;
-    inp.rp = rp;
-    inp.lk = lk;
-    inp.rk = rk;
-  }, [inputRef]);
+    return {
+      up:     dirs.has('up'),
+      down:   dirs.has('down'),
+      left:   dirs.has('left'),
+      right:  dirs.has('right'),
+      guard:  dirs.has('guard'),
+      grapple: dirs.has('grapple'),
+      lp, rp, lk, rk,
+      heatBurst: rpLkSimult,
+      leftThrow:  lpLkSimult && !rpLkSimult,
+      rightThrow: rpRkSimult && !rpLkSimult,
+      heavy: rp || rk || lpRpSimult || lkRkSimult,
+      light: (lp || lk) && !lpLkSimult && !rpLkSimult,
+    } as InputBitmask;
+  }, []);
 
+  // ── Drain loop: flush buffer → live inputRef every animation frame ─────────
+  useEffect(() => {
+    let rafId: number;
+    const drain = () => {
+      const frames = buffer.drain();
+      if (frames.length > 0 && inputRef.current) {
+        // Apply the most recent queued snapshot to the live ref.
+        // Earlier frames in the same batch are preserved in order so the
+        // engine's own input-buffer (SchwarzerblitzInputBuffer) can see them.
+        const latest = frames[frames.length - 1].snapshot;
+        Object.assign(inputRef.current, latest);
+      }
+      rafId = requestAnimationFrame(drain);
+    };
+    rafId = requestAnimationFrame(drain);
+    return () => cancelAnimationFrame(rafId);
+  }, [buffer, inputRef]);
+
+  // ── Helpers: push snapshot after every state change ───────────────────────
+  const commitSnapshot = useCallback(() => {
+    buffer.push(buildSnapshot());
+  }, [buffer, buildSnapshot]);
+
+  // ── Limb button handlers ───────────────────────────────────────────────────
   const handleLimbDown = useCallback((limb: string, inputKey: keyof InputBitmask) => (e: React.PointerEvent) => {
     e.preventDefault();
     e.stopPropagation();
     activePointers.current.set(e.pointerId, inputKey);
     heldLimbs.current.add(limb);
     limbPressTime.current[limb] = performance.now();
-    updateCombinations();
-  }, [updateCombinations]);
+    commitSnapshot();
+  }, [commitSnapshot]);
 
   const handleLimbUp = useCallback((limb: string, inputKey: keyof InputBitmask) => (e: React.PointerEvent) => {
     e.preventDefault();
     e.stopPropagation();
     activePointers.current.delete(e.pointerId);
     heldLimbs.current.delete(limb);
-    const inp = inputRef.current as any;
-    if (inp) {
-      inp[inputKey] = false;
-      inp[limb] = false;
+    commitSnapshot();
+  }, [commitSnapshot]);
+
+  // ── D-pad handlers ─────────────────────────────────────────────────────────
+  const handleDirDown = useCallback((key: keyof InputBitmask) => (e: React.PointerEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    heldDirs.current.add(key);
+    commitSnapshot();
+  }, [commitSnapshot]);
+
+  const handleDirUp = useCallback((key: keyof InputBitmask) => (e: React.PointerEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    heldDirs.current.delete(key);
+    commitSnapshot();
+  }, [commitSnapshot]);
+
+  // ── @use-gesture/react: multi-touch drag on D-pad for analog-style input ──
+  // Binds to the D-pad container so a single thumb drag can hit multiple
+  // directions without lifting. The gesture fires on every pointer move,
+  // updating the direction bitmask and pushing a fresh snapshot each time.
+  const dpadRef = useRef<HTMLDivElement>(null);
+  const DEAD_ZONE = 16; // px — ignore micro-jitter at center
+
+  useGesture(
+    {
+      onDrag: ({ xy: [x, y], event, first, last, target }) => {
+        event.preventDefault();
+        if (!dpadRef.current) return;
+
+        const rect = dpadRef.current.getBoundingClientRect();
+        const cx = rect.left + rect.width / 2;
+        const cy = rect.top + rect.height / 2;
+        const dx = x - cx;
+        const dy = y - cy;
+
+        if (last) {
+          // Pointer lifted — clear all directional holds from this gesture
+          heldDirs.current.delete('up');
+          heldDirs.current.delete('down');
+          heldDirs.current.delete('left');
+          heldDirs.current.delete('right');
+          commitSnapshot();
+          return;
+        }
+
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < DEAD_ZONE) {
+          heldDirs.current.delete('up');
+          heldDirs.current.delete('down');
+          heldDirs.current.delete('left');
+          heldDirs.current.delete('right');
+        } else {
+          // Allow diagonals: set both axes independently
+          if (dy < -DEAD_ZONE) heldDirs.current.add('up');    else heldDirs.current.delete('up');
+          if (dy >  DEAD_ZONE) heldDirs.current.add('down');  else heldDirs.current.delete('down');
+          if (dx < -DEAD_ZONE) heldDirs.current.add('left');  else heldDirs.current.delete('left');
+          if (dx >  DEAD_ZONE) heldDirs.current.add('right'); else heldDirs.current.delete('right');
+        }
+        commitSnapshot();
+      },
+    },
+    {
+      target: dpadRef,
+      drag: {
+        pointer: { touch: true },
+        preventDefault: true,
+      },
     }
-    updateCombinations();
-  }, [inputRef, updateCombinations]);
-
-  const handleDirDown = (key: keyof InputBitmask) => (e: React.PointerEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (inputRef.current) inputRef.current[key] = true;
-  };
-
-  const handleDirUp = (key: keyof InputBitmask) => (e: React.PointerEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (inputRef.current) inputRef.current[key] = false;
-  };
+  );
 
   const btnBase = 'flex items-center justify-center select-none touch-none active:opacity-70 transition-opacity';
 
@@ -112,6 +196,7 @@ export function MobileControls({ inputRef }: MobileControlsProps) {
     >
       {/* ── D-Pad ── */}
       <div
+        ref={dpadRef}
         className="relative w-36 h-36"
         style={{ pointerEvents: 'auto', touchAction: 'none' }}
       >
