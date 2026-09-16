@@ -368,11 +368,20 @@ function resolveClipName(key: string, availableClips: string[]): string | null {
     if (found) return found;
   }
 
-  // 8. Idle fallback → first available clip (only for non-combat states)
-  found = availableClips.find(c => c.toLowerCase().includes('idle'));
-  if (found) return found;
+  // 8. Idle-named clip only when the requested key itself is idle/neutral.
+  // NEVER silently substitute the first available clip for an unmatched state —
+  // that masks MISSING_CLIP and invents false animation evidence.
+  if (key === 'idle' || key === 'Neutral' || key === 'neutral') {
+    found = availableClips.find(c => c.toLowerCase().includes('idle'));
+    if (found) return found;
+  }
 
-  return availableClips[0] ?? null;
+  console.warn(
+    `[FighterMesh] ⚠️ MISSING_CLIP: no resolve for state "${key}". ` +
+    `Available: [${availableClips.slice(0, 6).join(', ')}${availableClips.length > 6 ? '...' : ''}]. ` +
+    `Returning null (no idle/first-clip substitute).`
+  );
+  return null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

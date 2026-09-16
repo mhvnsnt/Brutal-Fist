@@ -647,6 +647,8 @@ export async function extractAndRetargetAnimations(
       // to the actual bones present in the cloned skeleton.
       const clipsToRegister: THREE.AnimationClip[] = [];
       for (const [semanticState, clip] of authoredClips) {
+        // Name clip by semantic state so AnimationBridge / FighterMesh resolveClipName works
+        clip.name = semanticState;
         const userData = (clip as unknown as Record<string, unknown>).userData as Record<string, unknown> | undefined;
         const isEuler = userData?.format === 'BANNON_EULER_RX_RY_RZ';
         if (isEuler) {

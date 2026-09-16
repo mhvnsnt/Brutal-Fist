@@ -1,0 +1,62 @@
+{
+  "schema": 1,
+  "policy": "PREFERRED_BANNON_EULER_MOTION_BANK",
+  "source": "https://raw.githubusercontent.com/mhvnsnt/Bannon/main/assets/moves/clips",
+  "clips": [
+    {
+      "semanticState": "idle",
+      "file": "IDLE.json",
+      "provenance": "RETARGETED_AUTHORED_CLIP from Bannon IDLE.json"
+    },
+    {
+      "semanticState": "walk_forward",
+      "file": "GINGA_FORWARD.json",
+      "provenance": "RETARGETED_AUTHORED_CLIP from Bannon GINGA_FORWARD.json"
+    },
+    {
+      "semanticState": "walk_back",
+      "file": "GINGA_BACKWARD.json",
+      "provenance": "RETARGETED_AUTHORED_CLIP from Bannon GINGA_BACKWARD.json"
+    },
+    {
+      "semanticState": "strafe_left",
+      "file": "GINGA_SIDEWAYS_2.json",
+      "provenance": "RETARGETED_AUTHORED_CLIP from Bannon GINGA_SIDEWAYS_2.json"
+    },
+    {
+      "semanticState": "strafe_right",
+      "file": "CROUCH_TORCH_WALK_RIGHT.json",
+      "provenance": "RETARGETED_AUTHORED_CLIP from Bannon CROUCH_TORCH_WALK_RIGHT.json"
+    },
+    {
+      "semanticState": "attack_1",
+      "file": "BODY_JAB_CROSS.json",
+      "provenance": "RETARGETED_AUTHORED_CLIP from Bannon BODY_JAB_CROSS.json"
+    },
+    {
+      "semanticState": "attack_2",
+      "file": "COMBO_PUNCH.json",
+      "provenance": "RETARGETED_AUTHORED_CLIP from Bannon COMBO_PUNCH.json"
+    },
+    {
+      "semanticState": "block",
+      "file": "CENTER_BLOCK.json",
+      "provenance": "RETARGETED_AUTHORED_CLIP from Bannon CENTER_BLOCK.json"
+    },
+    {
+      "semanticState": "hit_reaction",
+      "file": "HIT_REACTION.json",
+      "provenance": "RETARGETED_AUTHORED_CLIP from Bannon HIT_REACTION.json"
+    },
+    {
+      "semanticState": "knockdown",
+      "file": "FALLING_FLAT_IMPACT.json",
+      "provenance": "RETARGETED_AUTHORED_CLIP from Bannon FALLING_FLAT_IMPACT.json"
+    },
+    {
+      "semanticState": "getup",
+      "file": "KIP_UP.json",
+      "provenance": "RETARGETED_AUTHORED_CLIP from Bannon KIP_UP.json"
+    }
+  ]
+}

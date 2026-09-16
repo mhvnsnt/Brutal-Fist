@@ -36,9 +36,19 @@ import * as THREE from 'three';
 import {
   isBannonEulerFormat,
   convertBannonEulerClip,
+  coerceToBannonEulerClipJson,
+  isBannonKeysEulerFormat,
   type BannonEulerClipJson,
   type EulerAdapterResult,
 } from './BannonEulerMotionAdapter';
+import {
+  BANNON_CLIP_CDN_BASE,
+  PREFERRED_REQUIRED_SEMANTIC_STATES,
+  PREFERRED_SEMANTIC_CLIP_FILES,
+  preferredClipUrl,
+  preferredLocalPath,
+  type PreferredSemanticState,
+} from './BannonMotionBankPreferred';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Bannon motion bank JSON schema
@@ -82,6 +92,30 @@ export interface BannonClipJson {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const BONE_NAME_ALIASES: Record<string, string> = {
+  // Mixamo colon-prefix (BANNON_rigged.glb exports mixamorig:Hips etc.)
+  'mixamorig:Hips': 'Hips',
+  'mixamorig:Spine': 'Spine',
+  'mixamorig:Spine1': 'Spine',
+  'mixamorig:Spine2': 'Chest',
+  'mixamorig:Neck': 'Neck',
+  'mixamorig:Head': 'Head',
+  'mixamorig:LeftShoulder': 'LUpperArm',
+  'mixamorig:LeftArm': 'LUpperArm',
+  'mixamorig:LeftForeArm': 'LForeArm',
+  'mixamorig:LeftHand': 'LHand',
+  'mixamorig:RightShoulder': 'RUpperArm',
+  'mixamorig:RightArm': 'RUpperArm',
+  'mixamorig:RightForeArm': 'RForeArm',
+  'mixamorig:RightHand': 'RHand',
+  'mixamorig:LeftUpLeg': 'LUpperLeg',
+  'mixamorig:LeftLeg': 'LLowerLeg',
+  'mixamorig:LeftFoot': 'LFoot',
+  'mixamorig:LeftToeBase': 'LFoot',
+  'mixamorig:RightUpLeg': 'RUpperLeg',
+  'mixamorig:RightLeg': 'RLowerLeg',
+  'mixamorig:RightFoot': 'RFoot',
+  'mixamorig:RightToeBase': 'RFoot',
+
   // Hips
   mixamorigHips: 'Hips', Hips: 'Hips', hips: 'Hips', hip: 'Hips', Pelvis: 'Hips',
   pelvis: 'Hips', ROOT: 'Hips', Root: 'Hips', root: 'Hips', HipNode: 'Hips',
@@ -376,14 +410,27 @@ export function convertBannonClipBank(
  * bank index, where the format varies per clip.
  */
 export function convertBannonClipAuto(
-  json: BannonClipJson | BannonEulerClipJson,
+  json: BannonClipJson | BannonEulerClipJson | unknown,
   semanticStateOverride?: string,
 ): AdapterResult | EulerAdapterResult {
-  if (isBannonEulerFormat(json)) {
+  // Live motion bank uses keys[] Euler — normalize first.
+  const eulerNormalized = coerceToBannonEulerClipJson(
+    json,
+    semanticStateOverride,
+    semanticStateOverride,
+  );
+  if (eulerNormalized) {
+    const label = isBannonKeysEulerFormat(json) ? 'BANNON_KEYS_EULER' : 'BANNON_EULER_RX_RY_RZ';
     console.log(
-      `[BannonClipJsonAdapter] 🔄 BANNON_EULER_RX_RY_RZ detected for "${json.name}" — routing to EulerMotionAdapter`
+      `[BannonClipJsonAdapter] 🔄 ${label} detected for "${eulerNormalized.name}" — routing to EulerMotionAdapter`
     );
-    return convertBannonEulerClip(json as BannonEulerClipJson, semanticStateOverride);
+    const result = convertBannonEulerClip(eulerNormalized, semanticStateOverride);
+    // Name the clip by semantic state so AnimationBridge / FighterMesh resolve by name.
+    if (semanticStateOverride) {
+      result.clip.name = semanticStateOverride;
+      result.semanticState = semanticStateOverride;
+    }
+    return result;
   }
   return convertBannonClipJson(json as BannonClipJson, semanticStateOverride);
 }
@@ -767,7 +814,7 @@ export async function loadBannonClipsFromDirectory(
       }
 
       // Convert to AnimationClip with Mixamo bone name normalization
-      const adapted = convertBannonClipJson(json);
+      const adapted = convertBannonClipAuto(json);
 
       // Mark as AUTHORED_CLIP (not procedural)
       (adapted.clip as any).userData = {
@@ -900,17 +947,41 @@ export async function loadBannonClipsFromUrls(
 
     const { url, json } = settled.value;
     try {
-      const adapted = convertBannonClipJson(json);
+      // Infer semantic state from URL / filename when possible
+      const fileName = url.split('/').pop() ?? '';
+      let semanticOverride: string | undefined;
+      for (const [state, file] of Object.entries(PREFERRED_SEMANTIC_CLIP_FILES)) {
+        if (file === fileName || url.endsWith(`/${file}`) || url.endsWith(`/${state}.json`)) {
+          semanticOverride = state;
+          break;
+        }
+      }
+      if (!semanticOverride && fileName.endsWith('.json')) {
+        const stem = fileName.replace(/\.json$/i, '').toLowerCase();
+        if ((PREFERRED_REQUIRED_SEMANTIC_STATES as readonly string[]).includes(stem)) {
+          semanticOverride = stem;
+        }
+      }
 
-      // Mark as AUTHORED_CLIP
+      const adapted = convertBannonClipAuto(json, semanticOverride);
+
+      const existingUserData = (adapted.clip as any).userData ?? {};
+      const clipSourceType =
+        existingUserData.clipSourceType ??
+        (isBannonEulerFormat(json) || isBannonKeysEulerFormat(json)
+          ? 'RETARGETED_AUTHORED_CLIP'
+          : 'AUTHORED_CLIP');
+
       (adapted.clip as any).userData = {
-        ...(adapted.clip as any).userData,
-        clipSourceType: 'AUTHORED_CLIP',
+        ...existingUserData,
+        clipSourceType,
         sourceUrl: url,
         isProcedural: false,
       };
 
       if (adapted.trackCount > 0 && !result.has(adapted.semanticState)) {
+        // Ensure mixer action key matches semantic state
+        adapted.clip.name = adapted.semanticState;
         result.set(adapted.semanticState, adapted.clip);
       }
     } catch (e: any) {
@@ -930,55 +1001,94 @@ export async function loadBannonClipsFromUrls(
  * Falls back to a known list of semantic state filenames if manifest is absent.
  */
 export async function loadBannonClipsFromPublic(): Promise<Map<string, THREE.AnimationClip>> {
+  /**
+   * Load preferred semantic clips for the live Bannon Euler motion bank.
+   *
+   * Order:
+   *   1. Local /assets/moves/clips/manifest.json (if present)
+   *   2. Local preferred files under /assets/moves/clips/
+   *   3. GitHub CDN preferred files (BANNON_CLIP_CDN_BASE)
+   *
+   * NEVER substitutes idle/first-clip for a missing required state.
+   * Missing states stay absent → MISSING_CLIP at the gate.
+   */
   const MANIFEST_URL = '/assets/moves/clips/manifest.json';
-  const FALLBACK_STATES = [
-    'idle', 'walk_forward', 'walk_back', 'strafe_left', 'strafe_right',
-    'attack_1', 'attack_2', 'block', 'hit_reaction', 'knockdown', 'getup', 'grapple',
-  ];
 
   let clipUrls: string[] = [];
+  let usedSource = 'none';
 
-  // Try to load manifest
+  // 1) Manifest
   try {
     const res = await fetch(MANIFEST_URL);
     if (res.ok) {
       const manifest = await res.json();
-      clipUrls = (manifest.clips ?? []).map((f: string) =>
-        f.startsWith('/') ? f : `/assets/moves/clips/${f}`
-      );
+      const entries = manifest.clips ?? [];
+      clipUrls = entries.map((entry: string | { file?: string; semanticState?: string }) => {
+        if (typeof entry === 'string') {
+          return entry.startsWith('/') || entry.startsWith('http')
+            ? entry
+            : `/assets/moves/clips/${entry}`;
+        }
+        const file = entry.file ?? '';
+        return file.startsWith('/') || file.startsWith('http')
+          ? file
+          : `/assets/moves/clips/${file}`;
+      }).filter(Boolean);
+      usedSource = 'local-manifest';
       console.log(`[BannonClipJsonAdapter] Loaded clip manifest: ${clipUrls.length} entries`);
-    } else {
-      throw new Error(`Manifest not found (${res.status})`);
     }
   } catch {
-    // Fallback: try standard semantic state filenames
-    console.warn(`[BannonClipJsonAdapter] No clip manifest found at ${MANIFEST_URL}`);
-    console.warn(`  Trying fallback URLs for ${FALLBACK_STATES.length} semantic states`);
-    clipUrls = FALLBACK_STATES.map(s => `/assets/moves/clips/${s}.json`);
+    // continue
   }
 
-  // Filter to only URLs that exist (HEAD check)
-  const existingUrls: string[] = [];
-  await Promise.allSettled(
-    clipUrls.map(async (url) => {
-      try {
-        const res = await fetch(url, { method: 'HEAD' });
-        if (res.ok) existingUrls.push(url);
-      } catch {
-        // URL not available
-      }
-    })
+  // 2) Local preferred files via HEAD
+  if (clipUrls.length === 0) {
+    const localCandidates = PREFERRED_REQUIRED_SEMANTIC_STATES.map((s) => preferredLocalPath(s));
+    const existingLocal: string[] = [];
+    await Promise.allSettled(
+      localCandidates.map(async (url) => {
+        try {
+          const res = await fetch(url, { method: 'HEAD' });
+          if (res.ok) existingLocal.push(url);
+        } catch {
+          // unavailable
+        }
+      }),
+    );
+    if (existingLocal.length > 0) {
+      clipUrls = existingLocal;
+      usedSource = 'local-preferred';
+    }
+  }
+
+  // 3) GitHub CDN preferred files
+  if (clipUrls.length === 0) {
+    console.warn(
+      `[BannonClipJsonAdapter] No local clips under /assets/moves/clips/ — ` +
+      `falling back to Bannon CDN preferred set (${BANNON_CLIP_CDN_BASE})`
+    );
+    clipUrls = PREFERRED_REQUIRED_SEMANTIC_STATES.map((s) => preferredClipUrl(s as PreferredSemanticState));
+    usedSource = 'cdn-preferred';
+  }
+
+  console.log(
+    `[BannonClipJsonAdapter] Loading preferred motion bank clips ` +
+    `(source=${usedSource}, urls=${clipUrls.length})`
   );
 
-  if (existingUrls.length === 0) {
-    console.warn(`[BannonClipJsonAdapter] No clip JSON files found at /assets/moves/clips/`);
-    console.warn(`  To enable AUTHORED_CLIP loading:`);
-    console.warn(`  1. Add BannonClipJson files to public/assets/moves/clips/`);
-    console.warn(`  2. Create public/assets/moves/clips/manifest.json listing all files`);
-    console.warn(`  3. Each file must have: { name, duration, bones: { boneName: { frames: [...] } } }`);
-    return new Map();
+  const loaded = await loadBannonClipsFromUrls(clipUrls);
+
+  // Report MISSING_CLIP explicitly — never silent substitute
+  const missing = PREFERRED_REQUIRED_SEMANTIC_STATES.filter((s) => !loaded.has(s));
+  if (missing.length > 0) {
+    console.warn(
+      `[BannonClipJsonAdapter] ⚠️ MISSING_CLIP for preferred states: [${missing.join(', ')}]`
+    );
+  } else {
+    console.log(
+      `[BannonClipJsonAdapter] ✅ All ${PREFERRED_REQUIRED_SEMANTIC_STATES.length} preferred semantic states loaded`
+    );
   }
 
-  console.log(`[BannonClipJsonAdapter] Found ${existingUrls.length} clip files`);
-  return loadBannonClipsFromUrls(existingUrls);
+  return loaded;
 }

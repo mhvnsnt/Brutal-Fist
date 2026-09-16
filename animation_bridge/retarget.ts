@@ -36,6 +36,8 @@ import {
   SEMANTIC_STATE_ALIASES,
   COMBAT_STATE_TO_SEMANTIC,
 } from '../src/engine/retarget/SemanticStateAliases';
+import { loadBannonClipsFromPublic } from '../src/engine/retarget/BannonClipJsonAdapter';
+import { bindClipTracksToTargetBones } from '../src/engine/retarget/BannonEulerMotionAdapter';
 
 export { SEMANTIC_STATE_ALIASES, COMBAT_STATE_TO_SEMANTIC };
 
@@ -265,5 +267,59 @@ export class AnimationBridge {
       `no clip and no fallback found.`
     );
     return null;
+  }
+
+  /**
+   * Load preferred Bannon Euler motion-bank clips through the same public path
+   * CharacterPipeline uses (no duplicate architecture).
+   * Optionally bind tracks onto a live target skeleton.
+   */
+  static async loadPreferredBannonMotionBank(
+    targetScene?: THREE.Object3D,
+  ): Promise<{
+    clipsByState: Map<string, THREE.AnimationClip>;
+    missingStates: string[];
+    boundTrackCount: number;
+    unboundTrackCount: number;
+  }> {
+    const clipsByState = await loadBannonClipsFromPublic();
+    const missingStates: string[] = [];
+    let boundTrackCount = 0;
+    let unboundTrackCount = 0;
+
+    for (const [state, clip] of [...clipsByState.entries()]) {
+      if (targetScene) {
+        const bind = bindClipTracksToTargetBones(clip, targetScene);
+        clipsByState.set(state, bind.clip);
+        boundTrackCount += bind.boundTracks;
+        unboundTrackCount += bind.unboundTracks;
+      }
+    }
+
+    // Report preferred semantic gaps without substituting idle
+    for (const [semanticState, aliases] of Object.entries(SEMANTIC_STATE_ALIASES)) {
+      if (!clipsByState.has(semanticState)) {
+        // Only flag core locomotion/combat aliases present in preferred set
+        if (
+          [
+            'idle', 'walk_forward', 'walk_back', 'strafe_left', 'strafe_right',
+            'attack_1', 'attack_2', 'block', 'hit_reaction', 'knockdown', 'getup',
+          ].includes(semanticState)
+        ) {
+          missingStates.push(semanticState);
+          console.warn(
+            `[AnimationBridge] ⚠️ MISSING_CLIP: preferred motion bank has no clip for "${semanticState}" ` +
+            `(aliases tried conceptually: ${aliases.slice(0, 3).join(', ')})`
+          );
+        }
+      }
+    }
+
+    console.log(
+      `[AnimationBridge] Preferred Bannon motion bank loaded: ${clipsByState.size} clips, ` +
+      `bound=${boundTrackCount} unbound=${unboundTrackCount} missing=[${missingStates.join(', ') || 'none'}]`
+    );
+
+    return { clipsByState, missingStates, boundTrackCount, unboundTrackCount };
   }
 }

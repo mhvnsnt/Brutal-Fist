@@ -13,6 +13,8 @@
  *   ✅ no MISSING_CLIP verdicts for required semantic states
  *   ✅ AnimationSourceRegistry completeness: PASS or PARTIAL (not BLOCKED)
  *
+ * AUTHORITATIVE: uses runPreCombatRosterGate (real clip load + GLB measure).
+ * AnimationTestArena is diagnostic only — never a PASS substitute.
  * If any fighter fails, combat is BLOCKED with explicit remediation steps.
  * ─────────────────────────────────────────────────────────────────────────────
  */
@@ -22,6 +24,10 @@ import { type BannonFighterProfile } from '../data/bannonRoster';
 import { BANNON_GLB_PLAYABLE_MODELS } from '../data/bannonGlbRoster';
 import { resolveFighterGlbFilename } from '../data/FighterAssetResolver';
 import { REQUIRED_SEMANTIC_STATES } from '../engine/retarget/AnimationSourceRegistry';
+import {
+  runPreCombatRosterGate,
+  type FighterGateResult,
+} from '../engine/combat/PreCombatRosterGate';
 
 // ── Checklist item types ──────────────────────────────────────────────────────
 
@@ -328,16 +334,58 @@ export default function PreCombatValidationScreen({
     setValidating(true);
     setOverrideEnabled(false);
 
-    // Run validation synchronously (roster-level checks)
-    const r1 = validateFighterRoster(p1Fighter);
-    const r2 = validateFighterRoster(p2Fighter);
-
-    setP1Result(r1);
-    setP2Result(r2);
-    setValidating(false);
-
-    console.log('[PreCombatValidation] P1 result:', r1.overallStatus, r1.fighterId);
-    console.log('[PreCombatValidation] P2 result:', r2.overallStatus, r2.fighterId);
+    // AUTHORITATIVE async gate — real clip load + GLB measure (not AnimationTestArena proxy)
+    void (async () => {
+      try {
+        const report = await runPreCombatRosterGate(p1Fighter, p2Fighter);
+        const toResult = (g: FighterGateResult): FighterValidationResult => ({
+          fighterId: g.fighterId,
+          fighterName: g.fighterName,
+          glbFile: g.glbFile,
+          overallStatus: g.overallStatus,
+          checks: g.checks.map((c) => ({
+            id: c.id,
+            label: c.label,
+            description: c.label,
+            status: c.status,
+            value: c.value,
+            remediation: c.remediation,
+          })),
+          remediationSteps: g.remediationSteps,
+        });
+        setP1Result(toResult(report.p1));
+        setP2Result(toResult(report.p2));
+        console.log(
+          '[PreCombatValidation] AUTHORITATIVE gate:',
+          'fightAuthorized=', report.fightAuthorized,
+          'converted=', report.clipsConverted,
+          'missing=', report.unresolvedPreferredStates,
+          'travel=', report.totalAngularTravel,
+        );
+      } catch (e: any) {
+        console.error('[PreCombatValidation] Gate failed:', e);
+        // Fail closed — synthetic BLOCKED results
+        const blocked = (f: typeof p1Fighter): FighterValidationResult => ({
+          fighterId: f.id,
+          fighterName: f.name,
+          glbFile: 'UNKNOWN',
+          overallStatus: 'BLOCKED',
+          checks: [{
+            id: 'gate_error',
+            label: 'PreCombatRosterGate',
+            description: 'Authoritative gate threw',
+            status: 'FAIL',
+            value: e?.message ?? String(e),
+            remediation: 'See console — gate must not throw; fix loader/GLB path',
+          }],
+          remediationSteps: [e?.message ?? String(e)],
+        });
+        setP1Result(blocked(p1Fighter));
+        setP2Result(blocked(p2Fighter));
+      } finally {
+        setValidating(false);
+      }
+    })();
   }, [p1Fighter, p2Fighter]);
 
   useEffect(() => {
