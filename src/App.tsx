@@ -25,6 +25,7 @@ const SeasonalTournamentScreen = dynamic(() => import('./components/SeasonalTour
 const MatchmakingQueueScreen = dynamic(() => import('./components/MatchmakingQueueScreen'), { ssr: false });
 const SpectatorViewerScreen = dynamic(() => import('./components/SpectatorViewerScreen'), { ssr: false });
 const AnimationTestArena = dynamic(() => import('./components/AnimationTestArena'), { ssr: false });
+const PreCombatValidationScreen = dynamic(() => import('./components/PreCombatValidationScreen'), { ssr: false });
 
 export default function App() {
   const { user, loading: authLoading, signOut } = useAuth();
@@ -214,6 +215,20 @@ export default function App() {
     return <AnimationTestArena onBack={() => setScreen(AppScreen?.MainMenu)} />;
   }
 
+  // ── Pre-Combat Validation ──
+  if ((screen as any) === 'pre_combat_validation') {
+    const p1 = p1BannonFighter ?? getBannonFighter('bannon')!;
+    const p2 = p2BannonFighter ?? getBannonFighter('maime')!;
+    return (
+      <PreCombatValidationScreen
+        p1Fighter={p1}
+        p2Fighter={p2}
+        onCombatApproved={() => setScreen(AppScreen?.Combat)}
+        onBack={() => setScreen('stage_select' as any)}
+      />
+    );
+  }
+
   // ── Auth Screen ──
   if ((screen as any) === 'auth') {
     return <AuthScreen onSuccess={() => setScreen('stats' as any)} />;
@@ -292,7 +307,7 @@ export default function App() {
         p2Fighter={p2}
         onConfirm={(stageId) => {
           setSelectedStageId(stageId);
-          setScreen(AppScreen?.Combat);
+          setScreen('pre_combat_validation' as any);
         }}
         onBack={() => setScreen(AppScreen?.Select)}
       />

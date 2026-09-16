@@ -651,3 +651,291 @@ export function generateProceduralClipSet(
 
   return clips;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Directory-based clip loader (Node.js / server-side)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Load all Bannon motion bank JSON files from a directory.
+ * Normalizes Mixamo bone names, validates retarget resolution against
+ * the canonical skeleton, and returns a map of semanticState → AnimationClip.
+ *
+ * This function is designed for use in:
+ *   1. Node.js CLI (scripts/rig-static-glbs-cli.mjs)
+ *   2. Next.js API routes (app/api/glb-deformation-pipeline/route.ts)
+ *   3. Build-time asset processing
+ *
+ * AUTHORED_CLIP verdict: clips loaded from this function are classified as
+ * AUTHORED_CLIP (not PROCEDURAL_PLACEHOLDER) because they originate from
+ * the Bannon motion bank JSON files.
+ *
+ * @param clipsDir - Path to assets/moves/clips/ directory
+ * @returns Map<semanticState, AnimationClip> with AUTHORED_CLIP userData
+ */
+export async function loadBannonClipsFromDirectory(
+  clipsDir: string,
+): Promise<Map<string, THREE.AnimationClip>> {
+  const result = new Map<string, THREE.AnimationClip>();
+
+  // Dynamic import to avoid bundling fs in browser builds
+  let fs: typeof import('fs');
+  let path: typeof import('path');
+  try {
+    fs = await import('fs');
+    path = await import('path');
+  } catch {
+    console.warn('[BannonClipJsonAdapter] fs/path not available — skipping directory load');
+    return result;
+  }
+
+  if (!fs.existsSync(clipsDir)) {
+    console.warn(`[BannonClipJsonAdapter] Clips directory not found: ${clipsDir}`);
+    console.warn(`  Expected: assets/moves/clips/*.json`);
+    console.warn(`  Create JSON files matching BannonClipJson schema to enable AUTHORED_CLIP loading`);
+    return result;
+  }
+
+  let files: string[];
+  try {
+    files = fs.readdirSync(clipsDir).filter((f: string) => f.endsWith('.json'));
+  } catch (e: any) {
+    console.error(`[BannonClipJsonAdapter] Failed to read clips directory: ${e.message}`);
+    return result;
+  }
+
+  console.log(`[BannonClipJsonAdapter] Loading ${files.length} clip JSON files from: ${clipsDir}`);
+
+  let loadedCount = 0;
+  let errorCount = 0;
+  const retargetReport: Array<{ file: string; semanticState: string; mappedBones: number; unmappedBones: number; verdict: string }> = [];
+
+  for (const file of files) {
+    const filePath = path.join(clipsDir, file);
+    try {
+      const raw = fs.readFileSync(filePath, 'utf-8');
+      const json: BannonClipJson = JSON.parse(raw);
+
+      // Validate required fields
+      if (!json.name || !json.duration || !json.bones) {
+        console.warn(`[BannonClipJsonAdapter] ⚠️ Skipping ${file} — missing required fields (name, duration, bones)`);
+        errorCount++;
+        continue;
+      }
+
+      // Convert to AnimationClip with Mixamo bone name normalization
+      const adapted = convertBannonClipJson(json);
+
+      // Mark as AUTHORED_CLIP (not procedural)
+      (adapted.clip as any).userData = {
+        ...(adapted.clip as any).userData,
+        clipSourceType: 'AUTHORED_CLIP',
+        sourceFile: filePath,
+        isProcedural: false,
+      };
+
+      // Validate retarget resolution against canonical skeleton
+      const canonicalBones = new Set([
+        'Hips', 'Spine', 'Chest', 'Neck', 'Head',
+        'LUpperArm', 'LForeArm', 'LHand',
+        'RUpperArm', 'RForeArm', 'RHand',
+        'LUpperLeg', 'LLowerLeg', 'LFoot',
+        'RUpperLeg', 'RLowerLeg', 'RFoot',
+      ]);
+
+      const resolvedBones = adapted.mappedBones.map(m => m.split(' → ')[1]).filter(Boolean);
+      const unresolvedBones = adapted.unmappedBones.filter(b => !canonicalBones.has(b));
+      const retargetVerdict = unresolvedBones.length === 0 ? 'FULL_RESOLUTION' :
+        resolvedBones.length > 0 ? 'PARTIAL_RESOLUTION' : 'NO_RESOLUTION';
+
+      retargetReport.push({
+        file,
+        semanticState: adapted.semanticState,
+        mappedBones: adapted.mappedBones.length,
+        unmappedBones: adapted.unmappedBones.length,
+        verdict: retargetVerdict,
+      });
+
+      // Only register if we have at least some tracks
+      if (adapted.trackCount > 0) {
+        // Prefer higher-priority source if state already registered
+        if (!result.has(adapted.semanticState)) {
+          result.set(adapted.semanticState, adapted.clip);
+          loadedCount++;
+        } else {
+          console.log(`[BannonClipJsonAdapter] ℹ️ Duplicate semantic state "${adapted.semanticState}" in ${file} — keeping first loaded`);
+        }
+      } else {
+        console.warn(`[BannonClipJsonAdapter] ⚠️ ${file} produced 0 tracks — skipped`);
+        errorCount++;
+      }
+
+    } catch (e: any) {
+      console.error(`[BannonClipJsonAdapter] ❌ Failed to load ${file}: ${e.message}`);
+      errorCount++;
+    }
+  }
+
+  // Print retarget resolution report
+  console.log(
+    `[BannonClipJsonAdapter] 📊 AUTHORED_CLIP load complete:\n` +
+    `  Files scanned:   ${files.length}\n` +
+    `  Clips loaded:    ${loadedCount}\n` +
+    `  Errors:          ${errorCount}\n` +
+    `  Semantic states: [${[...result.keys()].join(', ')}]\n` +
+    `\n  Retarget resolution report:\n` +
+    retargetReport.map(r =>
+      `    ${r.file.padEnd(30)} | ${r.semanticState.padEnd(20)} | mapped=${r.mappedBones} unmapped=${r.unmappedBones} | ${r.verdict}`
+    ).join('\n')
+  );
+
+  return result;
+}
+
+/**
+ * Load Bannon clips from the standard assets/moves/clips/ directory.
+ * Resolves path relative to the project root.
+ *
+ * Returns AUTHORED_CLIP classified clips ready for AnimationSourceRegistry.
+ */
+export async function loadBannonMotionBank(
+  projectRoot?: string,
+): Promise<Map<string, THREE.AnimationClip>> {
+  let root = projectRoot;
+
+  if (!root) {
+    // Try to resolve project root
+    try {
+      const { resolve, dirname } = await import('path');
+      const { fileURLToPath } = await import('url');
+      // In ESM context
+      root = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
+    } catch {
+      root = process.cwd?.() ?? '.';
+    }
+  }
+
+  const { join } = await import('path');
+  const clipsDir = join(root, 'assets', 'moves', 'clips');
+
+  console.log(`[BannonClipJsonAdapter] Loading motion bank from: ${clipsDir}`);
+  return loadBannonClipsFromDirectory(clipsDir);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Browser-side fetch-based clip loader
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Load Bannon clips from a list of JSON URLs (browser-compatible).
+ * Used when the clips are served as static assets.
+ *
+ * @param clipUrls - Array of URLs to BannonClipJson files
+ * @returns Map<semanticState, AnimationClip> with AUTHORED_CLIP userData
+ */
+export async function loadBannonClipsFromUrls(
+  clipUrls: string[],
+): Promise<Map<string, THREE.AnimationClip>> {
+  const result = new Map<string, THREE.AnimationClip>();
+
+  console.log(`[BannonClipJsonAdapter] Loading ${clipUrls.length} clips from URLs`);
+
+  const loadResults = await Promise.allSettled(
+    clipUrls.map(async (url) => {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}: ${url}`);
+      const json: BannonClipJson = await res.json();
+      return { url, json };
+    })
+  );
+
+  for (const settled of loadResults) {
+    if (settled.status === 'rejected') {
+      console.warn(`[BannonClipJsonAdapter] ⚠️ Failed to load clip: ${settled.reason}`);
+      continue;
+    }
+
+    const { url, json } = settled.value;
+    try {
+      const adapted = convertBannonClipJson(json);
+
+      // Mark as AUTHORED_CLIP
+      (adapted.clip as any).userData = {
+        ...(adapted.clip as any).userData,
+        clipSourceType: 'AUTHORED_CLIP',
+        sourceUrl: url,
+        isProcedural: false,
+      };
+
+      if (adapted.trackCount > 0 && !result.has(adapted.semanticState)) {
+        result.set(adapted.semanticState, adapted.clip);
+      }
+    } catch (e: any) {
+      console.error(`[BannonClipJsonAdapter] ❌ Failed to convert clip from ${url}: ${e.message}`);
+    }
+  }
+
+  console.log(`[BannonClipJsonAdapter] ✅ Loaded ${result.size} AUTHORED_CLIP clips from URLs`);
+  return result;
+}
+
+/**
+ * Load Bannon clips from the /public/assets/moves/clips/ directory
+ * using the standard clip manifest URL pattern.
+ *
+ * Expects a manifest at /assets/moves/clips/manifest.json listing all clip files.
+ * Falls back to a known list of semantic state filenames if manifest is absent.
+ */
+export async function loadBannonClipsFromPublic(): Promise<Map<string, THREE.AnimationClip>> {
+  const MANIFEST_URL = '/assets/moves/clips/manifest.json';
+  const FALLBACK_STATES = [
+    'idle', 'walk_forward', 'walk_back', 'strafe_left', 'strafe_right',
+    'attack_1', 'attack_2', 'block', 'hit_reaction', 'knockdown', 'getup', 'grapple',
+  ];
+
+  let clipUrls: string[] = [];
+
+  // Try to load manifest
+  try {
+    const res = await fetch(MANIFEST_URL);
+    if (res.ok) {
+      const manifest = await res.json();
+      clipUrls = (manifest.clips ?? []).map((f: string) =>
+        f.startsWith('/') ? f : `/assets/moves/clips/${f}`
+      );
+      console.log(`[BannonClipJsonAdapter] Loaded clip manifest: ${clipUrls.length} entries`);
+    } else {
+      throw new Error(`Manifest not found (${res.status})`);
+    }
+  } catch {
+    // Fallback: try standard semantic state filenames
+    console.warn(`[BannonClipJsonAdapter] No clip manifest found at ${MANIFEST_URL}`);
+    console.warn(`  Trying fallback URLs for ${FALLBACK_STATES.length} semantic states`);
+    clipUrls = FALLBACK_STATES.map(s => `/assets/moves/clips/${s}.json`);
+  }
+
+  // Filter to only URLs that exist (HEAD check)
+  const existingUrls: string[] = [];
+  await Promise.allSettled(
+    clipUrls.map(async (url) => {
+      try {
+        const res = await fetch(url, { method: 'HEAD' });
+        if (res.ok) existingUrls.push(url);
+      } catch {
+        // URL not available
+      }
+    })
+  );
+
+  if (existingUrls.length === 0) {
+    console.warn(`[BannonClipJsonAdapter] No clip JSON files found at /assets/moves/clips/`);
+    console.warn(`  To enable AUTHORED_CLIP loading:`);
+    console.warn(`  1. Add BannonClipJson files to public/assets/moves/clips/`);
+    console.warn(`  2. Create public/assets/moves/clips/manifest.json listing all files`);
+    console.warn(`  3. Each file must have: { name, duration, bones: { boneName: { frames: [...] } } }`);
+    return new Map();
+  }
+
+  console.log(`[BannonClipJsonAdapter] Found ${existingUrls.length} clip files`);
+  return loadBannonClipsFromUrls(existingUrls);
+}

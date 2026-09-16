@@ -388,15 +388,15 @@ interface NormalizedResult {
 // NEVER hardcode rotation corrections per character.
 // NEVER bind the mixer to the outer group — it must target the cloned scene.
 // ─────────────────────────────────────────────────────────────────────────────
-function normalizeGLB(
+async function normalizeGLB(
   scene: THREE.Group,
   animations: THREE.AnimationClip[],
   gltfUrl: string,
   _report: RigDiagnosticReport,
-): NormalizedResult | null {
+): Promise<NormalizedResult | null> {
   // Delegate to the universal CharacterPipeline.
   // applyPSXShader=true for combat renderer.
-  const result = runCharacterPipeline(scene, animations, gltfUrl, true);
+  const result = await runCharacterPipeline(scene, animations, gltfUrl, true);
 
   if (!result) {
     // BLOCKED — asset failed pre-clone validation.
@@ -499,34 +499,33 @@ function FighterMeshInner({
     onRigDiagnostic?.(report);
 
     // Normalize and create mixer bound to the cloned visible scene
-    const result = normalizeGLB(scene as THREE.Group, animations, gltfUrl, report);
+    let cancelled = false;
+    normalizeGLB(scene as THREE.Group, animations, gltfUrl, report).then(result => {
+      if (cancelled) return;
 
-    // BLOCKED — asset failed CharacterPipeline validation.
-    // DO NOT secretly re-rig. Fire the blocked callback and stop.
-    if (!result) {
-      const characterName = gltfUrl.split('/').pop()?.replace('.glb', '') ?? gltfUrl;
-      console.error(
-        `[FighterMesh] 🚫 BLOCKED — "${characterName}" failed CharacterPipeline validation. ` +
-        `ASSET DEFORMATION INTEGRITY FAILURE. Fix the source GLB.`
-      );
-      onDeformationBlocked?.(characterName, ['PIPELINE_VALIDATION_FAILED']);
-      return;
-    }
+      // BLOCKED — asset failed CharacterPipeline validation.
+      // DO NOT secretly re-rig. Fire the blocked callback and stop.
+      if (!result) {
+        const characterName = gltfUrl.split('/').pop()?.replace('.glb', '') ?? gltfUrl;
+        console.error(
+          `[FighterMesh] 🚫 BLOCKED — "${characterName}" failed CharacterPipeline validation. ` +
+          `ASSET DEFORMATION INTEGRITY FAILURE. Fix the source GLB.`
+        );
+        onDeformationBlocked?.(characterName, ['PIPELINE_VALIDATION_FAILED']);
+        return;
+      }
 
-    // Initialize bone hitbox system from the normalized scene
-    result.scene.updateMatrixWorld(true);
-    boneHitboxRef.current.initFromSkeleton(result.scene);
-    onBoneHitboxReady?.(boneHitboxRef.current);
+      // Initialize bone hitbox system from the normalized scene
+      result.scene.updateMatrixWorld(true);
+      boneHitboxRef.current.initFromSkeleton(result.scene);
+      onBoneHitboxReady?.(boneHitboxRef.current);
 
-    setNormalized(result);
+      setNormalized(result);
+    });
 
     // Cleanup: stop all actions when model changes
     return () => {
-      result.mixer.stopAllAction();
-      // Dispose skeleton helper
-      if (result.skeletonHelper) {
-        result.skeletonHelper.geometry.dispose();
-      }
+      cancelled = true;
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scene, gltfUrl]);

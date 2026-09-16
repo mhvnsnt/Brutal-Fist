@@ -71,6 +71,7 @@ import { DEFAULT_PSX_RENDER } from '../../render/psx';
 import { AnimationRetargeter } from '../retarget/AnimationRetargeter';
 import {
   generateProceduralClipSet,
+  loadBannonClipsFromPublic,
 } from '../retarget/BannonClipJsonAdapter';
 import {
   AnimationSourceRegistry,
@@ -549,13 +550,13 @@ export interface AnimationExtractionResult {
  * @param modelName     Short name for logging
  * @param characterId   Character identifier for bridge source lookup
  */
-export function extractAndRetargetAnimations(
+export async function extractAndRetargetAnimations(
   sourceScene: THREE.Object3D,
   targetScene: THREE.Object3D,
   glbAnimations: THREE.AnimationClip[],
   modelName: string,
   characterId = '',
-): AnimationExtractionResult {
+): Promise<AnimationExtractionResult> {
   const retargeter = new AnimationRetargeter(
     `${modelName}_source`,
     `${modelName}_target`
@@ -623,23 +624,48 @@ export function extractAndRetargetAnimations(
     bridgeClipCount = processedClips.length;
   }
 
-  // If GLB has no clips, generate procedural placeholders so the pipeline
-  // can be verified end-to-end. These are clearly labeled PROCEDURAL_PLACEHOLDER.
+  // If GLB has no clips, try loading from Bannon motion bank (assets/moves/clips/)
+  // before falling back to procedural placeholders.
   if (processedClips.length === 0) {
     console.warn(
       `[CharacterPipeline] ⚠️ "${modelName}" — no animation clips in GLB. ` +
-      `Generating PROCEDURAL_PLACEHOLDER clips for pipeline verification.\n` +
-      `  → Source: check ${characterId ? characterId + '_rigged.glb' : 'rigged GLB'} from Bannon repo\n` +
-      `  → Bridge: check animation_bridge/SOURCE_REGISTRY.json\n` +
-      `  → Required: idle, walk, attack, hit, knockdown clips`
+      `Attempting to load AUTHORED_CLIP data from Bannon motion bank...`
     );
 
-    if (targetBoneNames.length > 0) {
-      const proceduralClips = generateProceduralClipSet(targetBoneNames);
-      registry.registerBannonMotionBank(proceduralClips, 'PROCEDURAL_PLACEHOLDER');
-      processedClips = [...proceduralClips.values()];
+    // Attempt to load authored clips from public/assets/moves/clips/
+    let authoredClips: Map<string, THREE.AnimationClip> | null = null;
+    try {
+      authoredClips = await loadBannonClipsFromPublic();
+    } catch (e: any) {
+      console.warn(`[CharacterPipeline] ⚠️ loadBannonClipsFromPublic failed: ${e.message}`);
+    }
+
+    if (authoredClips && authoredClips.size > 0) {
+      // Register as AUTHORED_CLIP — highest priority
+      registry.registerAuthoredClips(authoredClips, 'assets/moves/clips/');
+      processedClips = [...authoredClips.values()];
       bridgeClipCount = processedClips.length;
-      retargetVerdict = 'SKIPPED';
+      retargetVerdict = 'AUTHORED_CLIP_LOADED';
+      console.log(
+        `[CharacterPipeline] ✅ "${modelName}" — loaded ${authoredClips.size} AUTHORED_CLIP clips from motion bank`
+      );
+    } else {
+      // Fall back to procedural placeholders
+      console.warn(
+        `[CharacterPipeline] ⚠️ "${modelName}" — no authored clips found. ` +
+        `Generating PROCEDURAL_PLACEHOLDER clips for pipeline verification.\n` +
+        `  → Source: check ${characterId ? characterId + '_rigged.glb' : 'rigged GLB'} from Bannon repo\n` +
+        `  → Bridge: check animation_bridge/SOURCE_REGISTRY.json\n` +
+        `  → Required: idle, walk, attack, hit, knockdown clips`
+      );
+
+      if (targetBoneNames.length > 0) {
+        const proceduralClips = generateProceduralClipSet(targetBoneNames);
+        registry.registerBannonMotionBank(proceduralClips, 'PROCEDURAL_PLACEHOLDER');
+        processedClips = [...proceduralClips.values()];
+        bridgeClipCount = processedClips.length;
+        retargetVerdict = 'SKIPPED';
+      }
     }
   }
 
@@ -728,12 +754,12 @@ function resolveClipSemanticState(clipName: string): string | null {
  * @param applyPSXShader - Whether to apply PSX vertex snapping (true for combat, false for portrait)
  * @returns PipelineResult or null if BLOCKED
  */
-export function runCharacterPipeline(
+export async function runCharacterPipeline(
   scene: THREE.Group,
   animations: THREE.AnimationClip[],
   modelUrl: string,
   applyPSXShader = true,
-): PipelineResult | null {
+): Promise<PipelineResult | null> {
   const modelName = modelUrl.split('/').pop() ?? modelUrl;
 
   // ── STEP 1: Validate authored asset (FAIL CLOSED) ─────────────────────────
@@ -901,7 +927,7 @@ export function runCharacterPipeline(
   // Apply retarget layer: source bone names → canonical → target skeleton bones
   // Run validateAnimationChannelBones() before mixer starts
   const characterId = modelName.replace(/[_.].*$/, '').toUpperCase();
-  const extractionResult = extractAndRetargetAnimations(
+  const extractionResult = await extractAndRetargetAnimations(
     scene,    // source: original un-cloned scene (for bone name indexing)
     cloned,   // target: the visible clone the mixer will drive
     animations,

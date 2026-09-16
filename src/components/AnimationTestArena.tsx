@@ -110,44 +110,45 @@ function CharacterViewerInner({
   useEffect(() => {
     if (!scene) return;
     const report = AutoRigDetector.analyze(scene, animations);
-    const result = runCharacterPipeline(scene as THREE.Group, animations, modelUrl, false);
-    if (!result) {
-      console.error(`[AnimTestArena] BLOCKED — "${modelUrl}" failed pipeline`);
-      return;
-    }
-    normalizedRef.current = {
-      scene: result.scene,
-      forwardCorrectionY: result.forwardCorrectionY,
-      mixer: result.mixer,
-      actions: result.actions,
-    };
+    let cancelled = false;
+    runCharacterPipeline(scene as THREE.Group, animations, modelUrl, false).then(result => {
+      if (cancelled) return;
+      if (!result) {
+        console.error(`[AnimTestArena] BLOCKED — "${modelUrl}" failed pipeline`);
+        return;
+      }
+      normalizedRef.current = {
+        scene: result.scene,
+        forwardCorrectionY: result.forwardCorrectionY,
+        mixer: result.mixer,
+        actions: result.actions,
+      };
 
-    // Auto-play idle
-    const availableClips = Object.keys(result.actions);
-    const { clipName } = resolveClipForSemanticState('idle', availableClips);
-    if (clipName && result.actions[clipName]) {
-      const action = result.actions[clipName];
-      action.setLoop(THREE.LoopRepeat, Infinity);
-      action.reset().play();
-    }
+      // Auto-play idle
+      const availableClips = Object.keys(result.actions);
+      const { clipName } = resolveClipForSemanticState('idle', availableClips);
+      if (clipName && result.actions[clipName]) {
+        const action = result.actions[clipName];
+        action.setLoop(THREE.LoopRepeat, Infinity);
+        action.reset().play();
+      }
 
-    // Run integrity gate
-    const integrityReport = runAnimationIntegrityGate({
-      characterName: modelUrl.split('/').pop()?.replace('.glb', '').toUpperCase() ?? 'UNKNOWN',
-      clonedScene: result.scene,
-      mixer: result.mixer,
-      actions: result.actions,
-      activeClipName: clipName,
+      // Run integrity gate
+      const integrityReport = runAnimationIntegrityGate({
+        characterName: modelUrl.split('/').pop()?.replace('.glb', '').toUpperCase() ?? 'UNKNOWN',
+        clonedScene: result.scene,
+        mixer: result.mixer,
+        actions: result.actions,
+        activeClipName: clipName,
+      });
+
+      if (!readyFiredRef.current) {
+        readyFiredRef.current = true;
+        onReady(normalizedRef.current, integrityReport);
+      }
+
+      return () => { cancelled = true; };
     });
-
-    if (!readyFiredRef.current) {
-      readyFiredRef.current = true;
-      onReady(normalizedRef.current, integrityReport);
-    }
-
-    return () => {
-      result.mixer.stopAllAction();
-    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scene, modelUrl]);
 

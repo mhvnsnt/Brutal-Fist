@@ -179,6 +179,100 @@ export class AnimationSourceRegistry {
   }
 
   /**
+   * Register clips loaded from BannonClipJsonAdapter.loadBannonClipsFromDirectory()
+   * or loadBannonClipsFromUrls(). These are classified as AUTHORED_CLIP.
+   *
+   * This is the primary method for wiring the Bannon motion bank into the
+   * AnimationSourceRegistry with AUTHORED_CLIP verdicts.
+   *
+   * @param clips - Map<semanticState, AnimationClip> from BannonClipJsonAdapter
+   * @param sourceDir - Source directory or URL prefix for provenance
+   */
+  registerAuthoredClips(
+    clips: Map<string, THREE.AnimationClip>,
+    sourceDir = 'assets/moves/clips/',
+  ): void {
+    let registeredCount = 0;
+    let skippedCount = 0;
+
+    for (const [semanticState, clip] of clips) {
+      const isProcedural = (clip as any).userData?.isProcedural === true;
+      const clipSourceType = (clip as any).userData?.clipSourceType ?? (isProcedural ? 'PROCEDURAL' : 'AUTHORED_CLIP');
+
+      // Determine source type from clip metadata
+      const sourceType: AnimationSourceType = isProcedural ? 'PROCEDURAL' : 'BANNON_MOTION_BANK';
+      const priority = isProcedural ? SOURCE_PRIORITY.PROCEDURAL : SOURCE_PRIORITY.BANNON_MOTION_BANK;
+
+      const existing = this.sourcesByState.get(semanticState);
+      if (existing && existing.priority <= priority) {
+        skippedCount++;
+        continue;
+      }
+
+      this.register({
+        id: `authored_${semanticState}_${Date.now()}`,
+        type: sourceType,
+        semanticState,
+        file: (clip as any).userData?.sourceFile ?? (clip as any).userData?.sourceUrl ?? sourceDir,
+        sourceConvention: 'bannon',
+        license: (clip as any).userData?.license ?? 'proprietary',
+        provenance: `BannonClipJsonAdapter: ${sourceDir} — ${clipSourceType}`,
+        redistributable: false,
+        priority,
+        clip,
+      });
+      registeredCount++;
+    }
+
+    console.log(
+      `[AnimationSourceRegistry] 📥 registerAuthoredClips: ` +
+      `${registeredCount} registered, ${skippedCount} skipped (lower priority)`
+    );
+  }
+
+  /**
+   * Get a summary of clip source verdicts for all registered states.
+   * Used by PreCombatValidationScreen and AnimationIntegrityGate.
+   *
+   * Returns per-state verdict: AUTHORED_CLIP | RETARGETED_AUTHORED_CLIP | PLACEHOLDER_TEST_CLIP | MISSING_CLIP
+   */
+  getClipSourceVerdicts(requiredStates: string[]): Record<string, string> {
+    const verdicts: Record<string, string> = {};
+
+    for (const state of requiredStates) {
+      const source = this.sourcesByState.get(state);
+      if (!source) {
+        verdicts[state] = 'MISSING_CLIP';
+        continue;
+      }
+
+      if (source.type === 'PROCEDURAL') {
+        verdicts[state] = 'PLACEHOLDER_TEST_CLIP';
+      } else if (source.type === 'BANNON_MOTION_BANK' || source.type === 'OPEN_MOCAP') {
+        const clip = source.clip;
+        const clipSourceType = (clip as any)?.userData?.clipSourceType;
+        if (clipSourceType === 'RETARGETED_AUTHORED_CLIP') {
+          verdicts[state] = 'RETARGETED_AUTHORED_CLIP';
+        } else {
+          verdicts[state] = 'AUTHORED_CLIP';
+        }
+      } else {
+        verdicts[state] = 'AUTHORED_CLIP';
+      }
+    }
+
+    return verdicts;
+  }
+
+  /**
+   * Check if any MISSING_CLIP verdicts exist for required states.
+   * Returns the list of states with MISSING_CLIP verdict.
+   */
+  getMissingClipVerdicts(requiredStates: string[]): string[] {
+    return requiredStates.filter(s => !this.clipsByState.has(s));
+  }
+
+  /**
    * Get the best available clip for a semantic state.
    * Returns null if no clip is registered for this state.
    */
@@ -292,7 +386,7 @@ export function validateRegistryCompleteness(
 } {
   const missingStates = registry.getMissingStates([...REQUIRED_SEMANTIC_STATES]);
   const proceduralCount = registry.getProceduralCount();
-  const registeredCount = registry.getRegisteredStates().length;
+  let registeredCount = registry.getRegisteredStates().length;
 
   let verdict: 'PASS' | 'PARTIAL' | 'BLOCKED';
   if (missingStates.length === 0 && proceduralCount === 0) {
