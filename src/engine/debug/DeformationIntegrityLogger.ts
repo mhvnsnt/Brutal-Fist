@@ -99,10 +99,35 @@ function hasNaNOrInfinity(matrix: THREE.Matrix4): boolean {
 }
 
 /**
- * Sample vertex positions from a SkinnedMesh geometry.
- * Returns world-space positions for up to `count` vertices.
+ * Sample SKINNED vertex positions (boneTransform), not bind-pose * matrixWorld.
+ * Bind-pose sampling cannot prove deformation — the mesh object can sit still
+ * while vertices skin. This is the honest last-mile measurement.
  */
+function sampleSkinnedVertexPositions(mesh: THREE.SkinnedMesh, count: number): THREE.Vector3[] {
+  const positions: THREE.Vector3[] = [];
+  const posAttr = mesh.geometry.attributes.position;
+  if (!posAttr || !mesh.skeleton || mesh.skeleton.bones.length === 0) return positions;
+
+  mesh.updateMatrixWorld(true);
+  mesh.skeleton.update();
+
+  const total = posAttr.count;
+  const step = Math.max(1, Math.floor(total / count));
+  const tmp = new THREE.Vector3();
+
+  for (let i = 0; i < total && positions.length < count; i += step) {
+    mesh.boneTransform(i, tmp);
+    tmp.applyMatrix4(mesh.matrixWorld);
+    positions.push(tmp.clone());
+  }
+  return positions;
+}
+
+/** Sample vertex positions from a SkinnedMesh geometry. Prefers skinned verts. */
 function sampleVertexPositions(mesh: THREE.SkinnedMesh, count: number): THREE.Vector3[] {
+  const skinned = sampleSkinnedVertexPositions(mesh, count);
+  if (skinned.length > 0) return skinned;
+
   const positions: THREE.Vector3[] = [];
   const posAttr = mesh.geometry.attributes.position;
   if (!posAttr) return positions;
@@ -116,8 +141,126 @@ function sampleVertexPositions(mesh: THREE.SkinnedMesh, count: number): THREE.Ve
       posAttr.getY(i),
       posAttr.getZ(i),
     );
-    // Transform to world space using the mesh's world matrix
     local.applyMatrix4(mesh.matrixWorld);
+    positions.push(local);
+  }
+  return positions;
+}
+
+export interface LiveDeformEvidence {
+  semanticState: string;
+  clipName: string | null;
+  sourceType: 'AUTHORED_CLIP' | 'RETARGETED_AUTHORED_CLIP' | 'PLACEHOLDER_TEST_CLIP' | 'MISSING_CLIP';
+  skinnedMeshCount: number;
+  skeletonBoneCount: number;
+  mixerRootIsClone: boolean;
+  maxBoneTravel: number;
+  maxVertexDisplacement: number;
+  sampledVertices: number;
+  framesObserved: number;
+  verdict: 'PASS' | 'WARN' | 'UNKNOWN' | 'BLOCKED';
+  reason: string;
+}
+
+export interface DeformSnapshot {
+  bonePos: Map<string, THREE.Vector3>;
+  verts: THREE.Vector3[];
+  skinnedMeshCount: number;
+  skeletonBoneCount: number;
+}
+
+export function captureDeformSnapshot(scene: THREE.Object3D): DeformSnapshot {
+  scene.updateMatrixWorld(true);
+  const bonePos = new Map<string, THREE.Vector3>();
+  let skinnedMeshCount = 0;
+  let skeletonBoneCount = 0;
+  const meshes: THREE.SkinnedMesh[] = [];
+
+  scene.traverse((child) => {
+    if ((child as THREE.Bone).isBone) {
+      skeletonBoneCount++;
+      const p = new THREE.Vector3();
+      child.getWorldPosition(p);
+      bonePos.set(child.name || child.uuid, p);
+    }
+    if ((child as THREE.SkinnedMesh).isSkinnedMesh) {
+      skinnedMeshCount++;
+      meshes.push(child as THREE.SkinnedMesh);
+    }
+  });
+
+  const testMesh = meshes.find((sm) => sm.skeleton && sm.skeleton.bones.length > 0 && sm.geometry.attributes.position);
+  const verts = testMesh ? sampleSkinnedVertexPositions(testMesh, SAMPLE_VERTEX_COUNT) : [];
+
+  return { bonePos, verts, skinnedMeshCount, skeletonBoneCount };
+}
+
+export function evidenceFromSnapshots(
+  before: DeformSnapshot,
+  after: DeformSnapshot,
+  meta: {
+    semanticState: string;
+    clipName: string | null;
+    sourceType: LiveDeformEvidence['sourceType'];
+    mixerRootIsClone: boolean;
+    framesObserved: number;
+  },
+): LiveDeformEvidence {
+  let maxBoneTravel = 0;
+  after.bonePos.forEach((pos, name) => {
+    const prev = before.bonePos.get(name);
+    if (!prev) return;
+    maxBoneTravel = Math.max(maxBoneTravel, prev.distanceTo(pos));
+  });
+
+  let maxVertexDisplacement = 0;
+  const n = Math.min(before.verts.length, after.verts.length);
+  for (let i = 0; i < n; i++) {
+    maxVertexDisplacement = Math.max(maxVertexDisplacement, before.verts[i].distanceTo(after.verts[i]));
+  }
+
+  const { semanticState, clipName, sourceType, mixerRootIsClone, framesObserved } = meta;
+  let verdict: LiveDeformEvidence['verdict'] = 'UNKNOWN';
+  let reason = 'insufficient evidence';
+
+  if (!clipName || sourceType === 'MISSING_CLIP') {
+    verdict = 'BLOCKED';
+    reason = 'MISSING_CLIP — no clip bound for this state';
+  } else if (sourceType === 'PLACEHOLDER_TEST_CLIP') {
+    verdict = 'WARN';
+    reason = 'PLACEHOLDER cannot be PASS';
+  } else if (after.skinnedMeshCount === 0 || after.skeletonBoneCount === 0) {
+    verdict = 'BLOCKED';
+    reason = 'no visible SkinnedMesh / skeleton';
+  } else if (!mixerRootIsClone) {
+    verdict = 'WARN';
+    reason = 'mixer root is not the visible clone';
+  } else if (maxBoneTravel < MIN_VERTEX_DISPLACEMENT && maxVertexDisplacement < MIN_VERTEX_DISPLACEMENT) {
+    verdict = 'WARN';
+    reason = 'bones and skinned verts did not move — conversion is not a deformation PASS';
+  } else if (maxVertexDisplacement < MIN_VERTEX_DISPLACEMENT) {
+    verdict = 'WARN';
+    reason = `bones moved (${maxBoneTravel.toFixed(4)}) but skinned verts did not — bind/skin failure`;
+  } else {
+    verdict = 'PASS';
+    reason = `skinned verts displaced ${maxVertexDisplacement.toFixed(4)} · bone travel ${maxBoneTravel.toFixed(4)}`;
+  }
+
+  return {
+    semanticState,
+    clipName,
+    sourceType,
+    skinnedMeshCount: after.skinnedMeshCount,
+    skeletonBoneCount: after.skeletonBoneCount,
+    mixerRootIsClone,
+    maxBoneTravel,
+    maxVertexDisplacement,
+    sampledVertices: n,
+    framesObserved,
+    verdict,
+    reason,
+  };
+}
     positions.push(local);
   }
   return positions;

@@ -16,6 +16,12 @@ import {
   type ClipSourceType,
 } from '../engine/combat/AnimationIntegrityGate';
 import { SEMANTIC_STATE_ALIASES } from '../engine/retarget/SemanticStateAliases';
+import {
+  captureDeformSnapshot,
+  evidenceFromSnapshots,
+  type DeformSnapshot,
+  type LiveDeformEvidence,
+} from '../engine/debug/DeformationIntegrityLogger';
 
 // ── All semantic states to cycle through ─────────────────────────────────────
 const SEMANTIC_STATES: string[] = [
@@ -94,6 +100,7 @@ interface CharacterViewerProps {
   currentSemanticState: string;
   onReady: (result: NormalizedResult, report: AnimationIntegrityReport) => void;
   onClipChange: (clipName: string | null, sourceType: ClipSourceType) => void;
+  onEvidence: (evidence: LiveDeformEvidence) => void;
 }
 
 function CharacterViewerInner({
@@ -101,17 +108,27 @@ function CharacterViewerInner({
   currentSemanticState,
   onReady,
   onClipChange,
+  onEvidence,
 }: CharacterViewerProps) {
   const { scene, animations } = useGLTF(modelUrl, true, true);
   const normalizedRef = useRef<NormalizedResult | null>(null);
   const groupRef = useRef<THREE.Group>(null);
   const readyFiredRef = useRef(false);
   const lastStateRef = useRef<string>('');
+  const framesOnClipRef = useRef(0);
+  const beforeSnapRef = useRef<DeformSnapshot | null>(null);
+  const measuredRef = useRef(false);
+  const clipMetaRef = useRef<{ clipName: string | null; sourceType: ClipSourceType }>({ clipName: null, sourceType: 'MISSING_CLIP' });
 
   useEffect(() => {
     if (!scene) return;
     const report = AutoRigDetector.analyze(scene, animations);
     let cancelled = false;
+    readyFiredRef.current = false;
+    lastStateRef.current = '';
+    framesOnClipRef.current = 0;
+    beforeSnapRef.current = null;
+    measuredRef.current = false;
     runCharacterPipeline(scene as THREE.Group, animations, modelUrl, false).then(result => {
       if (cancelled) return;
       if (!result) {
@@ -167,6 +184,10 @@ function CharacterViewerInner({
       `[AnimTestArena] 🎬 STATE: "${currentSemanticState}" → clip="${clipName ?? 'NONE'}" [${sourceType}]`
     );
     onClipChange(clipName, sourceType);
+    clipMetaRef.current = { clipName, sourceType };
+    framesOnClipRef.current = 0;
+    beforeSnapRef.current = null;
+    measuredRef.current = false;
 
     if (!clipName || !normalized.actions[clipName]) {
       console.warn(`[AnimTestArena] ⚠️ MISSING_CLIP for semantic state "${currentSemanticState}"`);
@@ -194,6 +215,28 @@ function CharacterViewerInner({
     const normalized = normalizedRef.current;
     if (normalized) {
       normalized.mixer.update(delta);
+      framesOnClipRef.current += 1;
+      if (framesOnClipRef.current === 2 && !beforeSnapRef.current) {
+        beforeSnapRef.current = captureDeformSnapshot(normalized.scene);
+      }
+      if (framesOnClipRef.current === 14 && !measuredRef.current && beforeSnapRef.current) {
+        measuredRef.current = true;
+        const after = captureDeformSnapshot(normalized.scene);
+        const mixerRoot = (normalized.mixer as unknown as { _root?: THREE.Object3D })._root;
+        const evidence = evidenceFromSnapshots(beforeSnapRef.current, after, {
+          semanticState: currentSemanticState,
+          clipName: clipMetaRef.current.clipName,
+          sourceType: clipMetaRef.current.sourceType,
+          mixerRootIsClone: mixerRoot != null && mixerRoot.uuid === normalized.scene.uuid,
+          framesObserved: framesOnClipRef.current,
+        });
+        console.log(
+          `[AnimTestArena] 📐 ${currentSemanticState} ${evidence.verdict} — ${evidence.reason} ` +
+          `verts=${evidence.maxVertexDisplacement.toFixed(5)} bones=${evidence.maxBoneTravel.toFixed(5)} ` +
+          `skinned=${evidence.skinnedMeshCount} bonesN=${evidence.skeletonBoneCount}`,
+        );
+        onEvidence(evidence);
+      }
     }
     if (groupRef.current) {
       groupRef.current.position.set(0, 0, 0);
@@ -238,6 +281,7 @@ export default function AnimationTestArena({ onBack }: AnimationTestArenaProps) 
   const [currentClipName, setCurrentClipName] = useState<string | null>(null);
   const [currentClipSource, setCurrentClipSource] = useState<ClipSourceType>('MISSING_CLIP');
   const [showLog, setShowLog] = useState(false);
+  const [evidenceByState, setEvidenceByState] = useState<Record<string, LiveDeformEvidence>>({});
   const autoCycleRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const currentSemanticState = SEMANTIC_STATES[currentStateIndex];
@@ -249,6 +293,7 @@ export default function AnimationTestArena({ onBack }: AnimationTestArenaProps) 
     setCurrentClipName(null);
     setCurrentClipSource('MISSING_CLIP');
     setCurrentStateIndex(0);
+    setEvidenceByState({});
 
     const glbEntry = getGlbEntryForFighter(fighter.id, fighter.model)
       ?? BANNON_GLB_PLAYABLE_MODELS.find(e => e.id === fighter.id);
@@ -265,6 +310,7 @@ export default function AnimationTestArena({ onBack }: AnimationTestArenaProps) 
     setCurrentClipName(null);
     setCurrentClipSource('MISSING_CLIP');
     setCurrentStateIndex(0);
+    setEvidenceByState({});
     const url = resolveGlbUrl(entry.model, entry.overrideUrl);
     setModelUrl(url);
     console.log(`[AnimTestArena] 👕 Attire: ${entry.attire} → ${url}`);
@@ -312,6 +358,10 @@ export default function AnimationTestArena({ onBack }: AnimationTestArenaProps) 
   const handleClipChange = useCallback((clipName: string | null, sourceType: ClipSourceType) => {
     setCurrentClipName(clipName);
     setCurrentClipSource(sourceType);
+  }, []);
+
+  const handleEvidence = useCallback((evidence: LiveDeformEvidence) => {
+    setEvidenceByState((prev) => ({ ...prev, [evidence.semanticState]: evidence }));
   }, []);
 
   const verdictColor = integrityReport
@@ -410,10 +460,12 @@ export default function AnimationTestArena({ onBack }: AnimationTestArenaProps) 
               />
 
               <CharacterViewer
+                key={modelUrl}
                 modelUrl={modelUrl}
                 currentSemanticState={currentSemanticState}
                 onReady={handleReady}
                 onClipChange={handleClipChange}
+                onEvidence={handleEvidence}
               />
 
               <OrbitControls
@@ -571,7 +623,30 @@ export default function AnimationTestArena({ onBack }: AnimationTestArenaProps) 
                 </div>
               </div>
 
-              {/* Bone travel */}
+              {/* Live skinned deformation — last-mile proof */}
+              <div className="space-y-1">
+                <div className="text-[9px] tracking-widest text-zinc-500 mb-1">LIVE DEFORM</div>
+                {(() => {
+                  const ev = evidenceByState[currentSemanticState];
+                  if (!ev) {
+                    return <div className="text-[9px] text-zinc-600">Observing mixer… (needs ~14 frames)</div>;
+                  }
+                  const color = ev.verdict === 'PASS' ? '#22c55e' : ev.verdict === 'WARN' ? '#f59e0b' : ev.verdict === 'BLOCKED' ? '#ef4444' : '#94a3b8';
+                  return (
+                    <>
+                      <Row label="VERDICT" value={ev.verdict} color={color} warn={ev.verdict !== 'PASS'} />
+                      <Row label="SKINNED" value={ev.skinnedMeshCount} warn={ev.skinnedMeshCount === 0} />
+                      <Row label="BONES" value={ev.skeletonBoneCount} warn={ev.skeletonBoneCount === 0} />
+                      <Row label="VERT Δ" value={ev.maxVertexDisplacement.toFixed(5)} warn={ev.maxVertexDisplacement < 0.0001} />
+                      <Row label="BONE Δ" value={ev.maxBoneTravel.toFixed(5)} warn={ev.maxBoneTravel < 0.0001} />
+                      <Row label="MIXER=CLONE" value={ev.mixerRootIsClone ? 'YES' : 'NO'} warn={!ev.mixerRootIsClone} />
+                      <div className="text-[8px] text-zinc-500 leading-snug">{ev.reason}</div>
+                    </>
+                  );
+                })()}
+              </div>
+
+              {/* Bone travel (gate synthetic tick) */}
               <div className="space-y-1">
                 <div className="text-[9px] tracking-widest text-zinc-500 mb-1">BONE TRAVEL</div>
                 <Row
@@ -637,7 +712,11 @@ export default function AnimationTestArena({ onBack }: AnimationTestArenaProps) 
           {/* ── Semantic state list ── */}
           <div className="border-t border-zinc-800 mt-2">
             <div className="px-3 py-2 text-[9px] tracking-widest text-zinc-500">ALL STATES</div>
-            {SEMANTIC_STATES.map((state, i) => (
+            {SEMANTIC_STATES.map((state, i) => {
+              const ev = evidenceByState[state];
+              const mark = ev ? (ev.verdict === 'PASS' ? '✓' : ev.verdict === 'WARN' ? '⚠' : '✗') : '·';
+              const markColor = ev?.verdict === 'PASS' ? 'text-green-400' : ev?.verdict === 'WARN' ? 'text-yellow-400' : ev ? 'text-red-400' : 'text-zinc-700';
+              return (
               <button
                 key={state}
                 onClick={() => goToState(i)}
@@ -646,10 +725,12 @@ export default function AnimationTestArena({ onBack }: AnimationTestArenaProps) 
                     ? 'bg-yellow-400/10 text-yellow-400' :'text-zinc-500 hover:text-white hover:bg-zinc-800/30'
                 }`}
               >
+                <span className={`mr-2 ${markColor}`}>{mark}</span>
                 <span className="text-zinc-700 mr-2">{String(i + 1).padStart(2, '0')}</span>
                 {state.toUpperCase().replace('_', ' ')}
               </button>
-            ))}
+              );
+            })}
           </div>
         </div>
       </div>
