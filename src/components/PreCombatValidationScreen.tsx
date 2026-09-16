@@ -21,6 +21,10 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { type BannonFighterProfile } from '../data/bannonRoster';
 import { BANNON_GLB_PLAYABLE_MODELS } from '../data/bannonGlbRoster';
 import { REQUIRED_SEMANTIC_STATES } from '../engine/retarget/AnimationSourceRegistry';
+import {
+  loadBannonClipsFromPublic,
+  getCachedBannonMotionBank,
+} from '../engine/retarget/BannonClipJsonAdapter';
 
 // ── Checklist item types ──────────────────────────────────────────────────────
 
@@ -91,9 +95,9 @@ function validateFighterRoster(fighter: BannonFighterProfile): FighterValidation
   }
 
   // ── Check 3: Rig status (skeleton bones > 0 proxy) ───────────────────────
-  const hasRig = rigStatus === 'skinned' || rigStatus === 'named-part';
-  const rigWarn = rigStatus === 'single-mesh-needs-rigready' || rigStatus === 'qa-weak';
-  const rigFail = rigStatus === 'qa-fail' || rigStatus === 'unknown';
+  const hasRig = rigStatus === 'skinned';
+  const rigWarn = rigStatus === 'qa-weak';
+  const rigFail = !hasRig && !rigWarn;
 
   let rigCheckStatus: CheckStatus = 'PASS';
   if (rigFail) rigCheckStatus = 'FAIL';
@@ -120,7 +124,7 @@ function validateFighterRoster(fighter: BannonFighterProfile): FighterValidation
   }
 
   // ── Check 4: Skinned mesh (proxy via rig status) ──────────────────────────
-  const hasSkinnedMesh = hasRig || rigWarn;
+  const hasSkinnedMesh = hasRig;
   checks.push({
     id: 'skinned_meshes',
     label: 'Visible Skinned Meshes > 0',
@@ -135,51 +139,64 @@ function validateFighterRoster(fighter: BannonFighterProfile): FighterValidation
     remediationSteps.push(`Static GLB detected: run scripts/rig-static-glbs-cli.mjs to add JOINTS_0/WEIGHTS_0 skin data`);
   }
 
-  // ── Check 5: Animation clips > 0 (proxy via registry) ────────────────────
-  // We check the fighter's animation source data from the manifest
-  const hasAnimationSource = fighter.id === 'bannon' || fighter.id === 'maime';
-  const animClipStatus: CheckStatus = hasAnimationSource ? 'WARN' : 'WARN';
+  // ── Check 5: Animation clips > 0 (motion bank, measured) ────────────────
+  const bank = getCachedBannonMotionBank();
+  const authoredCount = bank?.clips.size ?? 0;
+  const converted = bank?.stats.converted ?? 0;
+  const animClipStatus: CheckStatus = authoredCount > 0 ? 'PASS' : 'FAIL';
 
   checks.push({
     id: 'animation_clips',
     label: 'Animation Clips > 0',
-    description: 'Fighter has at least one animation clip registered in AnimationSourceRegistry',
+    description: 'Authored Bannon Euler motion-bank clips converted to quaternion tracks',
     status: animClipStatus,
-    value: 'Requires runtime validation — see AnimationTestArena',
-    remediation: `Open AnimationTestArena to verify clip count. If 0: run BannonClipJsonAdapter.loadFromDirectory('assets/moves/clips/')`,
+    value: authoredCount > 0
+      ? `${authoredCount} authored / ${converted} converted (index ${bank?.stats.indexSize ?? 0})`
+      : '0 authored clips',
+    remediation: authoredCount > 0 ? undefined
+      : `Fetch ${'https://raw.githubusercontent.com/mhvnsnt/Bannon/main/assets/moves/clips/index.json'} and convert rx/ry/rz keys via BannonEulerMotionAdapter`,
   });
 
+  if (authoredCount === 0) {
+    remediationSteps.push('Load the real Bannon motion bank (assets/moves/clips/*.json) — Euler rx/ry/rz must convert to quaternion tracks');
+  }
+
   // ── Check 6: No MISSING_CLIP verdicts ─────────────────────────────────────
-  // Required semantic states that must have clips
   const criticalStates = ['idle', 'walk_forward', 'attack_1', 'block', 'hit_reaction', 'knockdown'];
+  const missingAuthored = criticalStates.filter((s) => !bank?.clips.has(s));
+  const missingStatus: CheckStatus = missingAuthored.length === 0 && authoredCount > 0 ? 'PASS' : 'FAIL';
 
   checks.push({
     id: 'no_missing_clips',
     label: 'No MISSING_CLIP Verdicts',
-    description: `Required semantic states have animation clips: [${criticalStates.join(', ')}]`,
-    status: 'WARN',
-    value: 'Requires runtime validation — see AnimationTestArena',
-    remediation: [
-      `1. Open AnimationTestArena and cycle through all semantic states`,
-      `2. Any state showing MISSING (red badge) needs a clip`,
-      `3. Add authored clips to assets/moves/clips/ and reload BannonClipJsonAdapter`,
-      `4. Or use procedural placeholders for pipeline testing (TEST_ONLY verdict)`,
-    ].join('\n'),
+    description: `Required semantic states have authored clips: [${criticalStates.join(', ')}]`,
+    status: missingStatus,
+    value: missingAuthored.length === 0 ? 'none missing' : `MISSING_CLIP: ${missingAuthored.join(', ')}`,
+    remediation: missingAuthored.length === 0 ? undefined
+      : `MISSING_CLIP remains MISSING_CLIP for: ${missingAuthored.join(', ')}. Add matching files in the Bannon motion bank. Do not substitute idle.`,
   });
 
+  if (missingAuthored.length > 0) {
+    remediationSteps.push(`MISSING_CLIP: ${missingAuthored.join(', ')} — do not substitute idle or procedural placeholders`);
+  }
+
   // ── Check 7: AnimationSourceRegistry completeness ─────────────────────────
+  const requiredMissing = REQUIRED_SEMANTIC_STATES.filter((s) => !bank?.clips.has(s));
+  const registryStatus: CheckStatus = requiredMissing.length === 0 ? 'PASS' : 'FAIL';
+
   checks.push({
     id: 'registry_completeness',
     label: 'AnimationSourceRegistry Complete',
-    description: `All ${REQUIRED_SEMANTIC_STATES.length} required semantic states registered`,
-    status: 'WARN',
-    value: `${REQUIRED_SEMANTIC_STATES.length} states required — verify in AnimationTestArena`,
-    remediation: [
-      `Run AnimationTestArena to see registry completeness report`,
-      `Missing states: add clips to assets/moves/clips/ with matching semanticState field`,
-      `Or call BannonClipJsonAdapter.generateProceduralClipSet() for placeholder coverage`,
-    ].join('\n'),
+    description: `All ${REQUIRED_SEMANTIC_STATES.length} required semantic states have authored/retargeted clips`,
+    status: registryStatus,
+    value: `${REQUIRED_SEMANTIC_STATES.length - requiredMissing.length}/${REQUIRED_SEMANTIC_STATES.length} authored`,
+    remediation: requiredMissing.length === 0 ? undefined
+      : `Still MISSING_CLIP: [${requiredMissing.join(', ')}]`,
   });
+
+  if (requiredMissing.length > 0) {
+    remediationSteps.push(`Registry incomplete — MISSING_CLIP: ${requiredMissing.join(', ')}`);
+  }
 
   // ── Compute overall status ────────────────────────────────────────────────
   const hasFail = checks.some(c => c.status === 'FAIL');
@@ -320,13 +337,16 @@ export default function PreCombatValidationScreen({
   const [p1Result, setP1Result] = useState<FighterValidationResult | null>(null);
   const [p2Result, setP2Result] = useState<FighterValidationResult | null>(null);
   const [validating, setValidating] = useState(true);
-  const [overrideEnabled, setOverrideEnabled] = useState(false);
 
-  const runValidation = useCallback(() => {
+  const runValidation = useCallback(async () => {
     setValidating(true);
-    setOverrideEnabled(false);
 
-    // Run validation synchronously (roster-level checks)
+    try {
+      await loadBannonClipsFromPublic();
+    } catch (error) {
+      console.warn('[PreCombatValidation] Motion bank load failed:', error);
+    }
+
     const r1 = validateFighterRoster(p1Fighter);
     const r2 = validateFighterRoster(p2Fighter);
 
@@ -334,18 +354,19 @@ export default function PreCombatValidationScreen({
     setP2Result(r2);
     setValidating(false);
 
+    const bank = getCachedBannonMotionBank();
     console.log('[PreCombatValidation] P1 result:', r1.overallStatus, r1.fighterId);
     console.log('[PreCombatValidation] P2 result:', r2.overallStatus, r2.fighterId);
+    console.log('[PreCombatValidation] Motion bank:', bank?.stats, 'states', bank ? [...bank.clips.keys()] : []);
   }, [p1Fighter, p2Fighter]);
 
   useEffect(() => {
     runValidation();
   }, [runValidation]);
 
-  const bothBlocked = p1Result?.overallStatus === 'BLOCKED' && p2Result?.overallStatus === 'BLOCKED';
   const anyBlocked  = p1Result?.overallStatus === 'BLOCKED' || p2Result?.overallStatus === 'BLOCKED';
   const bothPass    = p1Result?.overallStatus === 'PASS'    && p2Result?.overallStatus === 'PASS';
-  const canProceed  = bothPass || (!anyBlocked) || overrideEnabled;
+  const canProceed  = bothPass;
 
   return (
     <div className="fixed inset-0 bg-[#080b10] text-white font-mono overflow-y-auto">
@@ -376,20 +397,20 @@ export default function PreCombatValidationScreen({
           <>
             {/* Overall verdict banner */}
             <div className={`mb-6 px-4 py-3 border ${
-              anyBlocked ? 'border-red-700 bg-red-950/30' : (!bothPass) ?'border-yellow-700 bg-yellow-950/20': 'border-green-700 bg-green-950/20'
+              canProceed ? 'border-green-700 bg-green-950/20' : 'border-red-700 bg-red-950/30'
             }`}>
               <div className="flex items-center justify-between">
                 <div>
                   <div className="text-[8px] tracking-widest text-zinc-500">COMBAT AUTHORIZATION</div>
                   <div className={`text-xl font-black tracking-widest mt-0.5 ${
-                    anyBlocked ? 'text-red-400' : (!bothPass) ?'text-yellow-400': 'text-green-400'
+                    canProceed ? 'text-green-400' : 'text-red-400'
                   }`}>
-                    {anyBlocked ? 'COMBAT BLOCKED' : !bothPass ? 'PROCEED WITH WARNINGS' : 'COMBAT AUTHORIZED'}
+                    {canProceed ? 'COMBAT AUTHORIZED' : 'COMBAT BLOCKED'}
                   </div>
                 </div>
-                {anyBlocked && (
-                  <div className="text-[9px] text-red-400/70 text-right max-w-[200px]">
-                    Resolve all BLOCKED checks before combat can begin
+                {!canProceed && (
+                  <div className="text-[9px] text-red-400/70 text-right max-w-[220px]">
+                    WARN is not PASS. Resolve every FAIL/WARN check before FIGHT unlocks.
                   </div>
                 )}
               </div>
@@ -436,8 +457,9 @@ export default function PreCombatValidationScreen({
                     <span className="text-red-500 flex-shrink-0">3.</span>
                     <span>
                       <strong className="text-white">Load animation clips:</strong>{' '}
-                      Add authored clips to <code className="text-yellow-300 bg-zinc-900 px-1">assets/moves/clips/</code>{' '}
-                      and verify in AnimationTestArena
+                      The real Bannon Euler motion bank is fetched from{' '}
+                      <code className="text-yellow-300 bg-zinc-900 px-1">mhvnsnt/Bannon assets/moves/clips/</code>
+                      {' '}and converted rx/ry/rz → quaternion. Do not substitute idle or procedural placeholders.
                     </span>
                   </div>
                   <div className="flex gap-2">
@@ -463,25 +485,10 @@ export default function PreCombatValidationScreen({
               <div className="mb-6 border border-yellow-800/50 bg-yellow-950/10 p-4">
                 <div className="text-[9px] tracking-widest text-yellow-400 mb-2">WARNINGS DETECTED</div>
                 <div className="text-[10px] text-zinc-400">
-                  Some checks returned warnings. Combat can proceed but animation quality may be reduced.
-                  Procedural placeholder clips will be used where authored clips are missing.
+                  WARN is not PASS. FIGHT stays blocked until every required semantic state
+                  has an authored/retargeted clip bound to the target skeleton. Procedural
+                  placeholders are TEST_ONLY.
                 </div>
-              </div>
-            )}
-
-            {/* Override for WARN-only (not BLOCKED) */}
-            {anyBlocked && !bothBlocked && (
-              <div className="mb-4 flex items-center gap-3">
-                <input
-                  type="checkbox"
-                  id="override-check"
-                  checked={overrideEnabled}
-                  onChange={e => setOverrideEnabled(e.target.checked)}
-                  className="w-3 h-3 accent-yellow-400"
-                />
-                <label htmlFor="override-check" className="text-[9px] tracking-widest text-yellow-600 cursor-pointer">
-                  OVERRIDE: Allow combat with partial fighter validation (TEST MODE ONLY)
-                </label>
               </div>
             )}
 
@@ -507,7 +514,7 @@ export default function PreCombatValidationScreen({
                     ? 'bg-white text-black hover:bg-yellow-400 cursor-pointer' :'bg-zinc-800 text-zinc-600 cursor-not-allowed border border-zinc-700'
                 }`}
               >
-                {anyBlocked && !overrideEnabled ? 'COMBAT BLOCKED' : 'BEGIN COMBAT'}
+                {canProceed ? 'BEGIN COMBAT' : 'COMBAT BLOCKED'}
               </button>
 
               <button
