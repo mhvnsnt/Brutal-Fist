@@ -185,49 +185,54 @@ export class AnimationBridge {
 
   /**
    * Resolve a FighterStateMachine combat state to a semantic animation state.
-   * Returns 'idle' as fallback if no mapping exists.
+   * Returns null when the combat state has no mapping — never invents idle.
    */
-  static resolveSemanticState(combatState: string): string {
-    return COMBAT_STATE_TO_SEMANTIC[combatState] ?? 'idle';
+  static resolveSemanticState(combatState: string): string | null {
+    return COMBAT_STATE_TO_SEMANTIC[combatState] ?? null;
   }
 
   /**
    * Get the best clip for a combat state from a clips-by-state map.
-   * Applies the combat state → semantic state → clip lookup chain.
+   * Required combat states (attack/block/hit/knockdown/getup/walk) do NOT
+   * silently fall back to idle. MISSING_CLIP stays MISSING_CLIP.
    */
   static getClipForCombatState(
     combatState: string,
     clipsByState: Map<string, THREE.AnimationClip>,
   ): THREE.AnimationClip | null {
     const semanticState = COMBAT_STATE_TO_SEMANTIC[combatState];
-    if (!semanticState) return clipsByState.get('idle') ?? null;
+    if (!semanticState) return null;
 
-    // Direct semantic state lookup
     const direct = clipsByState.get(semanticState);
-    if (direct) return direct;
-
-    // Fallback chain
-    const fallbacks: Record<string, string[]> = {
-      walk_back:    ['walk_forward', 'idle'],
-      strafe_left:  ['walk_forward', 'idle'],
-      strafe_right: ['walk_forward', 'idle'],
-      backdash:     ['walk_back', 'walk_forward', 'idle'],
-      crouch:       ['idle'],
-      grapple:      ['attack_2', 'attack_1', 'idle'],
-      hit_reaction: ['idle'],
-      knockdown:    ['idle'],
-      getup:        ['idle'],
-      victory:      ['idle'],
-      taunt:        ['idle'],
-      defeat:       ['knockdown', 'idle'],
-    };
-
-    const chain = fallbacks[semanticState] ?? ['idle'];
-    for (const fb of chain) {
-      const fbClip = clipsByState.get(fb);
-      if (fbClip) return fbClip;
+    if (direct) {
+      const isProcedural = (direct as any).userData?.isProcedural === true
+        || (direct as any).userData?.clipSourceType === 'PLACEHOLDER_TEST_CLIP';
+      if (isProcedural && semanticState !== 'idle') {
+        console.warn(
+          `[AnimationBridge] ⚠️ PLACEHOLDER_TEST_CLIP for "${semanticState}" is TEST_ONLY — treating as MISSING_CLIP`,
+        );
+        return null;
+      }
+      return direct;
     }
 
+    // Locomotion-only related fallbacks. Never idle-substitute combat verbs.
+    const locomotionFallbacks: Record<string, string[]> = {
+      walk_back:   ['walk_forward'],
+      strafe_left: ['walk_forward'],
+      strafe_right:['walk_forward'],
+      backdash:    ['walk_back', 'walk_forward'],
+      run:         ['walk_forward'],
+    };
+    const chain = locomotionFallbacks[semanticState] ?? [];
+    for (const fb of chain) {
+      const fbClip = clipsByState.get(fb);
+      if (fbClip && (fbClip as any).userData?.isProcedural !== true) return fbClip;
+    }
+
+    console.warn(
+      `[AnimationBridge] ⚠️ MISSING_CLIP: combatState="${combatState}" semantic="${semanticState}" — no authored clip`,
+    );
     return null;
   }
 }

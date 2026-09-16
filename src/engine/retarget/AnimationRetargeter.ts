@@ -697,3 +697,76 @@ export function resolveToCanonicalBone(boneName: string): CanonicalBone | null {
   }
   return null;
 }
+
+/**
+ * Bind a clip's tracks to an actual target skeleton's bone names.
+ *
+ * Policy:
+ *   1. Exact target bone name match (Mixamo→Mixamo) wins.
+ *   2. Else canonical alias match (mixamorigHips → Hips, etc.).
+ *   3. Else the track is UNRESOLVED — never rewritten onto a fake bone.
+ */
+export function bindClipTracksToTargetBones(
+  clip: THREE.AnimationClip,
+  targetBoneNames: readonly string[],
+): RetargetedClipResult {
+  const exact = new Set(targetBoneNames);
+  const canonicalToTarget = new Map<CanonicalBone, string>();
+  for (const name of targetBoneNames) {
+    const canonical = resolveToCanonicalBone(name);
+    if (canonical && !canonicalToTarget.has(canonical)) {
+      canonicalToTarget.set(canonical, name);
+    }
+  }
+
+  const retargetedTracks: THREE.KeyframeTrack[] = [];
+  const unresolvedTrackNames: string[] = [];
+  let resolvedTracks = 0;
+  let unresolvedTracks = 0;
+
+  for (const track of clip.tracks) {
+    const rawName = track.name;
+    const dotIdx = rawName.lastIndexOf('.');
+    const withoutProp = dotIdx !== -1 ? rawName.slice(0, dotIdx) : rawName;
+    const property = dotIdx !== -1 ? rawName.slice(dotIdx + 1) : '';
+    const pipeIdx = withoutProp.lastIndexOf('|');
+    const sourceBoneName = pipeIdx !== -1 ? withoutProp.slice(pipeIdx + 1) : withoutProp;
+
+    let targetBoneName: string | null = null;
+    if (exact.has(sourceBoneName)) {
+      targetBoneName = sourceBoneName;
+    } else {
+      const canonical = resolveToCanonicalBone(sourceBoneName);
+      targetBoneName = canonical ? (canonicalToTarget.get(canonical) ?? null) : null;
+    }
+
+    if (targetBoneName && property) {
+      const newTrackName = `${targetBoneName}.${property}`;
+      const TrackCtor = track.constructor as unknown as new (
+        name: string,
+        times: ArrayLike<number>,
+        values: ArrayLike<number>,
+        interpolation?: THREE.InterpolationModes,
+      ) => THREE.KeyframeTrack;
+      retargetedTracks.push(
+        new TrackCtor(newTrackName, track.times, track.values, track.getInterpolation()),
+      );
+      resolvedTracks++;
+    } else {
+      unresolvedTracks++;
+      unresolvedTrackNames.push(`${clip.name}::${sourceBoneName}${property ? '.' + property : ''}`);
+    }
+  }
+
+  const retargetedClip = new THREE.AnimationClip(clip.name, clip.duration, retargetedTracks);
+  const srcUserData = (clip as THREE.AnimationClip & { userData?: Record<string, unknown> }).userData ?? {};
+  (retargetedClip as THREE.AnimationClip & { userData: Record<string, unknown> }).userData = {
+    ...srcUserData,
+    clipSourceType: resolvedTracks > 0 ? 'RETARGETED_AUTHORED_CLIP' : 'MISSING_CLIP',
+    resolvedTracks,
+    unresolvedTracks,
+    unresolvedTrackNames,
+  };
+
+  return { clip: retargetedClip, resolvedTracks, unresolvedTracks, unresolvedTrackNames };
+}

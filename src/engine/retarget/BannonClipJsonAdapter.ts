@@ -4,35 +4,34 @@
  * Converts Bannon motion bank JSON (assets/moves/clips/) into real Three.js
  * AnimationClips with quaternion bone tracks.
  *
- * Bannon motion bank format (per video_to_clip.py / bake_clips.cjs):
- *   {
- *     "name": "idle",
- *     "duration": 1.0,
- *     "frameRate": 30,
- *     "bones": {
- *       "Hips": {
- *         "frames": [
- *           { "t": 0.0, "q": [x, y, z, w], "p": [x, y, z] },
- *           ...
- *         ]
- *       },
- *       ...
- *     }
- *   }
+ * REAL Bannon GitHub format (video_to_clip / bake_clips output):
+ *   { "dur": 1.73, "keys": [{ "t": 0, "pose": {...}, "bones": { mixamorigHips: {rx,ry,rz} } }] }
+ * This is Euler rotation in radians (XYZ). It is NOT quaternion animation.
+ * convertAnyBannonClipJson() detects this via isBannonEulerMotionBank() and
+ * delegates to BannonEulerMotionAdapter.
  *
- * The bone names in the JSON use Mixamo-compatible naming (mixamorigHips, etc.)
- * OR canonical Bannon names (Hips, Spine, etc.). The adapter normalizes both
- * via the BONE_ALIAS_TABLE from AnimationRetargeter.
+ * Legacy / adapter quaternion schema (also supported):
+ *   { "name", "duration", "bones": { Bone: { frames: [{ t, q, p }] } } }
  *
- * OUTPUT: THREE.AnimationClip[] with QuaternionKeyframeTrack and
- * VectorKeyframeTrack entries targeting canonical Bannon skeleton bone names.
+ * Track names keep Mixamo source names for Euler clips so AnimationRetargeter
+ * can bind them against the LIVE target skeleton. Unresolved tracks are
+ * reported, never rewritten onto a fake bone.
  *
- * PROVENANCE: Every clip produced carries a .userData.provenance field
- * documenting its source file, license, and semantic state.
+ * PROCEDURAL placeholders are PLACEHOLDER_TEST_CLIP / TEST_ONLY and must
+ * never be stamped AUTHORED_CLIP or used to unlock FIGHT.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
 import * as THREE from 'three';
+import {
+  convertBannonEulerMotionClip,
+  isBannonEulerMotionBank,
+  pickPreferredMotionBankFiles,
+  BANNON_MOTION_BANK_INDEX,
+  BANNON_MOTION_BANK_BASE,
+  type BannonEulerClipJson,
+  type BannonMotionIndex,
+} from './BannonEulerMotionAdapter';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Bannon motion bank JSON schema
@@ -43,6 +42,10 @@ export interface BannonBoneFrame {
   t: number;
   /** Quaternion [x, y, z, w] */
   q?: [number, number, number, number];
+  /** Euler radians — the real Bannon motion-bank channel when q is absent */
+  rx?: number;
+  ry?: number;
+  rz?: number;
   /** Position [x, y, z] — optional, only for root/Hips */
   p?: [number, number, number];
   /** Scale [x, y, z] — optional */
@@ -196,25 +199,34 @@ export function convertBannonClipJson(
   const mappedBones: string[] = [];
   const unmappedBones: string[] = [];
 
-  for (const [sourceBoneName, boneTrack] of Object.entries(json.bones)) {
+  for (const [sourceBoneName, boneTrack] of Object.entries(json.bones ?? {})) {
     const canonicalName = normalizeToBannonBone(sourceBoneName);
     const wasMapped = canonicalName !== sourceBoneName || BONE_NAME_ALIASES[sourceBoneName] !== undefined;
 
-    if (boneTrack.frames.length === 0) continue;
+    if (!boneTrack?.frames?.length) continue;
 
     // Sort frames by time
     const sortedFrames = [...boneTrack.frames].sort((a, b) => a.t - b.t);
 
-    // Build quaternion track
-    const hasRotation = sortedFrames.some(f => f.q != null);
-    if (hasRotation) {
+    // Build quaternion track — prefer q, else convert rx/ry/rz Euler
+    const hasQuaternion = sortedFrames.some(f => f.q != null);
+    const hasEuler = sortedFrames.some(f => f.rx != null || f.ry != null || f.rz != null);
+    if (hasQuaternion || hasEuler) {
       const times: number[] = [];
       const values: number[] = [];
       for (const frame of sortedFrames) {
-        if (frame.q == null) continue;
+        if (frame.q == null && frame.rx == null && frame.ry == null && frame.rz == null) continue;
         times.push(frame.t);
-        // Three.js QuaternionKeyframeTrack expects [x, y, z, w]
-        values.push(frame.q[0], frame.q[1], frame.q[2], frame.q[3]);
+        if (frame.q != null) {
+          values.push(frame.q[0], frame.q[1], frame.q[2], frame.q[3]);
+        } else {
+          const absMax = Math.max(Math.abs(frame.rx ?? 0), Math.abs(frame.ry ?? 0), Math.abs(frame.rz ?? 0));
+          const rx = absMax > Math.PI * 2.5 ? THREE.MathUtils.degToRad(frame.rx ?? 0) : (frame.rx ?? 0);
+          const ry = absMax > Math.PI * 2.5 ? THREE.MathUtils.degToRad(frame.ry ?? 0) : (frame.ry ?? 0);
+          const rz = absMax > Math.PI * 2.5 ? THREE.MathUtils.degToRad(frame.rz ?? 0) : (frame.rz ?? 0);
+          const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(rx, ry, rz, 'XYZ'));
+          values.push(q.x, q.y, q.z, q.w);
+        }
       }
       if (times.length > 0) {
         tracks.push(
@@ -290,11 +302,14 @@ export function convertBannonClipJson(
     frameRate: json.frameRate ?? 30,
     mappedBones: mappedBones.length,
     unmappedBones: unmappedBones.length,
+    clipSourceType: tracks.length > 0 ? 'AUTHORED_CLIP' : 'MISSING_CLIP',
+    isProcedural: false,
+    sourceFormat: 'BANNON_CLIP_JSON',
   };
 
   console.log(
     `[BannonClipJsonAdapter] ✅ Converted "${json.name}" → semantic="${semanticState}"\n` +
-    `  Duration: ${json.duration.toFixed(3)}s  Tracks: ${tracks.length}  ` +
+    `  Duration: ${(json.duration ?? 0).toFixed(3)}s  Tracks: ${tracks.length}  ` +
     `Mapped bones: ${mappedBones.length}  Unmapped: ${unmappedBones.length}\n` +
     (unmappedBones.length > 0 ? `  ⚠️ Unmapped: [${unmappedBones.join(', ')}]` : '')
   );
@@ -347,6 +362,55 @@ export function convertBannonClipBank(
   );
 
   return result;
+}
+
+/**
+ * Convert either the real Euler motion-bank format (`dur`/`keys`/`rx,ry,rz`)
+ * or the quaternion `bones.frames.q` schema. Does not invent tracks.
+ */
+export function convertAnyBannonClipJson(
+  json: unknown,
+  clipName: string,
+  semanticState?: string,
+): AdapterResult {
+  if (isBannonEulerMotionBank(json)) {
+    const euler = convertBannonEulerMotionClip(json as BannonEulerClipJson, clipName, semanticState);
+    return {
+      clip: euler.clip,
+      semanticState: euler.semanticState,
+      trackCount: euler.trackCount,
+      mappedBones: euler.sourceBoneNames.map((b) => `${b} → ${normalizeToBannonBone(b)}`),
+      unmappedBones: [],
+      source: 'BANNON_MOTION_BANK',
+      license: (json as BannonEulerClipJson).license ?? 'unknown',
+    };
+  }
+
+  const rec = json as BannonClipJson;
+  if (!rec || typeof rec !== 'object' || !rec.bones) {
+    throw new Error('UNSUPPORTED_BANNON_CLIP_FORMAT');
+  }
+  return convertBannonClipJson({
+    ...rec,
+    name: rec.name ?? clipName,
+    semanticState: semanticState ?? rec.semanticState,
+  }, semanticState);
+}
+
+export interface MotionBankLoadStats {
+  indexSize: number;
+  attempted: number;
+  converted: number;
+  failed: string[];
+  unresolvedTrackNames: string[];
+  angularTravelRadians: number;
+  source: string;
+}
+
+let cachedMotionBank: { clips: Map<string, THREE.AnimationClip>; stats: MotionBankLoadStats } | null = null;
+
+export function getCachedBannonMotionBank(): { clips: Map<string, THREE.AnimationClip>; stats: MotionBankLoadStats } | null {
+  return cachedMotionBank;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -423,6 +487,7 @@ export function generateProceduralIdleClip(
     source: 'PROCEDURAL_PLACEHOLDER',
     license: 'N/A',
     provenance: 'BannonClipJsonAdapter: generateProceduralIdleClip — REPLACE WITH AUTHORED ANIMATION',
+    clipSourceType: 'PLACEHOLDER_TEST_CLIP',
     isProcedural: true,
   };
 
@@ -488,6 +553,7 @@ export function generateProceduralWalkClip(
     source: 'PROCEDURAL_PLACEHOLDER',
     license: 'N/A',
     provenance: 'BannonClipJsonAdapter: generateProceduralWalkClip — REPLACE WITH AUTHORED ANIMATION',
+    clipSourceType: 'PLACEHOLDER_TEST_CLIP',
     isProcedural: true,
   };
 
@@ -573,6 +639,7 @@ export function generateProceduralAttackClip(
     source: 'PROCEDURAL_PLACEHOLDER',
     license: 'N/A',
     provenance: `BannonClipJsonAdapter: generateProceduralAttackClip(${semanticState}) — REPLACE WITH AUTHORED ANIMATION`,
+    clipSourceType: 'PLACEHOLDER_TEST_CLIP',
     isProcedural: true,
   };
 
@@ -844,7 +911,7 @@ export async function loadBannonClipsFromUrls(
     clipUrls.map(async (url) => {
       const res = await fetch(url);
       if (!res.ok) throw new Error(`HTTP ${res.status}: ${url}`);
-      const json: BannonClipJson = await res.json();
+      const json = await res.json();
       return { url, json };
     })
   );
@@ -857,12 +924,15 @@ export async function loadBannonClipsFromUrls(
 
     const { url, json } = settled.value;
     try {
-      const adapted = convertBannonClipJson(json);
+      const name = (json as { name?: string }).name
+        ?? decodeURIComponent(url.split('/').pop() ?? 'clip').replace(/\.json$/i, '');
+      const adapted = convertAnyBannonClipJson(json, name);
 
-      // Mark as AUTHORED_CLIP
       (adapted.clip as any).userData = {
         ...(adapted.clip as any).userData,
-        clipSourceType: 'AUTHORED_CLIP',
+        clipSourceType: adapted.trackCount > 0
+          ? ((adapted.clip as any).userData?.clipSourceType ?? 'AUTHORED_CLIP')
+          : 'MISSING_CLIP',
         sourceUrl: url,
         isProcedural: false,
       };
@@ -880,62 +950,103 @@ export async function loadBannonClipsFromUrls(
 }
 
 /**
- * Load Bannon clips from the /public/assets/moves/clips/ directory
- * using the standard clip manifest URL pattern.
+ * Load the real Bannon motion bank from GitHub (rx/ry/rz Euler keys).
+ * Falls back to a local /assets/moves/clips/manifest.json if present.
  *
- * Expects a manifest at /assets/moves/clips/manifest.json listing all clip files.
- * Falls back to a known list of semantic state filenames if manifest is absent.
+ * Never stamps PLACEHOLDER_TEST_CLIP as AUTHORED_CLIP.
  */
 export async function loadBannonClipsFromPublic(): Promise<Map<string, THREE.AnimationClip>> {
+  if (cachedMotionBank) {
+    return cachedMotionBank.clips;
+  }
+
+  const stats: MotionBankLoadStats = {
+    indexSize: 0,
+    attempted: 0,
+    converted: 0,
+    failed: [],
+    unresolvedTrackNames: [],
+    angularTravelRadians: 0,
+    source: BANNON_MOTION_BANK_INDEX,
+  };
+
+  try {
+    const indexRes = await fetch(BANNON_MOTION_BANK_INDEX);
+    if (!indexRes.ok) throw new Error(`Bannon motion index HTTP ${indexRes.status}`);
+    const index = await indexRes.json() as BannonMotionIndex;
+    stats.indexSize = Object.keys(index).length;
+
+    const preferred = pickPreferredMotionBankFiles(index);
+    stats.attempted = preferred.length;
+    const clips = new Map<string, THREE.AnimationClip>();
+
+    const loaded = await Promise.allSettled(
+      preferred.map(async ({ key, file, semanticState }) => {
+        const url = `${BANNON_MOTION_BANK_BASE}${encodeURIComponent(file)}`;
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`${key} HTTP ${res.status}`);
+        const json = await res.json();
+        const adapted = convertAnyBannonClipJson(json, key, semanticState);
+        if (adapted.trackCount === 0) throw new Error(`${key} NO_TRACKS`);
+        (adapted.clip as any).userData = {
+          ...(adapted.clip as any).userData,
+          clipSourceType: (adapted.clip as any).userData?.clipSourceType ?? 'RETARGETED_AUTHORED_CLIP',
+          sourceUrl: url,
+          sourceFile: file,
+          isProcedural: false,
+          semanticState,
+        };
+        return { key, semanticState, adapted };
+      }),
+    );
+
+    for (const settled of loaded) {
+      if (settled.status === 'rejected') {
+        stats.failed.push(String(settled.reason));
+        console.warn(`[BannonClipJsonAdapter] ⚠️ Motion-bank clip failed:`, settled.reason);
+        continue;
+      }
+      const { semanticState, adapted } = settled.value;
+      if (!clips.has(semanticState)) {
+        clips.set(semanticState, adapted.clip);
+        stats.converted++;
+        const travel = Number((adapted.clip as any).userData?.angularTravelRadians ?? 0);
+        stats.angularTravelRadians += travel;
+      }
+    }
+
+    cachedMotionBank = { clips, stats };
+    console.log(
+      `[BannonClipJsonAdapter] 📊 Bannon Euler motion bank:\n` +
+      `  Index size:     ${stats.indexSize}\n` +
+      `  Attempted:      ${stats.attempted}\n` +
+      `  Converted:      ${stats.converted}\n` +
+      `  Failed:         ${stats.failed.length}\n` +
+      `  States:         [${[...clips.keys()].join(', ')}]\n` +
+      `  Angular travel: ${stats.angularTravelRadians.toFixed(3)} rad`,
+    );
+    return clips;
+  } catch (error: any) {
+    console.warn(`[BannonClipJsonAdapter] GitHub motion bank failed (${error.message}). Trying local public/ assets.`);
+  }
+
   const MANIFEST_URL = '/assets/moves/clips/manifest.json';
-  const FALLBACK_STATES = [
-    'idle', 'walk_forward', 'walk_back', 'strafe_left', 'strafe_right',
-    'attack_1', 'attack_2', 'block', 'hit_reaction', 'knockdown', 'getup', 'grapple',
-  ];
-
-  let clipUrls: string[] = [];
-
-  // Try to load manifest
   try {
     const res = await fetch(MANIFEST_URL);
     if (res.ok) {
       const manifest = await res.json();
-      clipUrls = (manifest.clips ?? []).map((f: string) =>
-        f.startsWith('/') ? f : `/assets/moves/clips/${f}`
+      const clipUrls = (manifest.clips ?? []).map((f: string) =>
+        f.startsWith('/') || f.startsWith('http') ? f : `/assets/moves/clips/${f}`
       );
-      console.log(`[BannonClipJsonAdapter] Loaded clip manifest: ${clipUrls.length} entries`);
-    } else {
-      throw new Error(`Manifest not found (${res.status})`);
+      const local = await loadBannonClipsFromUrls(clipUrls);
+      cachedMotionBank = { clips: local, stats: { ...stats, converted: local.size, source: MANIFEST_URL } };
+      return local;
     }
   } catch {
-    // Fallback: try standard semantic state filenames
-    console.warn(`[BannonClipJsonAdapter] No clip manifest found at ${MANIFEST_URL}`);
-    console.warn(`  Trying fallback URLs for ${FALLBACK_STATES.length} semantic states`);
-    clipUrls = FALLBACK_STATES.map(s => `/assets/moves/clips/${s}.json`);
+    // local manifest absent
   }
 
-  // Filter to only URLs that exist (HEAD check)
-  const existingUrls: string[] = [];
-  await Promise.allSettled(
-    clipUrls.map(async (url) => {
-      try {
-        const res = await fetch(url, { method: 'HEAD' });
-        if (res.ok) existingUrls.push(url);
-      } catch {
-        // URL not available
-      }
-    })
-  );
-
-  if (existingUrls.length === 0) {
-    console.warn(`[BannonClipJsonAdapter] No clip JSON files found at /assets/moves/clips/`);
-    console.warn(`  To enable AUTHORED_CLIP loading:`);
-    console.warn(`  1. Add BannonClipJson files to public/assets/moves/clips/`);
-    console.warn(`  2. Create public/assets/moves/clips/manifest.json listing all files`);
-    console.warn(`  3. Each file must have: { name, duration, bones: { boneName: { frames: [...] } } }`);
-    return new Map();
-  }
-
-  console.log(`[BannonClipJsonAdapter] Found ${existingUrls.length} clip files`);
-  return loadBannonClipsFromUrls(existingUrls);
+  console.warn(`[BannonClipJsonAdapter] No authored Bannon motion-bank clips loaded.`);
+  cachedMotionBank = { clips: new Map(), stats };
+  return cachedMotionBank.clips;
 }

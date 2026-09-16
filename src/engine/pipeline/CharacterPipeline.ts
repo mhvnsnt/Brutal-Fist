@@ -68,10 +68,10 @@
 import * as THREE from 'three';
 import { SkeletonUtils } from 'three-stdlib';
 import { DEFAULT_PSX_RENDER } from '../../render/psx';
-import { AnimationRetargeter } from '../retarget/AnimationRetargeter';
+import { AnimationRetargeter, bindClipTracksToTargetBones } from '../retarget/AnimationRetargeter';
 import {
-  generateProceduralClipSet,
   loadBannonClipsFromPublic,
+  getCachedBannonMotionBank,
 } from '../retarget/BannonClipJsonAdapter';
 import {
   AnimationSourceRegistry,
@@ -600,8 +600,7 @@ export async function extractAndRetargetAnimations(
     }
   }
 
-  // ── ANIMATION SOURCE REGISTRY: build from GLB clips + Bannon motion bank ──
-  // Collect target bone names for procedural fallback generation
+  // ── ANIMATION SOURCE REGISTRY: GLB clips + Bannon Euler motion bank ──
   const targetBoneNames: string[] = [];
   targetScene.traverse((child) => {
     if ((child as THREE.Bone).isBone && child.name) {
@@ -611,9 +610,8 @@ export async function extractAndRetargetAnimations(
 
   const registry = new AnimationSourceRegistry();
 
-  // Register GLB clips (highest priority if they exist)
+  // Register GLB clips (priority 2 — motion bank outranks when both exist)
   if (processedClips.length > 0) {
-    // Tag each clip with its semantic state via SEMANTIC_STATE_ALIASES lookup
     for (const clip of processedClips) {
       const semanticState = resolveClipSemanticState(clip.name);
       if (semanticState) {
@@ -624,49 +622,74 @@ export async function extractAndRetargetAnimations(
     bridgeClipCount = processedClips.length;
   }
 
-  // If GLB has no clips, try loading from Bannon motion bank (assets/moves/clips/)
-  // before falling back to procedural placeholders.
-  if (processedClips.length === 0) {
-    console.warn(
-      `[CharacterPipeline] ⚠️ "${modelName}" — no animation clips in GLB. ` +
-      `Attempting to load AUTHORED_CLIP data from Bannon motion bank...`
-    );
+  // Always attempt the real Bannon Euler motion bank. Do NOT skip just because
+  // a GLB happened to contain a clip — most roster GLBs are static/T-pose.
+  let authoredClips: Map<string, THREE.AnimationClip> | null = null;
+  try {
+    authoredClips = await loadBannonClipsFromPublic();
+  } catch (e: any) {
+    console.warn(`[CharacterPipeline] ⚠️ loadBannonClipsFromPublic failed: ${e.message}`);
+  }
 
-    // Attempt to load authored clips from public/assets/moves/clips/
-    let authoredClips: Map<string, THREE.AnimationClip> | null = null;
-    try {
-      authoredClips = await loadBannonClipsFromPublic();
-    } catch (e: any) {
-      console.warn(`[CharacterPipeline] ⚠️ loadBannonClipsFromPublic failed: ${e.message}`);
-    }
+  if (authoredClips && authoredClips.size > 0) {
+    const boundClips = new Map<string, THREE.AnimationClip>();
+    let bankResolved = 0;
+    let bankUnresolved = 0;
+    const unresolvedNames: string[] = [];
 
-    if (authoredClips && authoredClips.size > 0) {
-      // Register as AUTHORED_CLIP — highest priority
-      registry.registerAuthoredClips(authoredClips, 'assets/moves/clips/');
-      processedClips = [...authoredClips.values()];
-      bridgeClipCount = processedClips.length;
-      retargetVerdict = 'AUTHORED_CLIP_LOADED';
-      console.log(
-        `[CharacterPipeline] ✅ "${modelName}" — loaded ${authoredClips.size} AUTHORED_CLIP clips from motion bank`
-      );
-    } else {
-      // Fall back to procedural placeholders
-      console.warn(
-        `[CharacterPipeline] ⚠️ "${modelName}" — no authored clips found. ` +
-        `Generating PROCEDURAL_PLACEHOLDER clips for pipeline verification.\n` +
-        `  → Source: check ${characterId ? characterId + '_rigged.glb' : 'rigged GLB'} from Bannon repo\n` +
-        `  → Bridge: check animation_bridge/SOURCE_REGISTRY.json\n` +
-        `  → Required: idle, walk, attack, hit, knockdown clips`
-      );
-
-      if (targetBoneNames.length > 0) {
-        const proceduralClips = generateProceduralClipSet(targetBoneNames);
-        registry.registerBannonMotionBank(proceduralClips, 'PROCEDURAL_PLACEHOLDER');
-        processedClips = [...proceduralClips.values()];
-        bridgeClipCount = processedClips.length;
-        retargetVerdict = 'SKIPPED';
+    for (const [semanticState, clip] of authoredClips) {
+      const bound = bindClipTracksToTargetBones(clip, targetBoneNames);
+      bankResolved += bound.resolvedTracks;
+      bankUnresolved += bound.unresolvedTracks;
+      unresolvedNames.push(...bound.unresolvedTrackNames);
+      if (bound.resolvedTracks === 0) {
+        console.warn(
+          `[CharacterPipeline] ⚠️ "${modelName}" motion-bank "${semanticState}" has 0 tracks ` +
+          `resolving against the target skeleton (${targetBoneNames.length} bones). Keeping MISSING_CLIP.`,
+        );
+        continue;
       }
+      (bound.clip as any).userData = {
+        ...((bound.clip as any).userData ?? {}),
+        semanticState,
+        clipSourceType: 'RETARGETED_AUTHORED_CLIP',
+        isProcedural: false,
+      };
+      boundClips.set(semanticState, bound.clip);
     }
+
+    if (boundClips.size > 0) {
+      registry.registerAuthoredClips(boundClips, 'BANNON_MOTION_BANK');
+      // Merge: authored/retargeted bank clips first, then leftover GLB clips
+      const merged = [...boundClips.values()];
+      const seen = new Set(merged.map((c) => ((c as any).userData?.semanticState ?? c.name)));
+      for (const clip of processedClips) {
+        const semantic = (clip as any).userData?.semanticState ?? resolveClipSemanticState(clip.name);
+        if (semantic && seen.has(semantic)) continue;
+        merged.push(clip);
+      }
+      processedClips = merged;
+      bridgeClipCount = boundClips.size;
+      retargetApplied = true;
+      retargetVerdict = bankUnresolved === 0 ? 'PASS' : 'PARTIAL';
+      console.log(
+        `[CharacterPipeline] ✅ "${modelName}" — bound ${boundClips.size} RETARGETED_AUTHORED_CLIP(s) ` +
+        `from Bannon Euler motion bank. resolved=${bankResolved} unresolved=${bankUnresolved}`,
+      );
+    }
+
+    const cache = getCachedBannonMotionBank();
+    if (cache) {
+      console.log(
+        `[CharacterPipeline] 📊 Motion bank stats: index=${cache.stats.indexSize} ` +
+        `attempted=${cache.stats.attempted} converted=${cache.stats.converted} failed=${cache.stats.failed.length}`,
+      );
+    }
+  } else {
+    console.warn(
+      `[CharacterPipeline] ⚠️ "${modelName}" — no authored Bannon motion-bank clips loaded.\n` +
+      `  MISSING_CLIP remains MISSING_CLIP. Procedural placeholders are TEST_ONLY and are NOT registered for combat.`,
+    );
   }
 
   // Validate registry completeness
