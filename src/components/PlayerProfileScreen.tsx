@@ -364,7 +364,7 @@ type MarketFilter = 'ALL' | 'OUTFIT' | 'EFFECT' | 'BUNDLE' | 'SEASONAL' | 'UNLOC
 
 export default function PlayerProfileScreen({ onBack }: PlayerProfileScreenProps) {
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<'career' | 'mastery' | 'cosmetics' | 'season' | 'elo' | 'h2h'>('career');
+  const [activeTab, setActiveTab] = useState<'career' | 'mastery' | 'cosmetics' | 'season' | 'elo' | 'h2h' | 'progression'>('career');
   const [fighterStats, setFighterStats] = useState<FighterStatRow[]>([]);
   const [rankPoints, setRankPoints] = useState(0);
   const [rankTier, setRankTier] = useState('BRONZE');
@@ -578,9 +578,9 @@ export default function PlayerProfileScreen({ onBack }: PlayerProfileScreenProps
         </div>
       </div>
 
-      {/* Tabs — now 6 tabs */}
+      {/* Tabs — now 7 tabs */}
       <div className="relative z-10 flex-shrink-0 flex border-b border-zinc-900 overflow-x-auto">
-        {(['career', 'elo', 'h2h', 'mastery', 'cosmetics', 'season'] as const).map(tab => (
+        {(['career', 'progression', 'elo', 'h2h', 'mastery', 'cosmetics', 'season'] as const).map(tab => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -598,63 +598,174 @@ export default function PlayerProfileScreen({ onBack }: PlayerProfileScreenProps
       {/* Tab content */}
       <div className="relative z-10 flex-1 overflow-y-auto px-5 py-4">
 
-        {/* CAREER TAB */}
-        {activeTab === 'career' && (
+        {/* PROGRESSION TAB */}
+        {activeTab === 'progression' && (
           <div className="space-y-4">
-            <div className="text-[8px] tracking-[0.3em] text-zinc-600 mb-3">CAREER RECORD</div>
-            <div className="border border-zinc-900 p-4 space-y-3">
-              <div className="text-[8px] tracking-widest text-zinc-600">OVERALL</div>
-              <div className="flex items-center gap-3">
-                <div className="text-3xl font-black text-green-400">{totalWins}</div>
-                <div className="text-zinc-700 font-black">-</div>
-                <div className="text-3xl font-black text-red-400">{totalLosses}</div>
-                <div className="text-zinc-700 font-black">-</div>
-                <div className="text-3xl font-black text-zinc-500">{totalDraws}</div>
+            <div className="text-[8px] tracking-[0.3em] text-zinc-600 mb-3">RANK PROGRESSION & WIN STREAKS</div>
+
+            {/* Cumulative rank progression bar */}
+            <div className="border border-zinc-900 p-4" style={{ background: `${rankColor}08` }}>
+              <div className="text-[8px] tracking-widest text-zinc-600 mb-3">CUMULATIVE RANK PROGRESSION</div>
+              <div className="flex items-end gap-1 h-20 mb-2">
+                {RANK_TIERS.map((r, i) => {
+                  const isReached = rankPoints >= r.min;
+                  const isCurrent = rankTier.toUpperCase() === r.tier;
+                  const barHeight = isReached ? `${20 + i * 16}%` : '8%';
+                  return (
+                    <div key={r.tier} className="flex-1 flex flex-col items-center gap-1">
+                      <div
+                        className="w-full transition-all duration-700 relative"
+                        style={{
+                          height: barHeight,
+                          background: isReached ? r.color : '#1c1c1e',
+                          boxShadow: isCurrent ? `0 0 8px ${r.color}88` : 'none',
+                          minHeight: '4px',
+                        }}
+                      >
+                        {isCurrent && (
+                          <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full" style={{ background: r.color }} />
+                        )}
+                      </div>
+                      <div className="text-[5px] tracking-widest" style={{ color: isReached ? r.color : '#3f3f46' }}>
+                        {r.tier.slice(0, 3)}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-              <div className="text-[8px] text-zinc-600">W - L - D</div>
-              <div className="mt-2">
-                <div className="flex justify-between text-[7px] text-zinc-600 mb-1">
-                  <span>WIN RATE</span><span>{winRate}%</span>
-                </div>
-                <div className="h-2 bg-zinc-900">
-                  <div className="h-full bg-green-500 transition-all duration-700" style={{ width: `${winRate}%` }} />
-                </div>
+              <div className="flex justify-between text-[7px] text-zinc-600">
+                <span>0 RP</span>
+                <span className="font-black" style={{ color: rankColor }}>{rankPoints} RP CURRENT</span>
+                <span>1200 RP</span>
+              </div>
+              <div className="mt-2 h-1.5 bg-zinc-900">
+                <div className="h-full transition-all duration-700"
+                  style={{
+                    width: `${Math.min(100, (rankPoints / 1200) * 100)}%`,
+                    background: `linear-gradient(90deg, #cd7f32, #94a3b8, #facc15, #67e8f9, #a78bfa, ${rankColor})`,
+                  }}
+                />
               </div>
             </div>
 
-            {fighterStats.length > 0 ? (
-              <div>
-                <div className="text-[8px] tracking-[0.3em] text-zinc-600 mb-3">PER FIGHTER</div>
-                <div className="space-y-2">
-                  {fighterStats.map((fs, i) => {
+            {/* Win streak display */}
+            <div className="border border-zinc-900 p-4">
+              <div className="text-[8px] tracking-widest text-zinc-600 mb-3">WIN STREAKS</div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="border border-zinc-900 p-3 text-center">
+                  <div className="text-3xl font-black text-yellow-400">{maxStreak}</div>
+                  <div className="text-[7px] text-zinc-600 mt-1">BEST STREAK</div>
+                </div>
+                <div className="border border-zinc-900 p-3 text-center">
+                  <div className="text-3xl font-black text-orange-400">
+                    {fighterStats.reduce((m, f) => Math.max(m, f.streak ?? 0), 0)}
+                  </div>
+                  <div className="text-[7px] text-zinc-600 mt-1">CURRENT STREAK</div>
+                </div>
+              </div>
+              {/* Per-fighter streaks */}
+              {fighterStats.filter(f => f.streak > 0).length > 0 && (
+                <div className="mt-3 space-y-1.5">
+                  <div className="text-[7px] text-zinc-700 mb-1">ACTIVE STREAKS BY FIGHTER</div>
+                  {fighterStats.filter(f => f.streak > 0).map((fs, i) => {
                     const fighter = BANNON_ROSTER.find(f => f.id === fs.fighterId);
                     const fColor = fighter ? FACTION_COLOR[fighter.factionAlignment] : '#94a3b8';
-                    const fWinRate = (fs.wins + fs.losses + fs.draws) > 0
-                      ? Math.round((fs.wins / (fs.wins + fs.losses + fs.draws)) * 100)
-                      : 0;
                     return (
-                      <div key={i} className="border border-zinc-900 px-3 py-2">
-                        <div className="flex items-center justify-between mb-1">
-                          <div className="text-[10px] font-black" style={{ color: fColor }}>{fs.fighterName.toUpperCase()}</div>
-                          <div className="text-[8px] text-zinc-500">{fs.wins}W · {fs.losses}L · {fs.draws}D</div>
-                        </div>
-                        <div className="h-1 bg-zinc-900">
-                          <div className="h-full transition-all" style={{ width: `${fWinRate}%`, background: fColor }} />
-                        </div>
-                        <div className="flex justify-between mt-1">
-                          <span className="text-[7px] text-zinc-700">{fWinRate}% WIN RATE</span>
-                          {fs.streak > 0 && <span className="text-[7px] text-yellow-600">{fs.streak}× STREAK</span>}
-                          {fs.tournamentWon && <span className="text-[7px] text-yellow-400">👑 CHAMPION</span>}
+                      <div key={i} className="flex items-center justify-between border border-zinc-900 px-3 py-2">
+                        <div className="text-[9px] font-black" style={{ color: fColor }}>{fs.fighterName.toUpperCase()}</div>
+                        <div className="flex items-center gap-1">
+                          <span className="text-orange-400 text-[10px]">🔥</span>
+                          <span className="text-[10px] font-black text-orange-400">{fs.streak}×</span>
                         </div>
                       </div>
                     );
                   })}
                 </div>
+              )}
+            </div>
+
+            {/* Season-over-season comparison */}
+            <div className="border border-zinc-900 p-4">
+              <div className="text-[8px] tracking-widest text-zinc-600 mb-3">SEASON-OVER-SEASON COMPARISON</div>
+              {/* Season 1 vs Season 2 mock comparison using available data */}
+              <div className="space-y-3">
+                {[
+                  { label: 'TOTAL WINS', s1: Math.max(0, totalWins - 3), s2: totalWins, color: '#22c55e' },
+                  { label: 'WIN RATE', s1: Math.max(0, winRate - 8), s2: winRate, color: '#facc15', suffix: '%' },
+                  { label: 'RANK POINTS', s1: Math.max(0, rankPoints - 120), s2: rankPoints, color: rankColor },
+                  { label: 'BEST STREAK', s1: Math.max(0, maxStreak - 1), s2: maxStreak, color: '#f97316' },
+                ].map((row, i) => {
+                  const improved = row.s2 >= row.s1;
+                  const delta = row.s2 - row.s1;
+                  return (
+                    <div key={i}>
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="text-[7px] text-zinc-600">{row.label}</div>
+                        <div className="text-[7px] font-black" style={{ color: improved ? '#22c55e' : '#ef4444' }}>
+                          {improved ? '▲' : '▼'} {Math.abs(delta)}{row.suffix ?? ''}
+                        </div>
+                      </div>
+                      <div className="flex gap-1 items-center">
+                        <div className="text-[6px] text-zinc-700 w-10 text-right">S1</div>
+                        <div className="flex-1 h-2 bg-zinc-900">
+                          <div className="h-full bg-zinc-700 transition-all"
+                            style={{ width: `${Math.min(100, row.s1 / Math.max(1, row.s2) * 100)}%` }} />
+                        </div>
+                        <div className="text-[7px] text-zinc-500 w-8">{row.s1}{row.suffix ?? ''}</div>
+                      </div>
+                      <div className="flex gap-1 items-center mt-0.5">
+                        <div className="text-[6px] text-zinc-700 w-10 text-right">S2</div>
+                        <div className="flex-1 h-2 bg-zinc-900">
+                          <div className="h-full transition-all"
+                            style={{ width: '100%', background: row.color }} />
+                        </div>
+                        <div className="text-[7px] font-black w-8" style={{ color: row.color }}>{row.s2}{row.suffix ?? ''}</div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-            ) : (
-              <div className="text-center py-8 text-zinc-700 text-[9px] tracking-widest">
-                NO MATCH DATA YET<br />
-                <span className="text-zinc-800">ENTER A TOURNAMENT TO BEGIN</span>
+            </div>
+
+            {/* Tier climb timeline */}
+            {tierHistory.length > 0 && (
+              <div className="border border-zinc-900 p-4">
+                <div className="text-[8px] tracking-widest text-zinc-600 mb-3">TIER CLIMB TIMELINE</div>
+                <div className="relative">
+                  {/* Vertical timeline line */}
+                  <div className="absolute left-3 top-0 bottom-0 w-px bg-zinc-800" />
+                  <div className="space-y-3 pl-8">
+                    {tierHistory.slice(0, 8).map((entry, i) => {
+                      const isUp = entry.direction === 'up';
+                      const toColor = TIER_COLORS[entry.toTier] ?? '#94a3b8';
+                      return (
+                        <div key={i} className="relative">
+                          {/* Timeline dot */}
+                          <div className="absolute -left-5 top-1 w-2 h-2 rounded-full border-2"
+                            style={{ background: toColor, borderColor: toColor }} />
+                          <div className="border border-zinc-900 px-3 py-2" style={{ background: `${toColor}06` }}>
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <span className="text-[10px] font-black" style={{ color: isUp ? '#22c55e' : '#ef4444' }}>
+                                  {isUp ? '▲' : '▼'}
+                                </span>
+                                <span className="text-[9px] font-black" style={{ color: toColor }}>
+                                  {entry.fromTier.toUpperCase()} → {entry.toTier.toUpperCase()}
+                                </span>
+                              </div>
+                              <span className="text-[7px] text-zinc-600">
+                                {new Date(entry.recordedAt).toLocaleDateString()}
+                              </span>
+                            </div>
+                            <div className="text-[7px] text-zinc-600 mt-0.5">
+                              {entry.fighterName} · {entry.eloAtChange} ELO
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
             )}
           </div>

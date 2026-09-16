@@ -73,8 +73,20 @@ function CinematicCamera() {
 // ── Stage geometry renderer ───────────────────────────────────────────────────
 function StageGeometry({ stageId }: { stageId: StageId }) {
   const resolvedId = stageId === 'random' ? 'urban_night' : stageId;
-  if (resolvedId === 'training') return <TrainingStage />;
-  return <UrbanNightStage />;
+  if (resolvedId === 'training') {
+    return (
+      <>
+        {/* Training Grid lighting */}
+        <ambientLight intensity={0.35} color="#c8d0e0" />
+        <directionalLight position={[0, 8, 4]} intensity={2.5} color="#fff8f0" />
+        <directionalLight position={[-5, 4, 3]} intensity={0.8} color="#a0b8ff" />
+        <directionalLight position={[0, 5, -6]} intensity={1.0} color="#ffffff" />
+        <pointLight position={[0, 4, 0]} intensity={1.5} color="#22d3ee" distance={12} decay={2} />
+        <TrainingStage p1Color="#22d3ee" p2Color="#22d3ee" />
+      </>
+    );
+  }
+  return <UrbanNightStage p1Color="#a855f7" p2Color="#a855f7" />;
 }
 
 // ── Thumbnail card ────────────────────────────────────────────────────────────

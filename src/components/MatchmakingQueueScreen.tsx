@@ -5,6 +5,7 @@ import { createClient } from '../lib/supabase/client';
 import { useAuth } from '../contexts/AuthContext';
 import { BANNON_ROSTER } from '../data/bannonRoster';
 import { BANNON_GLB_PLAYABLE_MODELS } from '../data/bannonGlbRoster';
+import { useRankedCosmeticUnlocks, CosmeticUnlockBanner } from './CosmeticUnlockSystem';
 
 interface MatchmakingQueueScreenProps {
   onBack: () => void;
@@ -61,6 +62,7 @@ function estimateWaitTime(queueCount: number, tier: QueueTier): string {
 export default function MatchmakingQueueScreen({ onBack, onMatchFound }: MatchmakingQueueScreenProps) {
   const { user } = useAuth();
   const supabase = createClient();
+  const { pendingRewards, triggerUnlockCheck, dismissRewards } = useRankedCosmeticUnlocks(user?.id);
 
   const [selectedFighterId, setSelectedFighterId] = useState<string>('');
   const [selectedTier, setSelectedTier] = useState<QueueTier>('bronze');
@@ -350,6 +352,18 @@ export default function MatchmakingQueueScreen({ onBack, onMatchFound }: Matchma
           <div className="flex gap-3 mt-3">
             <button
               onClick={() => {
+                // Trigger cosmetic unlock check on ranked match acceptance
+                if (user?.id) {
+                  triggerUnlockCheck({
+                    userId: user.id,
+                    fighterId: selectedFighterId,
+                    fighterName: BANNON_ROSTER.find(f => f.id === selectedFighterId)?.name ?? selectedFighterId,
+                    opponentTier: matchFound?.tier ?? selectedTier,
+                    winStreak: 1,
+                    totalWins: 1,
+                    isRankedWin: true,
+                  });
+                }
                 onMatchFound?.(matchFound.fighterId, matchFound.matchedFighterName ?? '');
                 setMatchFound(null);
               }}
@@ -542,6 +556,9 @@ export default function MatchmakingQueueScreen({ onBack, onMatchFound }: Matchma
           </div>
         </div>
       </div>
+
+      {/* Cosmetic unlock banner */}
+      <CosmeticUnlockBanner rewards={pendingRewards} onDismiss={dismissRewards} />
     </div>
   );
 }

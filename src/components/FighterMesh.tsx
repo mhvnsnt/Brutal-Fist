@@ -24,21 +24,35 @@ interface FighterMeshProps {
 const animationAliases: Record<string, string[]> = {
   idle: ['idle', 'Idle', 'neutral', 'Neutral', 'standing', 'Standing', 'bind', 'T-pose', 'TPose', 'tpose', 'rest', 'Rest'],
   walk: ['walk', 'Walk', 'walking', 'Walking', 'run', 'Run'],
-  light: ['light', 'Light', 'punch', 'Punch', 'attack', 'Attack', 'jab', 'Jab'],
-  heavy: ['heavy', 'Heavy', 'strong', 'Strong', 'heavy_attack', 'HeavyAttack', 'cross', 'Cross'],
-  guard: ['guard', 'Guard', 'block', 'Block'],
-  hit: ['hit', 'Hit', 'hurt', 'Hurt', 'flinch', 'Flinch', 'hitstun', 'Hitstun'],
+  walkForward: ['walk', 'Walk', 'walking', 'Walking', 'run', 'Run', 'walkForward', 'WalkForward'],
+  walkBackward: ['walkBack', 'WalkBack', 'walkBackward', 'WalkBackward', 'walk', 'Walk', 'walking', 'Walking'],
+  strafeLeft: ['strafeLeft', 'StrafeLeft', 'walk', 'Walk'],
+  strafeRight: ['strafeRight', 'StrafeRight', 'walk', 'Walk'],
+  light: ['light', 'Light', 'punch', 'Punch', 'attack', 'Attack', 'jab', 'Jab', 'lightAttack', 'LightAttack'],
+  lightAttack: ['lightAttack', 'LightAttack', 'light', 'Light', 'punch', 'Punch', 'attack', 'Attack', 'jab', 'Jab', 'hit', 'Hit'],
+  heavy: ['heavy', 'Heavy', 'strong', 'Strong', 'heavy_attack', 'HeavyAttack', 'cross', 'Cross', 'heavyAttack'],
+  heavyAttack: ['heavyAttack', 'HeavyAttack', 'heavy', 'Heavy', 'strong', 'Strong', 'cross', 'Cross', 'kick', 'Kick', 'attack', 'Attack'],
+  guard: ['guard', 'Guard', 'block', 'Block', 'defend', 'Defend'],
+  hit: ['hit', 'Hit', 'hurt', 'Hurt', 'flinch', 'Flinch', 'hitstun', 'Hitstun', 'damage', 'Damage'],
+  knockdown: ['knockdown', 'Knockdown', 'ko', 'KO', 'knockout', 'Knockout', 'death', 'Death', 'fall', 'Fall', 'down', 'Down'],
   block: ['block', 'Block', 'guard', 'Guard'],
-  ko: ['ko', 'KO', 'knockout', 'Knockout', 'death', 'Death', 'fall', 'Fall'],
+  ko: ['ko', 'KO', 'knockout', 'Knockout', 'death', 'Death', 'fall', 'Fall', 'knockdown', 'Knockdown'],
 };
 
 // ── Crossfade durations per animation key ────────────────────────────────────
 const FADE_DURATIONS: Record<string, number> = {
   idle: 0.15,
   walk: 0.12,
+  walkForward: 0.12,
+  walkBackward: 0.12,
+  strafeLeft: 0.12,
+  strafeRight: 0.12,
   light: 0.06,
+  lightAttack: 0.06,
   heavy: 0.08,
+  heavyAttack: 0.08,
   hit: 0.05,
+  knockdown: 0.08,
   ko: 0.08,
   guard: 0.10,
   block: 0.10,
@@ -160,16 +174,46 @@ export function FighterMesh({
     if (!model) return;
     const key = animation ?? state.toLowerCase();
     const aliases = animationAliases[key] ?? [key];
-    const name = Object.keys(actionsRef.current).find(
+    
+    // 1. Exact alias match
+    let name = Object.keys(actionsRef.current).find(
       (candidate) => aliases.some((alias) => candidate.toLowerCase() === alias.toLowerCase())
-    ) ?? Object.keys(actionsRef.current).find(
-      (candidate) => candidate.toLowerCase().includes(key.toLowerCase())
     );
+    // 2. Partial substring match
+    if (!name) {
+      name = Object.keys(actionsRef.current).find(
+        (candidate) => candidate.toLowerCase().includes(key.toLowerCase())
+      );
+    }
+    // 3. For attack states, try any clip with 'attack' or 'punch' or 'kick'
+    if (!name && (key === 'lightAttack' || key === 'heavyAttack' || key === 'light' || key === 'heavy')) {
+      name = Object.keys(actionsRef.current).find(
+        (candidate) => {
+          const c = candidate.toLowerCase();
+          return c.includes('attack') || c.includes('punch') || c.includes('kick') || c.includes('hit');
+        }
+      );
+    }
+    // 4. For walk states, try any clip with 'walk' or 'run' or 'move'
+    if (!name && (key.startsWith('walk') || key.startsWith('strafe'))) {
+      name = Object.keys(actionsRef.current).find(
+        (candidate) => {
+          const c = candidate.toLowerCase();
+          return c.includes('walk') || c.includes('run') || c.includes('move');
+        }
+      );
+    }
+    // 5. Fallback: use idle or first available clip
+    if (!name) {
+      name = Object.keys(actionsRef.current).find(c => c.toLowerCase().includes('idle'))
+        ?? Object.keys(actionsRef.current)[0];
+    }
+
     const next = name ? actionsRef.current[name] : null;
     if (next === activeActionRef.current) return;
 
     const fadeDuration = FADE_DURATIONS[key] ?? DEFAULT_FADE;
-    const isLoop = key === 'idle' || key === 'walk';
+    const isLoop = key === 'idle' || key === 'walk' || key === 'walkForward' || key === 'walkBackward' || key === 'strafeLeft' || key === 'strafeRight';
 
     if (next) {
       next.setLoop(isLoop ? THREE.LoopRepeat : THREE.LoopOnce, isLoop ? Infinity : 1);

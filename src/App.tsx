@@ -23,6 +23,7 @@ const StoryModeScreen = dynamic(() => import('./components/StoryModeScreen'), { 
 const StageSelectScreen = dynamic(() => import('./components/StageSelectScreen'), { ssr: false });
 const SeasonalTournamentScreen = dynamic(() => import('./components/SeasonalTournamentScreen'), { ssr: false });
 const MatchmakingQueueScreen = dynamic(() => import('./components/MatchmakingQueueScreen'), { ssr: false });
+const SpectatorViewerScreen = dynamic(() => import('./components/SpectatorViewerScreen'), { ssr: false });
 
 export default function App() {
   const { user, loading: authLoading, signOut } = useAuth();
@@ -147,6 +148,13 @@ export default function App() {
               <span className="ml-3 text-[10px] text-cyan-400 tracking-widest">LIVE MATCHMAKING</span>
             </button>
             <button
+              onClick={() => setScreen('spectator' as any)}
+              className="block w-full border border-slate-600 px-6 py-4 text-left text-xl font-black tracking-widest hover:bg-white hover:text-black transition-all"
+            >
+              SPECTATE
+              <span className="ml-3 text-[10px] text-red-400 tracking-widest">LIVE MATCHES</span>
+            </button>
+            <button
               onClick={() => setScreen('practice' as any)}
               className="block w-full border border-slate-600 px-6 py-4 text-left text-xl font-black tracking-widest hover:bg-white hover:text-black transition-all"
             >
@@ -230,6 +238,11 @@ export default function App() {
   // ── Leaderboard ──
   if ((screen as any) === 'leaderboard') {
     return <LeaderboardScreen onBack={() => setScreen(AppScreen?.MainMenu)} />;
+  }
+
+  // ── Spectator Viewer ──
+  if ((screen as any) === 'spectator') {
+    return <SpectatorViewerScreen onBack={() => setScreen(AppScreen?.MainMenu)} />;
   }
 
   // ── Practice Arena ──
@@ -348,6 +361,7 @@ export default function App() {
         }}
         onBack={() => setScreen('stage_select' as any)}
         settings={tournamentSettings}
+        stageId={selectedStageId}
       />
     );
   }

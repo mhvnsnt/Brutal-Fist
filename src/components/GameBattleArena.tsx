@@ -41,6 +41,8 @@ interface GameBattleArenaProps {
   p2SkinTint?: string;
   /** Tournament settings (difficulty, FOV, audio toggles) */
   settings?: TournamentSettings;
+  /** Stage to load in the combat arena */
+  stageId?: import('./StageSelectScreen').StageId;
 }
 
 const EMPTY_INPUT: InputBitmask = {
@@ -69,6 +71,7 @@ export default function GameBattleArena({
   p1SkinTint,
   p2SkinTint,
   settings = DEFAULT_TOURNAMENT_SETTINGS,
+  stageId = 'urban_night',
 }: GameBattleArenaProps) {
   const engineRef = useRef<GameEngine | null>(null);
   const inputRef = useRef<InputBitmask>({ ...EMPTY_INPUT });
@@ -527,6 +530,7 @@ export default function GameBattleArena({
           cameraFov={settings.cameraFov}
           announcerEnabled={settings.soundEnabled}
           damageEvent={damageEvent}
+          stageId={stageId === 'random' ? 'urban_night' : (stageId as 'urban_night' | 'training')}
         />
       </div>
 
