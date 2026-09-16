@@ -383,8 +383,8 @@ export function getHitEffectRenderData(pool: HitEffectPool): HitEffectRenderData
         alpha,
         type: s.type,
         streaks: s.streaks,
-        coreRadius: (baseRadius * 0.35) * s.scale * (0.5 + alpha * 0.5),
-        coronaRadius: baseRadius * s.scale * (0.4 + alpha * 0.6),
+        coreRadius: Math.max(0, (baseRadius * 0.35) * s.scale * (0.5 + alpha * 0.5)),
+        coronaRadius: Math.max(0, baseRadius * s.scale * (0.4 + alpha * 0.6)),
       };
     });
 }
