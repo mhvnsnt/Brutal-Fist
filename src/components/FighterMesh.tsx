@@ -371,18 +371,15 @@ function normalizeGLB(
   // The previous runtime reset could erase legitimate export orientation.
   cloned.updateMatrixWorld(true);
 
-  // Runtime skinning integrity: normalize weights and disable frustum culling
-  // on every visible SkinnedMesh. Animated limbs can leave their bind-pose bounds;
-  // culling must not make a fighter disappear mid-attack. Materials/textures are
-  // intentionally untouched.
+  // Runtime render safety only: never rewrite authored skin weights.
+  // Animated limbs can leave bind-pose bounds; disabling culling is safe because
+  // it does not alter geometry, weights, joints, or bind matrices.
   cloned.traverse((child) => {
     if (!(child as THREE.SkinnedMesh).isSkinnedMesh) return;
-    const skinned = child as THREE.SkinnedMesh;
-    skinned.normalizeSkinWeights();
-    skinned.frustumCulled = false;
+    (child as THREE.SkinnedMesh).frustumCulled = false;
   });
 
-  // Native skin integrity gate. Do not normalize/rebind weights at runtime.
+  // Native skin integrity gate. The GLB's authored weights/bind data remain immutable.
   let skinnedMeshes = 0;
   let boundMeshes = 0;
   cloned.traverse((child) => {
@@ -439,53 +436,45 @@ function normalizeGLB(
   // apply to the original (invisible) scene's skeleton, not the visible clone.
   const mixer = new THREE.AnimationMixer(cloned);
 
-  // Step 11: Retarget animation clips from original scene to cloned scene.
-  // Build a name→uuid map for the cloned scene's objects.
-  const cloneMap = new Map<string, THREE.Object3D>();
+  // Step 11: Bind the AUTHORED GLB clips directly to the cloned scene.
+  // Native glTF animation tracks already contain authored node names. Rewriting
+  // every track to UUIDs created a second binding layer that can resolve to nothing.
+  // clipAction(clip, cloned) is the canonical Three.js path: the clone owns the
+  // bones and the original GLB remains untouched.
+  const actions: Record<string, THREE.AnimationAction> = {};
+  let trackCount = 0;
+  let quaternionTrackCount = 0;
+  let positionTrackCount = 0;
+  let unresolvedTrackCount = 0;
+
+  const cloneObjectsByName = new Map<string, THREE.Object3D>();
   cloned.traverse((obj) => {
-    if (obj.name) cloneMap.set(obj.name, obj);
+    if (obj.name) cloneObjectsByName.set(obj.name, obj);
   });
 
-  const actions: Record<string, THREE.AnimationAction> = {};
-
   for (const clip of animations) {
-    // Retarget: remap track names to cloned scene objects
-    const retargetedTracks: THREE.KeyframeTrack[] = [];
+    trackCount += clip.tracks.length;
     for (const track of clip.tracks) {
-      const dotIdx = track.name.indexOf('.');
-      if (dotIdx === -1) {
-        retargetedTracks.push(track.clone());
-        continue;
-      }
-      const boneName = track.name.slice(0, dotIdx);
-      const property = track.name.slice(dotIdx);
-      const targetObj = cloneMap.get(boneName);
-      if (targetObj) {
-        const newTrack = track.clone();
-        // Use UUID-based binding so mixer targets the cloned bone directly
-        newTrack.name = `${targetObj.uuid}${property}`;
-        retargetedTracks.push(newTrack);
-      } else {
-        // Bone not found in clone — keep original name (mixer will try to resolve)
-        retargetedTracks.push(track.clone());
+      const dot = track.name.indexOf('.');
+      if (dot > 0) {
+        const targetName = track.name.slice(0, dot).replace(/^nodes\//, '');
+        const property = track.name.slice(dot + 1).split('.')[0];
+        if (!cloneObjectsByName.has(targetName)) unresolvedTrackCount += 1;
+        if (property === 'quaternion') quaternionTrackCount += 1;
+        if (property === 'position') positionTrackCount += 1;
       }
     }
-
-    const retargetedClip = new THREE.AnimationClip(clip.name, clip.duration, retargetedTracks);
-    const action = mixer.clipAction(retargetedClip);
-    actions[clip.name] = action;
+    // IMPORTANT: original authored clip + cloned root. No clip rewriting.
+    actions[clip.name] = mixer.clipAction(clip, cloned);
   }
 
-  // Step 12: For synthetic-rigged models, also try to bind synthetic bone actions
-  // so the procedural skeleton can be driven by retargeted Mixamo clips
-  if (report.quality === 'none' || report.totalBones === 0) {
-    cloned.traverse((obj) => {
-      if ((obj as THREE.Bone).isBone && obj.name.startsWith('mixamorig')) {
-        // Register synthetic bones in the clone map so future clip retargeting works
-        cloneMap.set(obj.name, obj);
-      }
-    });
-  }
+  console.log(
+    '[FighterMesh] 🎞️ Native animation binding: ' +
+    'clips=' + animations.length + ' tracks=' + trackCount +
+    ' quaternion=' + quaternionTrackCount + ' position=' + positionTrackCount +
+    ' unresolvedByName=' + unresolvedTrackCount + ' root=' + cloned.uuid
+  );
+
 
   console.log(
     `[FighterMesh] ✅ Normalized "${gltfUrl.split('/').pop()}" — ` +
