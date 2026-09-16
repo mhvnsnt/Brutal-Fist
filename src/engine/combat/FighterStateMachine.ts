@@ -1168,6 +1168,7 @@ export class FighterStateMachine {
   }
 
   private beginAttack(motion: FighterMotionState, move: MoveWindow): FighterMotionState {
+    const prevState = this.motionState;
     this.beginCrossfade(this.motionState, motion, CROSSFADE_ATTACK_FRAMES / this.FPS);
     this.actionState = 'Attacking';
     this.motionState = motion;
@@ -1175,6 +1176,13 @@ export class FighterStateMachine {
     this.moveTimer = move.startup + move.active + move.recovery;
     this.moveElapsed = 0;
     this.queuedAction = null;
+    // ── INSTRUMENTATION: log state transition ──────────────────────────────
+    console.log(
+      `[FSM] ⚔️  STATE TRANSITION: "${prevState}" → "${motion}" ` +
+      `[${move.specialName ?? (motion === 'lightAttack' ? 'lightAttack' : 'heavyAttack')}] ` +
+      `startup=${move.startup.toFixed(3)}s active=${move.active.toFixed(3)}s recovery=${move.recovery.toFixed(3)}s ` +
+      `damage=${move.damage ?? 'N/A'} isSpecial=${move.isSpecial ?? false}`
+    );
     return motion;
   }
 

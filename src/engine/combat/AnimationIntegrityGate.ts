@@ -3,34 +3,51 @@
  * ─────────────────────────────────────────────────────────────────────────────
  * Per-fighter animation integrity gate.
  *
- * Before combat begins, this gate produces one concise report per fighter:
+ * Clip source classification:
+ *   AUTHORED_CLIP           — real authored animation from the GLB asset
+ *   RETARGETED_AUTHORED_CLIP — authored clip retargeted from a different skeleton
+ *   PLACEHOLDER_TEST_CLIP   — procedural placeholder (pipeline test only)
+ *   MISSING_CLIP            — no usable animation for this semantic state
  *
- *   FIGHTER: BANNON
- *   VISIBLE MESHES: X
- *   SKINNED MESHES: X
- *   SKELETON BONES: X
- *   ANIMATION CLIPS: X
- *   TRACKS: X
- *   RESOLVED TRACKS: X
- *   UNRESOLVED TRACKS: X
- *   ACTIVE CLIP: name
- *   MIXER ROOT: visible clone
- *   BONE TRAVEL: measured metres/degrees
- *   VERDICT: PASS | BLOCKED | UNKNOWN
+ * Integrity verdicts:
+ *   PASS      — real authored/retargeted animation deforming the visible mesh
+ *   TEST_ONLY — procedural placeholder successfully drives mixer
+ *   BLOCKED   — no usable authored animation
+ *   UNKNOWN   — insufficient evidence
  *
  * UNKNOWN is never PASS.
- *
- * The gate does NOT block animation playback — it is diagnostic only.
- * It fires the onBlocked callback only for truly unrenderable assets
- * (NO_VISIBLE_MESH). All other failures are logged as warnings.
- *
- * Usage:
- *   import { runAnimationIntegrityGate } from './AnimationIntegrityGate';
- *   const report = runAnimationIntegrityGate({ characterName, clonedScene, mixer, actions });
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
 import * as THREE from 'three';
+
+// ── Clip source classification ────────────────────────────────────────────────
+
+/**
+ * Distinguishes the provenance of each animation clip in the pipeline.
+ * PROCEDURAL_PLACEHOLDER clips must NOT be treated as real animation success.
+ */
+export type ClipSourceType =
+  | 'AUTHORED_CLIP'            // real authored animation from the GLB asset
+  | 'RETARGETED_AUTHORED_CLIP' // authored clip retargeted from a different skeleton
+  | 'PLACEHOLDER_TEST_CLIP'    // procedural placeholder — pipeline test only
+  | 'MISSING_CLIP';            // no usable animation for this semantic state
+
+/**
+ * Classify a clip by its name convention.
+ * Procedural placeholders are named with the suffix "_procedural_placeholder".
+ */
+export function classifyClipSource(clipName: string): ClipSourceType {
+  if (!clipName) return 'MISSING_CLIP';
+  const lc = clipName.toLowerCase();
+  if (lc.includes('procedural_placeholder') || lc.includes('_placeholder')) {
+    return 'PLACEHOLDER_TEST_CLIP';
+  }
+  if (lc.includes('retargeted') || lc.includes('_retarget')) {
+    return 'RETARGETED_AUTHORED_CLIP';
+  }
+  return 'AUTHORED_CLIP';
+}
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -49,17 +66,26 @@ export interface AnimationIntegrityInput {
 
 export interface BoneTravelMeasurement {
   boneName: string;
-  /** World-space position before one mixer tick */
   positionBefore: THREE.Vector3;
-  /** World-space position after one mixer tick */
   positionAfter: THREE.Vector3;
-  /** Distance travelled in world units */
   distanceMetres: number;
-  /** Quaternion rotation delta in degrees */
   rotationDegrees: number;
 }
 
-export type IntegrityVerdict = 'PASS' | 'BLOCKED' | 'UNKNOWN';
+/**
+ * PASS      — real authored/retargeted animation deforming the visible mesh
+ * TEST_ONLY — procedural placeholder successfully drives mixer
+ * BLOCKED   — no usable authored animation
+ * UNKNOWN   — insufficient evidence
+ */
+export type IntegrityVerdict = 'PASS' | 'TEST_ONLY' | 'BLOCKED' | 'UNKNOWN';
+
+export interface ClipSourceSummary {
+  clipName: string;
+  sourceType: ClipSourceType;
+  trackCount: number;
+  resolvedTracks: number;
+}
 
 export interface AnimationIntegrityReport {
   characterName: string;
@@ -74,8 +100,15 @@ export interface AnimationIntegrityReport {
   resolvedTrackCount: number;
   unresolvedTrackCount: number;
   unresolvedTrackNames: string[];
+  // ── Clip source classification ────────────────────────────────────────────
+  clipSources: ClipSourceSummary[];
+  authoredClipCount: number;
+  retargetedClipCount: number;
+  placeholderClipCount: number;
+  missingClipCount: number;
   // ── Playback state ────────────────────────────────────────────────────────
   activeClipName: string | null;
+  activeClipSourceType: ClipSourceType;
   activeClipDuration: number | null;
   mixerRootIsVisibleClone: boolean;
   mixerUpdateCount: number;
@@ -104,23 +137,6 @@ const TRAVEL_BONES = [
 
 // ── Main gate function ────────────────────────────────────────────────────────
 
-/**
- * Run the animation integrity gate for a single fighter.
- *
- * This function:
- *   1. Counts visible meshes, SkinnedMeshes, and skeleton bones
- *   2. Validates animation clip count and track resolution
- *   3. Measures bone travel over a synthetic 1/60s mixer tick
- *   4. Produces a structured report with PASS/BLOCKED/UNKNOWN verdict
- *
- * IMPORTANT: This function calls mixer.update(1/60) once to measure bone
- * travel. It then calls mixer.update(-1/60) to reverse the tick so the
- * animation state is not permanently advanced. This is safe because the
- * mixer is not yet driving the render loop at gate time.
- *
- * If the mixer has no active actions, bone travel will be 0 — this is
- * expected for RIGGED_NO_ANIMATIONS assets and is reported as a warning.
- */
 export function runAnimationIntegrityGate(
   input: AnimationIntegrityInput,
 ): AnimationIntegrityReport {
@@ -174,13 +190,19 @@ export function runAnimationIntegrityGate(
     log(`  ⚠️  NO_SKELETON — no bones found in cloned scene`);
   }
 
-  // ── 2. Animation clip and track validation ────────────────────────────────
+  // ── 2. Animation clip and track validation + source classification ────────
   const clipNames = Object.keys(actions);
   const animationClipCount = clipNames.length;
   let totalTrackCount = 0;
   let resolvedTrackCount = 0;
   let unresolvedTrackCount = 0;
   const unresolvedTrackNames: string[] = [];
+  const clipSources: ClipSourceSummary[] = [];
+
+  let authoredClipCount = 0;
+  let retargetedClipCount = 0;
+  let placeholderClipCount = 0;
+  let missingClipCount = 0;
 
   // Build object name set for track resolution
   const objectNameSet = new Set<string>();
@@ -192,9 +214,14 @@ export function runAnimationIntegrityGate(
     const action = actions[clipName];
     if (!action) continue;
     const clip = action.getClip();
+    const sourceType = classifyClipSource(clipName);
+
+    let clipResolved = 0;
+    let clipTotal = 0;
+
     for (const track of clip.tracks) {
       totalTrackCount++;
-      // Extract target object name from track name
+      clipTotal++;
       const dotIdx = track.name.lastIndexOf('.');
       const withoutProp = dotIdx !== -1 ? track.name.slice(0, dotIdx) : track.name;
       const pipeIdx = withoutProp.lastIndexOf('|');
@@ -202,6 +229,7 @@ export function runAnimationIntegrityGate(
 
       if (objectNameSet.has(targetName)) {
         resolvedTrackCount++;
+        clipResolved++;
       } else {
         unresolvedTrackCount++;
         if (unresolvedTrackNames.length < 10) {
@@ -209,9 +237,22 @@ export function runAnimationIntegrityGate(
         }
       }
     }
+
+    clipSources.push({ clipName, sourceType, trackCount: clipTotal, resolvedTracks: clipResolved });
+
+    switch (sourceType) {
+      case 'AUTHORED_CLIP':            authoredClipCount++;    break;
+      case 'RETARGETED_AUTHORED_CLIP': retargetedClipCount++;  break;
+      case 'PLACEHOLDER_TEST_CLIP':    placeholderClipCount++; break;
+      case 'MISSING_CLIP':             missingClipCount++;     break;
+    }
   }
 
   log(`  ANIMATION CLIPS:  ${animationClipCount}`);
+  log(`    AUTHORED:        ${authoredClipCount}`);
+  log(`    RETARGETED:      ${retargetedClipCount}`);
+  log(`    PLACEHOLDER:     ${placeholderClipCount}${placeholderClipCount > 0 ? ' ⚠️  (pipeline test only — not real animation)' : ''}`);
+  log(`    MISSING:         ${missingClipCount}`);
   log(`  TRACKS:           ${totalTrackCount}`);
   log(`  RESOLVED TRACKS:  ${resolvedTrackCount}`);
   log(`  UNRESOLVED TRACKS:${unresolvedTrackCount}`);
@@ -220,13 +261,18 @@ export function runAnimationIntegrityGate(
     warningChecks.push('NO_ANIMATION_CLIPS');
     log(`  ⚠️  NO_ANIMATION_CLIPS — character will be static (bind pose)`);
     log(`     → Source: check BANNON_rigged.glb / Bannon mocap pipeline`);
-    log(`     → Required: idle, walk, attack, hit, knockdown clips`);
+  }
+
+  if (placeholderClipCount > 0 && authoredClipCount === 0 && retargetedClipCount === 0) {
+    warningChecks.push('ONLY_PLACEHOLDER_CLIPS');
+    log(`  ⚠️  ONLY_PLACEHOLDER_CLIPS — no authored/retargeted clips present`);
+    log(`     → Pipeline test mode only. Statues are NOT fixed.`);
+    log(`     → Required: real BANNON_rigged.glb + authored animation clips`);
   }
 
   if (unresolvedTrackCount > 0) {
     warningChecks.push('UNRESOLVED_TRACKS');
     log(`  ⚠️  UNRESOLVED_TRACKS — ${unresolvedTrackCount} track(s) target bones not in skeleton`);
-    log(`     → Statue/bind-pose lock risk. Fix bone name mismatches.`);
     unresolvedTrackNames.forEach(t => log(`     • ${t}`));
     if (allBoneNames.length > 0) {
       log(`     Available bones (${allBoneNames.length}): ${allBoneNames.slice(0, 8).join(', ')}${allBoneNames.length > 8 ? ` +${allBoneNames.length - 8} more` : ''}`);
@@ -238,7 +284,6 @@ export function runAnimationIntegrityGate(
   let activeClipDuration: number | null = null;
   let mixerUpdateCount = 0;
 
-  // Find the currently running action
   for (const [name, action] of Object.entries(actions)) {
     if (action?.isRunning()) {
       resolvedActiveClipName = name;
@@ -247,15 +292,16 @@ export function runAnimationIntegrityGate(
     }
   }
 
-  log(`  ACTIVE CLIP:      ${resolvedActiveClipName ?? 'NONE'}`);
+  const activeClipSourceType: ClipSourceType = resolvedActiveClipName
+    ? classifyClipSource(resolvedActiveClipName)
+    : 'MISSING_CLIP';
+
+  log(`  ACTIVE CLIP:      ${resolvedActiveClipName ?? 'NONE'} [${activeClipSourceType}]`);
   if (activeClipDuration !== null) {
     log(`  CLIP DURATION:    ${activeClipDuration.toFixed(3)}s`);
   }
 
   // ── 4. Mixer root validation ──────────────────────────────────────────────
-  // The mixer root should be the cloned scene (the visible object).
-  // We verify this by checking that the mixer's root object is the same
-  // reference as clonedScene.
   const mixerRoot = (mixer as any)._root as THREE.Object3D | undefined;
   const mixerRootIsVisibleClone = mixerRoot === clonedScene;
 
@@ -264,18 +310,14 @@ export function runAnimationIntegrityGate(
   if (!mixerRootIsVisibleClone) {
     failingChecks.push('MIXER_WRONG_ROOT');
     log(`  ❌ MIXER_WRONG_ROOT — mixer is not targeting the visible cloned scene`);
-    log(`     → Fix: new THREE.AnimationMixer(clonedScene) not the original GLTF scene`);
   }
 
   // ── 5. Bone travel measurement ────────────────────────────────────────────
-  // Measure bone travel over a synthetic 1/60s tick to verify that animation
-  // is actually reaching the skeleton (not just the mixer running silently).
   const boneTravel: BoneTravelMeasurement[] = [];
   let maxBoneTravelMetres = 0;
   let maxBoneRotationDegrees = 0;
 
   if (animationClipCount > 0 && resolvedActiveClipName) {
-    // Collect bones to measure
     const bonesToMeasure: THREE.Bone[] = [];
     clonedScene.traverse((child) => {
       const bone = child as THREE.Bone;
@@ -286,7 +328,6 @@ export function runAnimationIntegrityGate(
       }
     });
 
-    // Capture positions before tick
     clonedScene.updateMatrixWorld(true);
     const beforePositions = new Map<string, THREE.Vector3>();
     const beforeQuaternions = new Map<string, THREE.Quaternion>();
@@ -295,11 +336,9 @@ export function runAnimationIntegrityGate(
       beforeQuaternions.set(bone.uuid, bone.getWorldQuaternion(new THREE.Quaternion()));
     }
 
-    // Advance mixer by 1/60s
     mixer.update(1 / 60);
     clonedScene.updateMatrixWorld(true);
 
-    // Measure travel
     for (const bone of bonesToMeasure) {
       const posBefore = beforePositions.get(bone.uuid)!;
       const quatBefore = beforeQuaternions.get(bone.uuid)!;
@@ -307,7 +346,6 @@ export function runAnimationIntegrityGate(
       const quatAfter = bone.getWorldQuaternion(new THREE.Quaternion());
 
       const distMetres = posBefore.distanceTo(posAfter);
-      // Quaternion angle difference
       const dotProduct = Math.abs(quatBefore.dot(quatAfter));
       const clampedDot = Math.min(1, dotProduct);
       const rotDegrees = (2 * Math.acos(clampedDot) * 180) / Math.PI;
@@ -324,7 +362,6 @@ export function runAnimationIntegrityGate(
       if (rotDegrees > maxBoneRotationDegrees) maxBoneRotationDegrees = rotDegrees;
     }
 
-    // Reverse the tick to restore animation state
     mixer.update(-1 / 60);
     clonedScene.updateMatrixWorld(true);
 
@@ -333,13 +370,9 @@ export function runAnimationIntegrityGate(
     if (maxBoneTravelMetres < 0.0001 && maxBoneRotationDegrees < 0.01) {
       warningChecks.push('ZERO_BONE_TRAVEL');
       log(`  ⚠️  ZERO_BONE_TRAVEL — bones did not move during mixer tick`);
-      log(`     → Possible causes:`);
-      log(`       1. No active AnimationAction (call action.play() before gate)`);
-      log(`       2. All tracks unresolved (bone name mismatch)`);
-      log(`       3. Mixer targeting wrong root (see MIXER_WRONG_ROOT above)`);
-      log(`       4. Animation clip has zero-length tracks`);
     } else {
-      log(`  ✅ Bone motion detected — animation is reaching the skeleton`);
+      const travelSource = activeClipSourceType === 'PLACEHOLDER_TEST_CLIP' ?'⚠️  Bone motion detected (PLACEHOLDER only — not authored deformation)' :'✅ Bone motion detected — animation is reaching the skeleton';
+      log(`  ${travelSource}`);
     }
   } else {
     log(`  BONE TRAVEL:      SKIPPED (no active clip or no animation clips)`);
@@ -356,23 +389,40 @@ export function runAnimationIntegrityGate(
     warningChecks.includes('NO_ANIMATION_CLIPS') ||
     warningChecks.includes('ZERO_BONE_TRAVEL')
   ) {
-    // Has warnings but not hard failures — UNKNOWN (not PASS)
     verdict = 'UNKNOWN';
-  } else {
+  } else if (
+    warningChecks.includes('ONLY_PLACEHOLDER_CLIPS') ||
+    (placeholderClipCount > 0 && authoredClipCount === 0 && retargetedClipCount === 0)
+  ) {
+    // Placeholder clips drive the mixer but are NOT real animation success
+    verdict = 'TEST_ONLY';
+  } else if (authoredClipCount > 0 || retargetedClipCount > 0) {
     verdict = 'PASS';
+  } else {
+    verdict = 'UNKNOWN';
   }
 
-  const verdictIcon = verdict === 'PASS' ? '✅' : verdict === 'BLOCKED' ? '❌' : '⚠️ ';
+  const verdictIcon =
+    verdict === 'PASS'      ? '✅' :
+    verdict === 'TEST_ONLY' ? '🧪' :
+    verdict === 'BLOCKED'   ? '❌' : '⚠️ ';
+
   log(`  VERDICT:          ${verdictIcon} ${verdict}`);
 
+  if (verdict === 'TEST_ONLY') {
+    log(`  → TEST_ONLY: procedural placeholder successfully drives mixer`);
+    log(`  → This is NOT a fix for the statue problem.`);
+    log(`  → Required for PASS: real AUTHORED_CLIP or RETARGETED_AUTHORED_CLIP`);
+  }
   if (verdict === 'UNKNOWN') {
     log(`  → UNKNOWN is not PASS. Fix the warnings above before declaring success.`);
-    log(`  → Required for PASS: SkinnedMesh + Skeleton + AnimationClips + BoneTravel > 0`);
   }
-
   if (verdict === 'BLOCKED') {
     log(`  → BLOCKED: ${failingChecks.join(', ')}`);
     log(`  → Fix the source GLB asset. Do NOT generate synthetic rigging at runtime.`);
+  }
+  if (verdict === 'PASS') {
+    log(`  → PASS: real authored/retargeted animation deforming the visible mesh`);
   }
 
   log('═'.repeat(60) + '\n');
@@ -388,7 +438,13 @@ export function runAnimationIntegrityGate(
     resolvedTrackCount,
     unresolvedTrackCount,
     unresolvedTrackNames,
+    clipSources,
+    authoredClipCount,
+    retargetedClipCount,
+    placeholderClipCount,
+    missingClipCount,
     activeClipName: resolvedActiveClipName,
+    activeClipSourceType,
     activeClipDuration,
     mixerRootIsVisibleClone,
     mixerUpdateCount,
@@ -412,10 +468,12 @@ export interface DualFighterGateInput {
 export interface DualFighterGateResult {
   p1Report: AnimationIntegrityReport;
   p2Report: AnimationIntegrityReport;
-  /** true only if BOTH fighters pass */
+  /** true only if BOTH fighters pass with real authored/retargeted clips */
   bothPass: boolean;
   /** true if either fighter is BLOCKED (unrenderable) */
   anyBlocked: boolean;
+  /** true if either fighter is TEST_ONLY (placeholder clips only) */
+  anyTestOnly: boolean;
 }
 
 export function runDualFighterIntegrityGate(
@@ -429,5 +487,6 @@ export function runDualFighterIntegrityGate(
     p2Report,
     bothPass: p1Report.verdict === 'PASS' && p2Report.verdict === 'PASS',
     anyBlocked: p1Report.verdict === 'BLOCKED' || p2Report.verdict === 'BLOCKED',
+    anyTestOnly: p1Report.verdict === 'TEST_ONLY' || p2Report.verdict === 'TEST_ONLY',
   };
 }

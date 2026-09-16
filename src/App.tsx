@@ -24,6 +24,7 @@ const StageSelectScreen = dynamic(() => import('./components/StageSelectScreen')
 const SeasonalTournamentScreen = dynamic(() => import('./components/SeasonalTournamentScreen'), { ssr: false });
 const MatchmakingQueueScreen = dynamic(() => import('./components/MatchmakingQueueScreen'), { ssr: false });
 const SpectatorViewerScreen = dynamic(() => import('./components/SpectatorViewerScreen'), { ssr: false });
+const AnimationTestArena = dynamic(() => import('./components/AnimationTestArena'), { ssr: false });
 
 export default function App() {
   const { user, loading: authLoading, signOut } = useAuth();
@@ -162,6 +163,13 @@ export default function App() {
               <span className="ml-3 text-[10px] text-green-400 tracking-widest">PRACTICE ARENA</span>
             </button>
             <button
+              onClick={() => setScreen('anim_test_arena' as any)}
+              className="block w-full border border-slate-600 px-6 py-4 text-left text-xl font-black tracking-widest hover:bg-white hover:text-black transition-all"
+            >
+              ANIM TEST
+              <span className="ml-3 text-[10px] text-purple-400 tracking-widest">MOVESET CREATION</span>
+            </button>
+            <button
               onClick={() => setScreen('story' as any)}
               className="block w-full border border-slate-600 px-6 py-4 text-left text-xl font-black tracking-widest hover:bg-white hover:text-black transition-all"
             >
@@ -199,6 +207,11 @@ export default function App() {
         </div>
       </div>
     );
+  }
+
+  // ── Animation Test Arena ──
+  if ((screen as any) === 'anim_test_arena') {
+    return <AnimationTestArena onBack={() => setScreen(AppScreen?.MainMenu)} />;
   }
 
   // ── Auth Screen ──

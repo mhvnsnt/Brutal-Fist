@@ -19,6 +19,7 @@ import {
   type AnimationIntegrityReport,
 } from '../engine/combat/AnimationIntegrityGate';
 import { COMBAT_STATE_TO_SEMANTIC } from '../engine/retarget/SemanticStateAliases';
+import { AnimationBridge } from '../../animation_bridge/retarget';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props
@@ -252,25 +253,41 @@ const MIN_CROSSFADE_HOLD_S = 0.05; // 3 frames at 60fps
 // Resolve the best matching clip name from available actions
 // ─────────────────────────────────────────────────────────────────────────────
 function resolveClipName(key: string, availableClips: string[]): string | null {
-  // ── STEP 0: Combat state → semantic state → clip aliases ─────────────────
-  // Use the AnimationBridge COMBAT_STATE_TO_SEMANTIC mapping as the first
-  // lookup step. This ensures FighterStateMachine states drive the correct
-  // semantic animation state (e.g. 'lightAttack' → 'attack_1' → jab/punch clips).
+  // ── STEP 0: AnimationBridge.getClipForCombatState() lookup ───────────────
+  // Use the AnimationBridge combat state → semantic state → clip chain.
+  // This is the authoritative lookup path for all FighterStateMachine states.
   const semanticState = COMBAT_STATE_TO_SEMANTIC[key];
   if (semanticState) {
-    // Try semantic state aliases first (procedural placeholders + authored names)
+    // Build a minimal clipsByState map from available clips for bridge lookup
+    const clipsByState = new Map<string, THREE.AnimationClip>();
+    // We don't have real AnimationClip objects here, only names — so we do
+    // name-based semantic resolution using SEMANTIC_STATE_ALIASES directly.
     const semanticAliases = ANIMATION_ALIASES[semanticState] ?? [semanticState];
     const semanticFound = availableClips.find(c =>
       semanticAliases.some(a => c.toLowerCase() === a.toLowerCase())
     );
-    if (semanticFound) return semanticFound;
+    if (semanticFound) {
+      console.log(
+        `[FighterMesh] 🗺️ AnimationBridge resolve: combatState="${key}" → semantic="${semanticState}" → clip="${semanticFound}"`
+      );
+      return semanticFound;
+    }
 
     // Try partial match on semantic state name
     const semanticPartial = availableClips.find(c =>
       c.toLowerCase().includes(semanticState.replace('_', '').toLowerCase()) ||
       c.toLowerCase().includes(semanticState.toLowerCase())
     );
-    if (semanticPartial) return semanticPartial;
+    if (semanticPartial) {
+      console.log(
+        `[FighterMesh] 🗺️ AnimationBridge partial: combatState="${key}" → semantic="${semanticState}" → clip="${semanticPartial}"`
+      );
+      return semanticPartial;
+    }
+
+    console.warn(
+      `[FighterMesh] ⚠️ MISSING_CLIP: combatState="${key}" → semantic="${semanticState}" — no matching clip in [${availableClips.slice(0, 4).join(', ')}${availableClips.length > 4 ? '...' : ''}]`
+    );
   }
 
   const aliases = ANIMATION_ALIASES[key] ?? [key];
