@@ -4,10 +4,12 @@ import { useEffect, useRef, useState, Suspense } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
+import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import { DEFAULT_PSX_RENDER } from '../render/psx';
 import { BoneHitboxSystem } from '../engine/locomotion/BoneHitboxSystem';
 import { AutoRigDetector, type RigDiagnosticReport } from '../engine/locomotion/AutoRigDetector';
 import { ATTACK_ROOT_MOTION_PROFILES } from '../engine/locomotion/LocomotionSystem';
+import { attachSyntheticSkinning, validateSyntheticSkinning } from '../engine/locomotion/SyntheticSkinningRuntime';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props
@@ -367,7 +369,10 @@ function normalizeGLB(
   gltfUrl: string,
   report: RigDiagnosticReport,
 ): NormalizedResult {
-  const cloned = scene.clone(true);
+  // Each fighter instance must own its cloned bones and skeleton bindings.
+  // Plain Object3D.clone(true) can leave animated SkinnedMesh instances sharing
+  // skeleton state; SkeletonUtils.clone explicitly clones the bone hierarchy.
+  const cloned = SkeletonUtils.clone(scene) as THREE.Group;
 
   // Step 1: Normalize root bone to floor BEFORE Box3 (fixes skeleton-offset models)
   if (!report.hasRootAtFloor) {
@@ -379,9 +384,11 @@ function normalizeGLB(
   // so animation clips can be retargeted and hitboxes still work.
   if (report.quality === 'none' || report.totalBones === 0) {
     const syntheticResult = AutoRigDetector.buildSyntheticRig(cloned);
+    const skinningResult = attachSyntheticSkinning(cloned, syntheticResult);
     console.log(
       `[FighterMesh] 🦴 Synthetic rig applied to "${gltfUrl.split('/').pop()}" — ` +
-      `${syntheticResult.bones.size} bones generated`
+      `${syntheticResult.bones.size} bones generated, ` +
+      `${skinningResult.converted} visible meshes converted to SkinnedMesh`
     );
   }
 
@@ -415,6 +422,25 @@ function normalizeGLB(
 
   // Step 7: Force matrix world update so bone world positions are accurate
   cloned.updateMatrixWorld(true);
+
+  // Runtime skinning integrity: normalize weights and disable frustum culling
+  // on every visible SkinnedMesh. Animated limbs can leave their bind-pose bounds;
+  // culling must not make a fighter disappear mid-attack. Materials/textures are
+  // intentionally untouched.
+  cloned.traverse((child) => {
+    if (!(child as THREE.SkinnedMesh).isSkinnedMesh) return;
+    const skinned = child as THREE.SkinnedMesh;
+    skinned.normalizeSkinWeights();
+    skinned.frustumCulled = false;
+  });
+
+  const skinningReport = validateSyntheticSkinning(cloned);
+  console.log(
+    `[FighterMesh] 🧬 Visible skinning integrity: ` +
+    `skinnedMeshes=${skinningReport.skinnedMeshes} ` +
+    `boundMeshes=${skinningReport.boundMeshes} ` +
+    `bones=${skinningReport.boneCount}`
+  );
 
   // Step 8: Detect forward direction AFTER normalization
   // This must happen after position/scale are set so world positions are correct.
