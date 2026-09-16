@@ -30,6 +30,8 @@ export interface BannonFighterProfile {
   fightingStyle: string;
   model: string;
   attire?: string;
+  /** Raw GLB URL from mhvnsnt/Bannon repo for portrait/bust display */
+  portraitUrl: string;
   // Per-character move set — IDs from BrutalFistMoveCatalog
   defaultMoveSet: CharacterMoveSet;
 }
@@ -69,6 +71,8 @@ export interface CharacterMoveSet {
 
 // ─── ROSTER ──────────────────────────────────────────────────────────────────
 
+const BANNON_RAW = 'https://raw.githubusercontent.com/mhvnsnt/Bannon/main/assets/models';
+
 export const BANNON_ROSTER: readonly BannonFighterProfile[] = [
 
   // ── BANNON ──────────────────────────────────────────────────────────────────
@@ -86,6 +90,7 @@ export const BANNON_ROSTER: readonly BannonFighterProfile[] = [
     personality: 'Quiet, intensely focused on philosophy and numerology. Seeks authentic emotional connection. Hates pretense. Driven artist who views every match as a statement.',
     fightingStyle: 'Power Wrestling / Technical Hybrid. Explosive grapples, heavy strikes, and high-impact throws. Payback finisher activates when poise is broken.',
     model: 'BANNON.glb',
+    portraitUrl: `${BANNON_RAW}/BANNON.glb`,
     defaultMoveSet: {
       idle: 'bf_idle', walkForward: 'bf_walk_fwd', walkBackward: 'bf_walk_back',
       crouch: 'bf_crouch', guard: 'bf_guard',
@@ -118,6 +123,7 @@ export const BANNON_ROSTER: readonly BannonFighterProfile[] = [
     personality: 'Methodical and focused. Speaks little but observes everything. Finds beauty in perfect technique.',
     fightingStyle: 'Technical Striking / Speed. Fast combos, precise counters, and quick throws. Excels at punishing mistakes.',
     model: 'MAIME.glb',
+    portraitUrl: `${BANNON_RAW}/MAIME.glb`,
     defaultMoveSet: {
       idle: 'bf_idle', walkForward: 'bf_walk_fwd', walkBackward: 'bf_walk_back',
       crouch: 'bf_crouch', guard: 'bf_guard',
@@ -150,6 +156,7 @@ export const BANNON_ROSTER: readonly BannonFighterProfile[] = [
     personality: 'Stoic and determined. Speaks through actions, not words. Deeply loyal to those who earn it.',
     fightingStyle: 'Power Brawler. Heavy strikes, crushing throws, and endurance-based combat. Wears opponents down before finishing them.',
     model: 'ONYX.glb',
+    portraitUrl: `${BANNON_RAW}/ONYX_street.glb`,
     defaultMoveSet: {
       idle: 'bf_idle', walkForward: 'bf_walk_fwd', walkBackward: 'bf_walk_back',
       crouch: 'bf_crouch', guard: 'bf_guard',
@@ -183,6 +190,7 @@ export const BANNON_ROSTER: readonly BannonFighterProfile[] = [
     fightingStyle: 'Technical Power / Vindictive. Combines submission holds with devastating power moves. Methodical destruction followed by the Final Verdict tombstone piledriver.',
     model: 'CAIN_ELIAS_ring.glb',
     attire: 'Ring',
+    portraitUrl: `${BANNON_RAW}/CAIN_ELIAS_ring.glb`,
     defaultMoveSet: {
       idle: 'bf_idle', walkForward: 'bf_walk_fwd', walkBackward: 'bf_walk_back',
       crouch: 'bf_crouch', guard: 'bf_guard',
@@ -215,6 +223,7 @@ export const BANNON_ROSTER: readonly BannonFighterProfile[] = [
     personality: 'Naturally seeks balance and harmony (Libra), but this need is brutally suppressed by the system. Robotic in movement, theatrical in finishers — the Leap of Faith is performed with a Messiah pose or finger guns.',
     fightingStyle: 'Technical/Brutal Hybrid. Machine-like precision strikes and submissions, with theatrical high-flying finishers. The Leap of Faith (swanton bomb) and super variants are his calling cards.',
     model: 'STICKUP.glb',
+    portraitUrl: `${BANNON_RAW}/STICKUP.glb`,
     defaultMoveSet: {
       idle: 'bf_idle', walkForward: 'bf_walk_fwd', walkBackward: 'bf_walk_back',
       crouch: 'bf_crouch', guard: 'bf_guard',
@@ -247,6 +256,7 @@ export const BANNON_ROSTER: readonly BannonFighterProfile[] = [
     personality: 'Mysterious and calculating. Speaks in riddles. Finds the gaps in every defense and exploits them with surgical precision.',
     fightingStyle: 'Speed / Agility. Rapid multi-hit combos, quick counters, and evasive movement. The Cipher Protocol finisher is a rapid multi-hit strike sequence.',
     model: 'CIPHER.glb',
+    portraitUrl: `${BANNON_RAW}/CIPHER_feral.glb`,
     defaultMoveSet: {
       idle: 'bf_idle', walkForward: 'bf_walk_fwd', walkBackward: 'bf_walk_back',
       crouch: 'bf_crouch', guard: 'bf_guard',
@@ -279,6 +289,7 @@ export const BANNON_ROSTER: readonly BannonFighterProfile[] = [
     personality: 'Quiet and unsettling. Moves like a ghost. Uses silence as a weapon. Opponents never know where the next attack is coming from.',
     fightingStyle: 'Psychological / Aerial. Misdirection, rapid dodges, and unexpected aerial attacks. The Echo Slam reverberates through the opponent.',
     model: 'ECHO.glb',
+    portraitUrl: `${BANNON_RAW}/ECHO.glb`,
     defaultMoveSet: {
       idle: 'bf_idle', walkForward: 'bf_walk_fwd', walkBackward: 'bf_walk_back',
       crouch: 'bf_crouch', guard: 'bf_guard',
@@ -312,6 +323,7 @@ export const BANNON_ROSTER: readonly BannonFighterProfile[] = [
     fightingStyle: 'Brawler / Interference. Dirty tactics, rope breaks, and managerial interference. When forced to fight, uses explosive power moves.',
     model: 'CODY_sober.glb',
     attire: 'Sober',
+    portraitUrl: `${BANNON_RAW}/CODY_sober.glb`,
     defaultMoveSet: {
       idle: 'bf_idle', walkForward: 'bf_walk_fwd', walkBackward: 'bf_walk_back',
       crouch: 'bf_crouch', guard: 'bf_guard',
@@ -344,6 +356,7 @@ export const BANNON_ROSTER: readonly BannonFighterProfile[] = [
     personality: 'Aggressive and territorial. Demands adoration. Stomps everywhere in heavy boots. Fiercely protective of his position in the AWE hierarchy.',
     fightingStyle: 'Power Brawler / Endurance. Absorbs damage and delivers crushing impact. The Hall Night Driver is a devastating late-night finisher.',
     model: 'HALL_NIGHTER.glb',
+    portraitUrl: `${BANNON_RAW}/HALL_NIGHTER.glb`,
     defaultMoveSet: {
       idle: 'bf_idle', walkForward: 'bf_walk_fwd', walkBackward: 'bf_walk_back',
       crouch: 'bf_crouch', guard: 'bf_guard',
@@ -376,6 +389,7 @@ export const BANNON_ROSTER: readonly BannonFighterProfile[] = [
     personality: 'Manic and energetic. Never stops moving. Talks constantly during matches. Finds structure suffocating and chaos liberating.',
     fightingStyle: 'Electric Striker / Speed Brawler. Rapid-fire strikes, spinning attacks, and chaotic combos. The Static Shock finisher is an electric rush combo.',
     model: 'STATIC.glb',
+    portraitUrl: `${BANNON_RAW}/STATIC.glb`,
     defaultMoveSet: {
       idle: 'bf_idle', walkForward: 'bf_walk_fwd', walkBackward: 'bf_walk_back',
       crouch: 'bf_crouch', guard: 'bf_guard',

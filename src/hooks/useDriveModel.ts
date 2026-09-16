@@ -11,7 +11,10 @@ function getConfiguredUrl(modelFile?: string) {
   return DEFAULT_PUBLIC_DRIVE_URL;
 }
 
-/** Loads the exact manifest-selected Bannon GLB; Drive is only an unbound development override. */
+/** Loads the exact manifest-selected Bannon GLB; Drive is only an unbound development override.
+ *  A 404 is treated as "model not yet available" — modelUrl stays null, no error is set,
+ *  so the game can still proceed without a loaded mesh.
+ */
 export function useDriveModel(startFetch: boolean, modelFile?: string) {
   const [modelUrl, setModelUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -34,7 +37,12 @@ export function useDriveModel(startFetch: boolean, modelFile?: string) {
       try {
         const publicUrl = getConfiguredUrl(modelFile);
         const response = await fetch(publicUrl);
-        if (!response.ok) throw new Error(`Fighter GLB returned HTTP ${response.status}: ${modelFile ?? 'unconfigured'}`);
+        if (!response.ok) {
+          // GLB not yet deployed or unavailable — not a fatal error, game proceeds without mesh
+          console.warn(`Fighter GLB not available (HTTP ${response.status}): ${modelFile ?? 'unconfigured'} — proceeding without model`);
+          if (active) { setModelUrl(null); setError(null); }
+          return;
+        }
         const blob = await response.blob();
         if (!blob.size) throw new Error('Fighter GLB was empty');
         objectUrl = URL.createObjectURL(blob);

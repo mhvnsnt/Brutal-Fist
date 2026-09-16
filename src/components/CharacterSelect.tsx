@@ -1,14 +1,12 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
-import dynamic from 'next/dynamic';
-import { Canvas } from '@react-three/fiber';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { getAllBannonFighters, getBannonFighter, type BannonFighterProfile } from '../data/bannonRoster';
-import { BANNON_GLB_PLAYABLE_MODELS } from '../data/bannonGlbRoster';
-import { useDriveModel } from '../hooks/useDriveModel';
-import { FighterMesh } from './FighterMesh';
+import { getCharacterMoveSet } from '../engine/CharacterMoveSetSystem';
+import dynamic from 'next/dynamic';
 
 const MoveSetCustomizer = dynamic(() => import('./MoveSetCustomizer'), { ssr: false });
+const CharacterPortrait3D = dynamic(() => import('./CharacterPortrait3D'), { ssr: false });
 
 interface CharacterSelectProps {
   onSelectP1?: (fighter: BannonFighterProfile) => void;
@@ -16,157 +14,464 @@ interface CharacterSelectProps {
   onStartMatch?: (p1: BannonFighterProfile, p2: BannonFighterProfile) => void;
 }
 
-type Slot = 'p1' | 'p2';
+const FACTION_COLOR: Record<string, string> = {
+  alliance:    '#1d4ed8',
+  corporate:   '#dc2626',
+  chaos:       '#7c3aed',
+  independent: '#d97706',
+};
 
-const FACTION = {
-  alliance: { accent: '#36a8ff', label: 'ALLIANCE' },
-  corporate: { accent: '#ff394d', label: 'CORPORATE' },
-  chaos: { accent: '#c45cff', label: 'CHAOS' },
-  independent: { accent: '#ffd33d', label: 'INDEPENDENT' },
-} as const;
+const FACTION_BG: Record<string, string> = {
+  alliance:    'from-blue-950 to-blue-900',
+  corporate:   'from-red-950 to-red-900',
+  chaos:       'from-purple-950 to-purple-900',
+  independent: 'from-yellow-950 to-yellow-900',
+};
 
-function Portrait({ modelUrl, side, active }: { modelUrl: string | null; side: Slot; active: boolean }) {
+// Fighter initial letter as big portrait placeholder
+function FighterPortrait({
+  fighter,
+  slot,
+  active,
+}: {
+  fighter: BannonFighterProfile | null;
+  slot: 'P1' | 'P2';
+  active: boolean;
+}) {
+  const isP1 = slot === 'P1';
+
+  if (!fighter) {
+    // Silhouette / waiting state
+    return (
+      <div className={`relative flex flex-col items-center justify-end h-full w-full overflow-hidden ${isP1 ? 'items-start' : 'items-end'}`}>
+        <div className="absolute inset-0 bg-gradient-to-b from-zinc-900 to-zinc-950" />
+        {/* Scanline overlay */}
+        <div className="absolute inset-0 opacity-10" style={{
+          backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.4) 2px, rgba(0,0,0,0.4) 4px)'
+        }} />
+        {/* Silhouette */}
+        <div className="relative z-10 flex flex-col items-center justify-center h-full w-full gap-3">
+          <div className="w-28 h-40 md:w-40 md:h-56 bg-zinc-800 rounded-sm opacity-60"
+            style={{ clipPath: 'polygon(20% 0%, 80% 0%, 100% 15%, 100% 85%, 80% 100%, 20% 100%, 0% 85%, 0% 15%)' }}
+          />
+          <div className="text-zinc-500 font-mono text-xs tracking-[0.3em] animate-pulse">
+            {isP1 ? 'SELECT FIGHTER' : 'PUSH P2 START'}
+          </div>
+        </div>
+        {/* Slot label */}
+        <div className={`absolute top-3 ${isP1 ? 'left-3' : 'right-3'} z-20`}>
+          <span className={`font-mono text-xs font-black tracking-[0.3em] px-2 py-1 border ${isP1 ? 'border-blue-600 text-blue-400 bg-blue-950/60' : 'border-red-600 text-red-400 bg-red-950/60'}`}>
+            {slot}
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  const factionBg = FACTION_BG[fighter.factionAlignment];
+  const factionColor = FACTION_COLOR[fighter.factionAlignment];
+
   return (
-    <div className={`absolute inset-0 overflow-hidden ${side === 'p1' ? 'left-0 right-1/2' : 'left-1/2 right-0'} ${active ? 'opacity-100' : 'opacity-70'}`}>
-      <Canvas camera={{ position: [0, 1.55, 6.6], fov: 28 }} dpr={[1, 1.5]} gl={{ antialias: false }}>
-        <color attach="background" args={['#090b10']} />
-        <ambientLight intensity={1.15} />
-        <directionalLight position={[side === 'p1' ? -3 : 3, 4, 5]} intensity={2.2} />
-        <directionalLight position={[side === 'p1' ? 4 : -4, 1, 1]} intensity={0.8} />
-        {modelUrl && <FighterMesh state="Neutral" animation="idle" modelUrl={modelUrl} position={[0, -1.25, 0]} facing={1} rotationY={side === 'p1' ? Math.PI / 4 : -Math.PI / 4} />}
-      </Canvas>
-      <div className={`absolute inset-y-0 w-1/2 ${side === 'p1' ? 'right-0 bg-gradient-to-l' : 'left-0 bg-gradient-to-r'} from-transparent to-black/70 pointer-events-none`} />
+    <div className={`relative flex flex-col items-center justify-end h-full w-full overflow-hidden`}>
+      {/* Faction-colored backdrop */}
+      <div className={`absolute inset-0 bg-gradient-to-b ${factionBg}`} />
+      {/* Scanline overlay */}
+      <div className="absolute inset-0 opacity-10 pointer-events-none" style={{
+        backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.4) 2px, rgba(0,0,0,0.4) 4px)'
+      }} />
+      {/* Animated glow pulse */}
+      <div className="absolute inset-0 animate-pulse opacity-20 pointer-events-none"
+        style={{ background: `radial-gradient(ellipse at center, ${factionColor}55 0%, transparent 70%)` }}
+      />
+
+      {/* 3D Character bust portrait from Bannon repo GLB */}
+      <div className="absolute inset-0 z-10">
+        <CharacterPortrait3D
+          modelUrl={fighter.portraitUrl}
+          factionColor={factionColor}
+          mode="bust"
+          // PORTRAIT ORIENTATION — completely decoupled from in-fight orientation.
+          // P1 (left panel): slight inward right angle. P2 (right panel): slight inward left angle.
+          // These values NEVER change regardless of which character is selected.
+          // In-fight: P1=rotationY:0, P2=rotationY:Math.PI — set in CombatArena3D, not here.
+          rotationY={isP1 ? -0.45 : Math.PI}
+        />
+      </div>
+
+      {/* Role label at bottom */}
+      <div className="relative z-20 w-full flex justify-center pb-2 pointer-events-none">
+        <div className="text-zinc-400 font-mono text-[9px] tracking-[0.25em] uppercase bg-black/50 px-2 py-0.5">
+          {fighter.role.split('/')[0].trim()}
+        </div>
+      </div>
+
+      {/* Slot label */}
+      <div className={`absolute top-3 ${isP1 ? 'left-3' : 'right-3'} z-30`}>
+        <span className={`font-mono text-xs font-black tracking-[0.3em] px-2 py-1 border ${isP1 ? 'border-blue-500 text-blue-300 bg-blue-950/80' : 'border-red-500 text-red-300 bg-red-950/80'}`}>
+          {slot}
+        </span>
+      </div>
+      {/* Active selection pulse ring */}
+      {active && (
+        <div className="absolute inset-0 z-20 pointer-events-none border-2 animate-pulse"
+          style={{ borderColor: factionColor }}
+        />
+      )}
     </div>
   );
 }
 
-function FighterSlot({ fighter, model, active, slot, onClick }: { fighter: BannonFighterProfile; model: string; active: boolean; slot: Slot; onClick: () => void }) {
-  const faction = FACTION[fighter.factionAlignment as keyof typeof FACTION] ?? FACTION.independent;
+// Single character slot in the roster grid
+function RosterSlot({
+  fighter,
+  p1Selected,
+  p2Selected,
+  cursorOn,
+  onClick,
+}: {
+  fighter: BannonFighterProfile;
+  p1Selected: boolean;
+  p2Selected: boolean;
+  cursorOn: boolean;
+  onClick: () => void;
+}) {
+  const factionColor = FACTION_COLOR[fighter.factionAlignment];
+  const moveSet = useMemo(() => getCharacterMoveSet(fighter.id), [fighter.id]);
+  const isCustomized = moveSet?.isCustomized ?? false;
+
   return (
-    <button onClick={onClick} className="relative h-[112px] min-w-0 overflow-hidden text-left border transition-all duration-100" style={{ borderColor: active ? faction.accent : '#333943', background: active ? '#20242b' : '#12151a', boxShadow: active ? `inset 0 0 0 2px ${faction.accent}, 0 0 18px ${faction.accent}55` : 'none' }}>
-      <div className="absolute inset-0 opacity-35 bg-[radial-gradient(circle_at_50%_0%,white,transparent_55%)]" />
-      <div className="absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-black via-black/85 to-transparent" />
-      <div className="absolute top-1 left-1 px-1.5 py-0.5 text-[7px] font-black tracking-widest bg-black/80" style={{ color: faction.accent }}>{slot.toUpperCase()}</div>
-      <div className="absolute top-1 right-1 text-[7px] font-mono text-green-400">GLB</div>
-      <div className="absolute left-2 right-2 bottom-1 z-10">
-        <div className="truncate text-[11px] font-black tracking-tight text-white uppercase">{fighter.name}</div>
-        <div className="truncate text-[7px] font-mono" style={{ color: faction.accent }}>{faction.label}</div>
+    <button
+      onClick={onClick}
+      className={`relative flex flex-col items-center justify-center w-full aspect-square border transition-all duration-100 overflow-hidden group
+        ${cursorOn ? 'scale-105 z-10' : 'scale-100'}
+        ${p1Selected ? 'border-blue-500' : p2Selected ? 'border-red-500' : 'border-zinc-700 hover:border-zinc-500'}
+      `}
+      style={{
+        background: cursorOn
+          ? `linear-gradient(135deg, ${factionColor}33 0%, #18181b 100%)`
+          : 'linear-gradient(135deg, #1c1c1e 0%, #18181b 100%)',
+        boxShadow: cursorOn ? `0 0 16px ${factionColor}66` : undefined,
+      }}
+    >
+      {/* Scanlines */}
+      <div className="absolute inset-0 opacity-5 pointer-events-none" style={{
+        backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.5) 2px, rgba(0,0,0,0.5) 4px)'
+      }} />
+
+      {/* 3D character portrait from Bannon repo GLB */}
+      <div className="absolute inset-0 z-0">
+        <CharacterPortrait3D
+          modelUrl={fighter.portraitUrl}
+          factionColor={factionColor}
+          mode="full"
+        />
       </div>
-      <div className="absolute inset-0 flex items-center justify-center text-5xl font-black italic opacity-10" style={{ color: faction.accent }}>{fighter.name.charAt(0)}</div>
-      <span className="sr-only">{fighter.name}, {model}</span>
+
+      {/* Name label overlay */}
+      <div className="absolute bottom-0 left-0 right-0 z-10 bg-black/70 py-0.5">
+        <div className="text-[7px] font-mono text-zinc-300 tracking-widest truncate w-full text-center px-1">
+          {fighter.name.toUpperCase()}
+        </div>
+      </div>
+
+      {/* P1/P2 badge */}
+      {p1Selected && (
+        <div className="absolute top-0.5 left-0.5 z-20 text-[7px] font-mono font-black text-blue-300 bg-blue-900/80 px-1">P1</div>
+      )}
+      {p2Selected && (
+        <div className="absolute top-0.5 right-0.5 z-20 text-[7px] font-mono font-black text-red-300 bg-red-900/80 px-1">P2</div>
+      )}
+      {/* Customized dot */}
+      {isCustomized && (
+        <div className="absolute bottom-4 right-0.5 z-20 w-1.5 h-1.5 rounded-full bg-green-400" />
+      )}
     </button>
   );
 }
 
 export default function CharacterSelect({ onSelectP1, onSelectP2, onStartMatch }: CharacterSelectProps) {
-  // Character select is roster-authoritative: a fighter must have a verified Bannon GLB.
-  const fighters = useMemo(() => {
-    const playableIds = new Set(BANNON_GLB_PLAYABLE_MODELS.map(entry => entry.id));
-    return getAllBannonFighters().filter(fighter => playableIds.has(fighter.id));
-  }, []);
-
-  const modelFor = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const entry of BANNON_GLB_PLAYABLE_MODELS) if (!map.has(entry.id)) map.set(entry.id, entry.model);
-    return map;
-  }, []);
-
-  const [p1Id, setP1Id] = useState<string | null>(fighters[0]?.id ?? null);
-  const [p2Id, setP2Id] = useState<string | null>(fighters[1]?.id ?? fighters[0]?.id ?? null);
-  const [activeSlot, setActiveSlot] = useState<Slot>('p1');
+  const fighters = useMemo(() => getAllBannonFighters(), []);
+  const [p1Id, setP1Id] = useState<string | null>(null);
+  const [p2Id, setP2Id] = useState<string | null>(null);
+  const [activeSlot, setActiveSlot] = useState<'p1' | 'p2'>('p1');
+  const [cursorIndex, setCursorIndex] = useState(0);
+  const [countdown, setCountdown] = useState(60);
+  const [customizerOpen, setCustomizerOpen] = useState(false);
   const [customizerCharId, setCustomizerCharId] = useState<string | null>(null);
-  const [filter, setFilter] = useState('all');
 
-  const visible = useMemo(() => filter === 'all' ? fighters : fighters.filter(f => f.factionAlignment === filter), [fighters, filter]);
-  const p1 = p1Id ? getBannonFighter(p1Id) : null;
-  const p2 = p2Id ? getBannonFighter(p2Id) : null;
-  const p1Model = p1 ? modelFor.get(p1.id) ?? null : null;
-  const p2Model = p2 ? modelFor.get(p2.id) ?? null : null;
-  const { modelUrl: p1Url } = useDriveModel(true, p1Model ?? undefined);
-  const { modelUrl: p2Url } = useDriveModel(true, p2Model ?? undefined);
+  const p1Fighter = p1Id ? getBannonFighter(p1Id) : null;
+  const p2Fighter = p2Id ? getBannonFighter(p2Id) : null;
+  const cursorFighter = fighters[cursorIndex] ?? null;
 
-  const select = (fighter: BannonFighterProfile) => {
-    if (!modelFor.has(fighter.id)) return;
+  // Countdown timer
+  useEffect(() => {
+    if (countdown <= 0) {
+      // Auto-select if time runs out
+      if (!p1Id && fighters.length > 0) setP1Id(fighters[0].id);
+      if (!p2Id && fighters.length > 1) setP2Id(fighters[1].id);
+      return;
+    }
+    const t = window.setTimeout(() => setCountdown(c => c - 1), 1000);
+    return () => window.clearTimeout(t);
+  }, [countdown, p1Id, p2Id, fighters]);
+
+  // Keyboard navigation
+  const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    const cols = Math.min(fighters.length, 10);
+    if (e.key === 'ArrowRight') setCursorIndex(i => Math.min(fighters.length - 1, i + 1));
+    else if (e.key === 'ArrowLeft') setCursorIndex(i => Math.max(0, i - 1));
+    else if (e.key === 'ArrowDown') setCursorIndex(i => Math.min(fighters.length - 1, i + cols));
+    else if (e.key === 'ArrowUp') setCursorIndex(i => Math.max(0, i - cols));
+    else if (e.key === 'Enter' || e.key === ' ') {
+      handleFighterSelect(fighters[cursorIndex]);
+    }
+  }, [cursorIndex, fighters]);
+
+  useEffect(() => {
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleKeyDown]);
+
+  const handleFighterSelect = (fighter: BannonFighterProfile) => {
     if (activeSlot === 'p1') {
       setP1Id(fighter.id);
-      onSelectP1?.(fighter);
+      if (onSelectP1) onSelectP1(fighter);
       setActiveSlot('p2');
     } else {
       setP2Id(fighter.id);
-      onSelectP2?.(fighter);
+      if (onSelectP2) onSelectP2(fighter);
     }
   };
 
-  const start = () => {
-    if (p1 && p2 && p1Model && p2Model) onStartMatch?.(p1, p2);
+  const handleStartMatch = () => {
+    const f1 = p1Id ? getBannonFighter(p1Id) : null;
+    const f2 = p2Id ? getBannonFighter(p2Id) : null;
+    if (f1 && f2 && onStartMatch) onStartMatch(f1, f2);
   };
 
-  const p1Faction = p1 ? (FACTION[p1.factionAlignment as keyof typeof FACTION] ?? FACTION.independent) : FACTION.independent;
-  const p2Faction = p2 ? (FACTION[p2.factionAlignment as keyof typeof FACTION] ?? FACTION.independent) : FACTION.independent;
+  const canStart = !!(p1Id && p2Id);
+
+  // Grid: up to 10 per row, 2 rows max
+  const row1 = fighters.slice(0, 10);
+  const row2 = fighters.slice(10, 20);
 
   return (
-    <div className="fixed inset-0 overflow-hidden bg-[#090b0f] text-white font-mono select-none">
-      {/* Dark industrial / arcade backdrop */}
-      <div className="absolute inset-0 opacity-25 bg-[linear-gradient(135deg,transparent_0%,#68707d_0.7%,transparent_1.4%,transparent_48%,#414853_48.5%,transparent_49.2%,transparent_100%)] bg-[length:80px_80px]" />
-      <div className="absolute inset-0 opacity-20 bg-[repeating-linear-gradient(0deg,transparent_0,transparent_18px,#89909a_19px,#89909a_20px)]" />
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_20%,#000_92%)]" />
+    <div className="fixed inset-0 overflow-hidden select-none font-mono"
+      style={{
+        background: 'linear-gradient(180deg, #0a0a0a 0%, #111113 40%, #0d0d0f 100%)',
+      }}
+    >
+      {/* ── Industrial metallic background texture ── */}
+      <div className="absolute inset-0 pointer-events-none opacity-[0.07]" style={{
+        backgroundImage: `
+          repeating-linear-gradient(90deg, rgba(255,255,255,0.05) 0px, rgba(255,255,255,0.05) 1px, transparent 1px, transparent 40px),
+          repeating-linear-gradient(0deg, rgba(255,255,255,0.05) 0px, rgba(255,255,255,0.05) 1px, transparent 1px, transparent 40px)
+        `
+      }} />
+      {/* Rivet dots */}
+      <div className="absolute inset-0 pointer-events-none opacity-20" style={{
+        backgroundImage: 'radial-gradient(circle, #555 1px, transparent 1px)',
+        backgroundSize: '40px 40px',
+      }} />
 
-      {/* TOP: two large live 3D fighter renders */}
-      <section className="absolute inset-x-0 top-0 h-[57%] overflow-hidden">
-        <div className="absolute inset-x-0 top-0 h-16 z-20 flex justify-center pointer-events-none">
-          <div className="mt-3 px-8 py-1 border border-white/20 bg-black/65 text-[19px] md:text-3xl font-black italic tracking-[0.18em]" style={{ textShadow: '3px 3px 0 #000' }}>PLAYER SELECT</div>
+      {/* ── PLAYER SELECT stamp text (background) ── */}
+      <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-0">
+        <div
+          className="text-[6vw] md:text-[5vw] font-black tracking-[0.35em] text-white uppercase select-none"
+          style={{
+            opacity: 0.04,
+            letterSpacing: '0.4em',
+            fontFamily: 'monospace',
+            textShadow: '2px 2px 0 #fff, -2px -2px 0 #fff',
+            filter: 'blur(0.5px)',
+          }}
+        >
+          PLAYER SELECT
         </div>
-        <Portrait modelUrl={p1Url} side="p1" active={activeSlot === 'p1'} />
-        <Portrait modelUrl={p2Url} side="p2" active={activeSlot === 'p2'} />
-        <div className="absolute inset-y-0 left-1/2 w-px bg-white/15 z-10" />
+      </div>
 
-        <div className="absolute left-1/2 top-1/2 z-30 -translate-x-1/2 -translate-y-1/2 text-center">
-          <div className="text-[9px] tracking-[0.35em] text-white/45">TIME</div>
-          <div className="text-4xl md:text-6xl font-black tabular-nums" style={{ textShadow: '0 0 12px #fff8' }}>30</div>
+      {/* ── TOP ZONE: Two player portrait busts ── */}
+      <div className="relative z-10 flex h-[52%]">
+        {/* P1 Portrait */}
+        <div className="flex-1 border-r border-zinc-800/60">
+          <FighterPortrait fighter={p1Fighter} slot="P1" active={activeSlot === 'p1'} />
         </div>
 
-        <div className="absolute left-3 md:left-8 bottom-4 z-30 max-w-[45%]">
-          <div className="text-[8px] tracking-[0.3em] font-bold" style={{ color: p1Faction.accent }}>PLAYER 1 · FIGHTER</div>
-          <div className="mt-1 px-3 py-1 bg-black/85 border-l-4 text-xl md:text-4xl font-black italic uppercase tracking-tight" style={{ borderColor: p1Faction.accent }}>{p1?.name ?? 'SELECT FIGHTER'}</div>
-          {p1 && <div className="mt-1 text-[8px] text-white/55 uppercase">{p1.fightingStyle.split('.')[0]}</div>}
-        </div>
-        <div className="absolute right-3 md:right-8 bottom-4 z-30 max-w-[45%] text-right">
-          <div className="text-[8px] tracking-[0.3em] font-bold" style={{ color: p2Faction.accent }}>PLAYER 2 · FIGHTER</div>
-          <div className="mt-1 px-3 py-1 bg-black/85 border-r-4 text-xl md:text-4xl font-black italic uppercase tracking-tight" style={{ borderColor: p2Faction.accent }}>{p2?.name ?? 'PUSH P2 START'}</div>
-          {p2 && <div className="mt-1 text-[8px] text-white/55 uppercase">{p2.fightingStyle.split('.')[0]}</div>}
-        </div>
-      </section>
-
-      {/* BOTTOM: dense arcade roster grid */}
-      <section className="absolute inset-x-0 bottom-0 h-[43%] z-40 border-t-2 border-white/20 bg-[#0d1015]/96 px-2 md:px-5 pt-2 pb-2 flex flex-col">
-        <div className="flex items-center justify-between mb-1 px-1">
-          <div className="text-[8px] tracking-[0.35em] text-white/45">BRUTAL FIST // VERIFIED GLB ROSTER // {fighters.length} FIGHTERS</div>
-          <div className="flex gap-1">
-            {['all', 'alliance', 'corporate', 'chaos', 'independent'].map(value => (
-              <button key={value} onClick={() => setFilter(value)} className={`px-2 py-1 text-[7px] tracking-wider border ${filter === value ? 'border-white bg-white text-black' : 'border-white/20 text-white/45'}`}>{value.toUpperCase()}</button>
+        {/* Center divider with countdown timer */}
+        <div className="relative flex flex-col items-center justify-center w-16 md:w-20 shrink-0 z-20"
+          style={{ background: 'linear-gradient(180deg, #0a0a0a 0%, #111 50%, #0a0a0a 100%)' }}
+        >
+          {/* PLAYER SELECT vertical text */}
+          <div className="absolute top-2 left-1/2 -translate-x-1/2 flex flex-col items-center gap-0.5">
+            {'PLAYER SELECT'.split('').map((ch, i) => (
+              <span key={i} className="text-[7px] text-zinc-600 font-black tracking-widest leading-tight">{ch}</span>
             ))}
           </div>
+          {/* Countdown */}
+          <div className="flex flex-col items-center mt-4">
+            <div
+              className="text-3xl md:text-4xl font-black tabular-nums"
+              style={{
+                color: countdown <= 10 ? '#ef4444' : '#facc15',
+                textShadow: countdown <= 10
+                  ? '0 0 16px #ef4444, 0 0 32px #ef444488' :'0 0 16px #facc15, 0 0 32px #facc1588',
+                fontFamily: 'monospace',
+              }}
+            >
+              {String(countdown).padStart(2, '0')}
+            </div>
+            <div className="text-[7px] text-zinc-600 tracking-widest mt-0.5">TIME</div>
+          </div>
+          {/* VS text */}
+          <div className="mt-3 text-xs font-black text-zinc-700 tracking-widest">VS</div>
         </div>
 
-        <div className="flex-1 min-h-0 overflow-y-auto pr-1">
-          <div className="grid grid-cols-5 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-1">
-            {visible.map(fighter => (
-              <FighterSlot key={fighter.id} fighter={fighter} model={modelFor.get(fighter.id) ?? ''} slot={fighter.id === p1Id ? 'p1' : 'p2'} active={fighter.id === p1Id || fighter.id === p2Id} onClick={() => select(fighter)} />
+        {/* P2 Portrait */}
+        <div className="flex-1 border-l border-zinc-800/60">
+          <FighterPortrait fighter={p2Fighter} slot="P2" active={activeSlot === 'p2'} />
+        </div>
+      </div>
+
+      {/* ── CHARACTER NAME BAR ── */}
+      <div className="relative z-10 flex h-8 border-t border-b border-zinc-800"
+        style={{ background: 'linear-gradient(90deg, #0a0a0a 0%, #111 50%, #0a0a0a 100%)' }}
+      >
+        {/* P1 name */}
+        <div className="flex-1 flex items-center px-4">
+          <span className="text-white font-black text-sm tracking-[0.2em] uppercase truncate"
+            style={{ textShadow: p1Fighter ? `0 0 8px ${FACTION_COLOR[p1Fighter.factionAlignment]}` : undefined }}
+          >
+            {p1Fighter?.name ?? '───'}
+          </span>
+        </div>
+        {/* Center divider */}
+        <div className="w-16 md:w-20 flex items-center justify-center shrink-0">
+          <div className="w-px h-full bg-zinc-700" />
+        </div>
+        {/* P2 name */}
+        <div className="flex-1 flex items-center justify-end px-4">
+          <span className="text-white font-black text-sm tracking-[0.2em] uppercase truncate text-right"
+            style={{ textShadow: p2Fighter ? `0 0 8px ${FACTION_COLOR[p2Fighter.factionAlignment]}` : undefined }}
+          >
+            {p2Fighter?.name ?? '───'}
+          </span>
+        </div>
+      </div>
+
+      {/* ── BOTTOM ZONE: Roster grid ── */}
+      <div className="relative z-10 flex flex-col flex-1"
+        style={{ background: 'linear-gradient(180deg, #0d0d0f 0%, #0a0a0a 100%)' }}
+      >
+        {/* Active slot indicator */}
+        <div className="flex items-center justify-between px-4 py-1.5 border-b border-zinc-800/50">
+          <div className="flex items-center gap-2">
+            <span className="text-[9px] text-zinc-600 tracking-[0.3em]">SELECTING FOR</span>
+            <span className={`text-[10px] font-black tracking-[0.3em] px-2 py-0.5 border ${
+              activeSlot === 'p1' ?'border-blue-600 text-blue-400 bg-blue-950/40' :'border-red-600 text-red-400 bg-red-950/40'
+            }`}>
+              {activeSlot === 'p1' ? 'PLAYER 1' : 'PLAYER 2'}
+            </span>
+            <button
+              onClick={() => setActiveSlot(activeSlot === 'p1' ? 'p2' : 'p1')}
+              className="text-[9px] text-zinc-600 hover:text-zinc-400 border border-zinc-800 hover:border-zinc-600 px-2 py-0.5 transition-colors"
+            >
+              SWITCH
+            </button>
+          </div>
+          <div className="flex items-center gap-2">
+            {cursorFighter && (
+              <button
+                onClick={() => { setCustomizerCharId(cursorFighter.id); setCustomizerOpen(true); }}
+                className="text-[9px] text-zinc-500 hover:text-yellow-400 border border-zinc-800 hover:border-yellow-700 px-2 py-0.5 transition-colors"
+              >
+                CUSTOMIZE MOVES
+              </button>
+            )}
+            {canStart && (
+              <button
+                onClick={handleStartMatch}
+                className="text-[10px] font-black text-black bg-yellow-400 hover:bg-yellow-300 px-4 py-0.5 tracking-widest transition-colors"
+              >
+                FIGHT!
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Roster rows */}
+        <div className="flex-1 flex flex-col justify-center px-2 py-2 gap-1">
+          {/* Row 2 (unlockable / overflow) — shown only if more than 10 fighters */}
+          {row2.length > 0 && (
+            <div
+              className="grid gap-1"
+              style={{ gridTemplateColumns: `repeat(${Math.min(row2.length + 2, 12)}, 1fr)` }}
+            >
+              {/* Random select left */}
+              <button className="aspect-square border border-zinc-800 bg-zinc-900/50 flex items-center justify-center text-zinc-700 text-[10px] font-mono hover:border-zinc-600 hover:text-zinc-400 transition-colors">
+                ?
+              </button>
+              {row2.map((fighter, i) => (
+                <RosterSlot
+                  key={fighter.id}
+                  fighter={fighter}
+                  p1Selected={fighter.id === p1Id}
+                  p2Selected={fighter.id === p2Id}
+                  cursorOn={cursorIndex === i + 10}
+                  onClick={() => { setCursorIndex(i + 10); handleFighterSelect(fighter); }}
+                />
+              ))}
+              {/* Random select right */}
+              <button className="aspect-square border border-zinc-800 bg-zinc-900/50 flex items-center justify-center text-zinc-700 text-[10px] font-mono hover:border-zinc-600 hover:text-zinc-400 transition-colors">
+                ?
+              </button>
+            </div>
+          )}
+
+          {/* Row 1 (base roster) */}
+          <div
+            className="grid gap-1"
+            style={{ gridTemplateColumns: `repeat(${Math.min(row1.length + 2, 12)}, 1fr)` }}
+          >
+            {/* Random select left */}
+            <button className="aspect-square border border-zinc-800 bg-zinc-900/50 flex items-center justify-center text-zinc-700 text-[10px] font-mono hover:border-zinc-600 hover:text-zinc-400 transition-colors">
+              ?
+            </button>
+            {row1.map((fighter, i) => (
+              <RosterSlot
+                key={fighter.id}
+                fighter={fighter}
+                p1Selected={fighter.id === p1Id}
+                p2Selected={fighter.id === p2Id}
+                cursorOn={cursorIndex === i}
+                onClick={() => { setCursorIndex(i); handleFighterSelect(fighter); }}
+              />
             ))}
+            {/* Random select right */}
+            <button className="aspect-square border border-zinc-800 bg-zinc-900/50 flex items-center justify-center text-zinc-700 text-[10px] font-mono hover:border-zinc-600 hover:text-zinc-400 transition-colors">
+              ?
+            </button>
           </div>
         </div>
 
-        <div className="mt-1 flex items-center justify-between gap-2 border-t border-white/10 pt-1">
-          <div className="text-[7px] text-white/35">P1/P2 SELECT · D-PAD / TOUCH · CONFIRM TO FIGHT</div>
-          <div className="flex gap-1">
-            {p1 && <button onClick={() => setCustomizerCharId(p1.id)} className="px-3 py-1 border border-white/20 text-[8px] font-bold">P1 MOVES</button>}
-            {p2 && <button onClick={() => setCustomizerCharId(p2.id)} className="px-3 py-1 border border-white/20 text-[8px] font-bold">P2 MOVES</button>}
-            <button onClick={start} disabled={!p1 || !p2 || !p1Model || !p2Model} className="px-5 py-1 bg-white text-black text-[9px] font-black tracking-widest disabled:opacity-30">FIGHT</button>
+        {/* Bottom info bar */}
+        <div className="flex items-center justify-between px-4 py-1 border-t border-zinc-800/50">
+          <div className="text-[8px] text-zinc-700 tracking-[0.3em]">
+            {cursorFighter ? `${cursorFighter.name.toUpperCase()} · ${cursorFighter.fightingStyle.split('.')[0].toUpperCase()}` : 'MOVE CURSOR TO SELECT'}
+          </div>
+          <div className="text-[8px] text-zinc-700 tracking-[0.3em]">
+            {fighters.length} FIGHTERS · BANNON ROSTER
           </div>
         </div>
-      </section>
+      </div>
 
-      {customizerCharId && <MoveSetCustomizer initialCharacterId={customizerCharId} onClose={() => setCustomizerCharId(null)} onConfirm={() => setCustomizerCharId(null)} />}
+      {/* ── Move Set Customizer overlay ── */}
+      {customizerOpen && customizerCharId && (
+        <MoveSetCustomizer
+          initialCharacterId={customizerCharId}
+          onClose={() => setCustomizerOpen(false)}
+          onConfirm={() => setCustomizerOpen(false)}
+        />
+      )}
     </div>
   );
 }
