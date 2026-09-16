@@ -6,7 +6,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { BANNON_ROSTER } from '../data/bannonRoster';
 import { BANNON_GLB_PLAYABLE_MODELS } from '../data/bannonGlbRoster';
 import { useRankedCosmeticUnlocks, CosmeticUnlockBanner } from './CosmeticUnlockSystem';
-import { GLBAnimationScanner } from './GLBAnimationScanner';
+import GLBRigInspector from './GLBRigInspector';
 
 interface MatchmakingQueueScreenProps {
   onBack: () => void;
@@ -557,17 +557,10 @@ export default function MatchmakingQueueScreen({ onBack, onMatchFound }: Matchma
           </div>
         </div>
 
-        {/* Pre-ranked-queue GLB Animation Scanner */}
+        {/* Pre-ranked-queue GLB Rig Inspector */}
         <div className="border border-zinc-900 p-3">
-          <div className="text-[7px] tracking-[0.3em] text-zinc-700 mb-2">PRE-QUEUE VALIDATION</div>
-          <GLBAnimationScanner
-            onScanComplete={(allPass, results) => {
-              const failCount = results.filter(r => r.status === 'fail').length;
-              if (!allPass && failCount > 0) {
-                console.warn(`[GLBScanner] ${failCount} fighter(s) failed animation scan — ranked queue may have issues`);
-              }
-            }}
-          />
+          <div className="text-[7px] tracking-[0.3em] text-zinc-700 mb-2">PRE-QUEUE RIG VALIDATION</div>
+          <GLBRigInspector />
         </div>
       </div>
 
