@@ -7,6 +7,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import { SkeletonUtils } from 'three-stdlib';
 import { normalizeClonedFighter, PIPELINE_TARGET_HEIGHT } from '../engine/pipeline/CharacterPipeline';
+import { isCollapsedNamedPartRig } from '../engine/pipeline/namedPartRig';
 
 interface CharacterPortrait3DProps {
   modelUrl: string;
@@ -28,6 +29,8 @@ interface CharacterPortrait3DProps {
    * Base GLB loads at 0° on all axes before this slot rotation is applied.
    */
   rotationY?: number;
+  /** HQ 2D card (Tekken-style). Shown behind 3D, or alone if the GLB is a collapsed named-part rig. */
+  cardUrl?: string;
 }
 
 /**
@@ -124,7 +127,12 @@ function PortraitModel({
 
         const { forwardCorrectionY } = normalizeClonedFighter(cloned, PIPELINE_TARGET_HEIGHT);
 
-        // ── Step 9: Apply faction color tint ──────────────────────────────────
+        if (isCollapsedNamedPartRig(cloned)) {
+          console.warn('[Portrait] collapsed named-part rig — 3D skipped (would explode). Card art only.', modelUrl);
+          setModel(null);
+          return;
+        }
+
         const color = new THREE.Color(factionColor);
         cloned.traverse((child) => {
           if (!(child as THREE.Mesh).isMesh) return;
@@ -140,18 +148,9 @@ function PortraitModel({
           });
         });
 
-        // ── Step 10: Idle animation — mixer bound to CLONED scene ─────────────
-        // AGENT LAW: AnimationMixer must target the cloned scene (the rendered object),
-        // not the original gltf.scene. Use name-based track binding (not UUID) so
-        // the mixer resolves bones by name in the cloned hierarchy.
         if (gltf.animations && gltf.animations.length > 0) {
           mixerRef.current = new THREE.AnimationMixer(cloned);
           const idleClip = selectIdleClip(gltf.animations);
-
-          // Clone the clip — do NOT remap to UUIDs.
-          // THREE.AnimationMixer resolves track names by searching the root subtree
-          // for objects with matching names. Since cloned has the same bone names
-          // as the original, name-based tracks resolve correctly without UUID remapping.
           const clonedClip = idleClip.clone();
           const action = mixerRef.current.clipAction(clonedClip, cloned);
           action.setLoop(THREE.LoopRepeat, Infinity);
@@ -226,9 +225,19 @@ export default function CharacterPortrait3D({
   flash = false,
   flip = false,
   rotationY,
+  cardUrl,
 }: CharacterPortrait3DProps) {
   return (
     <div className="relative w-full h-full flex items-end justify-center">
+      {cardUrl && (
+        <img
+          src={cardUrl}
+          alt=""
+          draggable={false}
+          className="absolute inset-0 w-full h-full object-contain object-bottom pointer-events-none"
+          style={{ imageRendering: 'auto' }}
+        />
+      )}
       <div
         className="absolute inset-0 pointer-events-none"
         style={{

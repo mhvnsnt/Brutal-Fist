@@ -161,6 +161,7 @@ function FighterPortrait({
           factionColor={factionColor}
           mode="bust"
           rotationY={isP1 ? SELECT_SLOT_ROTATION_Y.P1 : SELECT_SLOT_ROTATION_Y.P2}
+          cardUrl={getSelectedCardArtSrc(fighter.id)}
         />
       </div>
       <div className="relative z-20 w-full flex justify-center pb-2 pointer-events-none">
@@ -263,6 +264,7 @@ function RosterSlot({
   const moveSet = useMemo(() => getCharacterMoveSet(fighter.id), [fighter.id]);
   const isCustomized = moveSet?.isCustomized ?? false;
   const face = getSelectedCardArtSrc(fighter.id);
+  const pixelated = getSelectedCardArtKind(fighter.id) === 'pixel';
 
   return (
     <button
@@ -300,7 +302,7 @@ function RosterSlot({
           alt=""
           draggable={false}
           className="absolute inset-0 z-0 w-full h-full object-cover object-top"
-          style={{ imageRendering: 'pixelated' }}
+          style={{ imageRendering: pixelated ? 'pixelated' : 'auto' }}
         />
       )}
       <div className="absolute inset-0 z-[1] opacity-20 pointer-events-none" style={{

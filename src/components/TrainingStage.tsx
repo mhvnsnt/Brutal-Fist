@@ -18,7 +18,7 @@ export function TrainingStage({ p1Color, p2Color }: TrainingStageProps) {
       {/* Floor plane */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} receiveShadow>
         <planeGeometry args={[FLOOR_WIDTH, FLOOR_DEPTH]} />
-        <meshStandardMaterial color="#111111" roughness={0.85} metalness={0.15} />
+        <meshStandardMaterial color="#2a2a2e" roughness={0.85} metalness={0.15} />
       </mesh>
       {/* Floor grid */}
       <gridHelper args={[FLOOR_WIDTH, 24, '#222222', '#1a1a1a']} position={[0, 0.002, 0]} />

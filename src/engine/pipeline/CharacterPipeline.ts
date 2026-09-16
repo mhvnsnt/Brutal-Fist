@@ -78,6 +78,7 @@ import {
   AnimationSourceRegistry,
   validateRegistryCompleteness,
 } from '../retarget/AnimationSourceRegistry';
+import { flattenRootMotionY, isCollapsedNamedPartRig } from './namedPartRig';
 import { SEMANTIC_STATE_ALIASES } from '../retarget/SemanticStateAliases';
 import { getFighterMotionClips, resolveFighterIdFromModel } from '../../data/fighterMotionMaps';
 
@@ -850,6 +851,8 @@ export async function extractAndRetargetAnimations(
     `  Retarget verdict: ${retargetVerdict}`
   );
 
+  for (const clip of processedClips) flattenRootMotionY(clip);
+
   return {
     clips: processedClips,
     glbClipCount,
@@ -1044,21 +1047,36 @@ export async function runCharacterPipeline(
   // the mixer apply to the original (invisible) scene's skeleton, not the
   // visible clone.
   const mixer = new THREE.AnimationMixer(cloned);
+  const skipMixer = isCollapsedNamedPartRig(cloned);
+  if (skipMixer) {
+    console.warn(
+      `[CharacterPipeline] "${modelName}" named-part rig has no bone rest pose. ` +
+      `Mixer skipped — driving Mixamo clips would detach limbs (skeleton desync).`,
+    );
+  }
 
   // ── STEP 13a: Extract and retarget animation clips ────────────────────────
   // Apply retarget layer: source bone names → canonical → target skeleton bones
   // Run validateAnimationChannelBones() before mixer starts
   const characterId = resolveFighterIdFromModel(modelName) || modelName.replace(/[_.].*$/, '').toLowerCase();
-  const extractionResult = await extractAndRetargetAnimations(
-    scene,    // source: original un-cloned scene (for bone name indexing)
-    cloned,   // target: the visible clone the mixer will drive
-    animations,
-    modelName,
-    characterId,
-  );
+  const extractionResult = skipMixer
+    ? {
+        clips: [] as THREE.AnimationClip[],
+        glbClipCount: animations.length,
+        bridgeClipCount: 0,
+        unresolvedTrackCount: 0,
+        resolvedTrackCount: 0,
+        retargetApplied: false,
+        retargetVerdict: 'SKIPPED' as const,
+      }
+    : await extractAndRetargetAnimations(
+        scene,
+        cloned,
+        animations,
+        modelName,
+        characterId,
+      );
 
-  // ── STEP 13b: Validate animation channel → bone resolution BEFORE mixer starts ──
-  // Already run inside extractAndRetargetAnimations(), but log summary here
   if (extractionResult.unresolvedTrackCount > 0) {
     console.warn(
       `[CharacterPipeline] ⚠️ "${modelName}" — ${extractionResult.unresolvedTrackCount} unresolved animation ` +

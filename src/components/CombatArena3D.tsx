@@ -6,6 +6,7 @@ import * as THREE from 'three';
 import { FighterMesh } from './FighterMesh';
 import { type BannonFighterProfile } from '../data/bannonRoster';
 import { getFighterGlbUrl } from '../data/bannonGlbRoster';
+import { getSelectedCardArtSrc } from '../data/fighterCardArt';
 import { TrainingStage } from './TrainingStage';
 import { UrbanNightStage } from './UrbanNightStage';
 import { CHARACTER_BLOOM } from './PostMatchScreen';
@@ -817,6 +818,7 @@ export default function CombatArena3D({
           animationTrigger={p1AnimTrigger}
           locomotionVelocity={p1LocomotionVelocity}
           hitStopActive={hitStopActive}
+          cardUrl={getSelectedCardArtSrc(p1Fighter.id)}
           onBoneHitboxReady={onP1BoneHitboxReady}
           onDeformationBlocked={(characterName, failingChecks) => {
             // AGENT LAW: Log combat freeze — no UI, backend only
@@ -840,6 +842,7 @@ export default function CombatArena3D({
           animationTrigger={p2AnimTrigger}
           locomotionVelocity={p2LocomotionVelocity}
           hitStopActive={hitStopActive}
+          cardUrl={getSelectedCardArtSrc(p2Fighter.id)}
           onBoneHitboxReady={onP2BoneHitboxReady}
           onDeformationBlocked={(characterName, failingChecks) => {
             // AGENT LAW: Log combat freeze — no UI, backend only

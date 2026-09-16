@@ -137,3 +137,14 @@ Bios/pronouns rewritten from mhvnsnt/Bannon books + `canon/godwithin/noncanon_ro
 
 
 
+
+## 2026-09-16 — Maime named-part desync, float, HQ grid
+
+Umbrella term: **skeletal animation pipeline**. Screenshots in `public/concept-art/bugs/`.
+
+Maime_skinned is 15 unit-cube named-parts + Mixamo bones with **no rest translation** and identity IBM. Driving the Bannon bank = skeleton desync (limbs explode). Mixer skipped for collapsed named-part rigs; HQ card shown instead. Not a runtime re-rig.
+
+Grid: likeness copied over `/portraits/{id}.png`, `imageRendering:auto` unless CARD PIXEL.
+
+Float: flatten Mixamo hip Y on clips + per-frame foot snap on grounded states. Training floor lightened so the true y=0 plane is visible.
+Select P2 stays −45° toward camera.

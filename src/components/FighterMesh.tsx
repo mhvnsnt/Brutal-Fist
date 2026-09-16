@@ -14,7 +14,9 @@ import {
 } from '../engine/debug/DeformationIntegrityLogger';
 import {
   runCharacterPipeline,
+  computeMeshWorldBox,
 } from '../engine/pipeline/CharacterPipeline';
+import { isCollapsedNamedPartRig } from '../engine/pipeline/namedPartRig';
 import {
   runAnimationIntegrityGate,
   type AnimationIntegrityReport,
@@ -87,6 +89,8 @@ export interface FighterMeshProps {
    * Use this to display the per-fighter animation status in DebugOverlayHUD.
    */
   onAnimationIntegrityReport?: (report: AnimationIntegrityReport) => void;
+  /** HQ likeness card if the GLB is a collapsed named-part rig. */
+  cardUrl?: string;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -402,6 +406,7 @@ function FighterMeshInner({
   onBoneHitboxReady,
   onDeformationBlocked,
   onAnimationIntegrityReport,
+  cardUrl,
 }: {
   gltfUrl: string;
   state: string;
@@ -419,6 +424,7 @@ function FighterMeshInner({
   onBoneHitboxReady?: (system: BoneHitboxSystem) => void;
   onDeformationBlocked?: (characterName: string, failingChecks: string[]) => void;
   onAnimationIntegrityReport?: (report: AnimationIntegrityReport) => void;
+  cardUrl?: string;
 }) {
   const groupRef = useRef<THREE.Group>(null);
   const [normalized, setNormalized] = useState<NormalizedResult | null>(null);
@@ -784,7 +790,14 @@ function FighterMeshInner({
     // the mixer's internal clock stops tracking and crossfades break on resume.
     if (normalized) {
       normalized.mixer.update(delta);
-      // Update skeleton helper world matrices so bone lines track correctly
+      const grounded = !['Knockdown', 'KO', 'Crumple', 'Airborne'].includes(state);
+      if (grounded) {
+        normalized.scene.updateMatrixWorld(true);
+        const box = computeMeshWorldBox(normalized.scene);
+        if (Number.isFinite(box.min.y) && Math.abs(box.min.y) > 0.003) {
+          normalized.scene.position.y += -box.min.y;
+        }
+      }
       if (normalized.skeletonHelper && showHitbox) {
         normalized.skeletonHelper.update();
       }
@@ -799,22 +812,17 @@ function FighterMeshInner({
 
   const activeSpheres = boneHitboxRef.current.getActiveSpheres();
 
+  const collapsed = normalized ? isCollapsedNamedPartRig(normalized.scene) : false;
+
   return (
     <group ref={groupRef} position={position}>
-      {/*
-        AGENT LAW: The inner group applies the forward correction rotation.
-        This is SEPARATE from the outer group's rotationY (P1/P2 orientation).
-        forwardCorrectionY is 0 for correctly-exported models (Bannon, Maime).
-        forwardCorrectionY is Math.PI for models exported facing +Z (most others).
-        This is detected automatically — never hardcoded per character.
-      */}
-      <group rotation={[0, normalized.forwardCorrectionY, 0]}>
+      <group rotation={[0, normalized.forwardCorrectionY, 0]} visible={!collapsed}>
         <primitive object={normalized.scene} />
-        {/* Skeleton helper — shows bones/joints as green wireframe lines when showHitbox=true */}
         {normalized.skeletonHelper && showHitbox && (
           <primitive object={normalized.skeletonHelper} />
         )}
       </group>
+      {collapsed && cardUrl && <CardBillboard url={cardUrl} />}
 
       {/* Legacy AABB hitbox (shown when bone hitboxes are unavailable) */}
       {showHitbox && hitboxGeometry && activeSpheres.length === 0 && (
@@ -856,6 +864,24 @@ function FighterMeshInner({
 // ─────────────────────────────────────────────────────────────────────────────
 // Fallback placeholder while GLB loads
 // ─────────────────────────────────────────────────────────────────────────────
+function CardBillboard({ url }: { url: string }) {
+  const [map, setMap] = useState<THREE.Texture | null>(null);
+  useEffect(() => {
+    const loader = new THREE.TextureLoader();
+    loader.load(url, (tex) => {
+      tex.colorSpace = THREE.SRGBColorSpace;
+      setMap(tex);
+    });
+  }, [url]);
+  if (!map) return null;
+  return (
+    <mesh position={[0, 0.92, 0]}>
+      <planeGeometry args={[0.95, 1.85]} />
+      <meshBasicMaterial map={map} transparent />
+    </mesh>
+  );
+}
+
 function FighterPlaceholder({ position }: { position: [number, number, number] }) {
   return (
     <group position={position}>
@@ -887,6 +913,7 @@ export function FighterMesh({
   onBoneHitboxReady,
   onDeformationBlocked,
   onAnimationIntegrityReport,
+  cardUrl,
 }: FighterMeshProps) {
   if (!modelUrl) return <FighterPlaceholder position={position} />;
 
@@ -909,6 +936,7 @@ export function FighterMesh({
         onBoneHitboxReady={onBoneHitboxReady}
         onDeformationBlocked={onDeformationBlocked}
         onAnimationIntegrityReport={onAnimationIntegrityReport}
+        cardUrl={cardUrl}
       />
     </Suspense>
   );
