@@ -1,27 +1,320 @@
-# Brutal-Fist Agent Operating Rules
+# AGENTS.md — Brutal-Fist Agent Coordination Law
 
 ## Rocket Alignment Law
 
-This repository is developed collaboratively with Rocket and other agents. The repository is one synchronized game codebase, not competing implementations.
+> **Before every change, inspect and align with Rocket's latest repository state. Preserve Rocket's existing functionality and advanced implementations. Make changes additively and non-destructively. Never replace working Rocket code with a simpler alternative merely to resolve a conflict. When capabilities differ, integrate the strongest compatible implementation from each side.**
 
-1. **Inspect first, every turn.** Before making substantive changes, check the current `main`, `rocket-update`, recent commits, open PRs, and the relevant existing implementation.
-2. **Align with Rocket's latest work.** Treat Rocket's latest committed implementation as part of the current baseline. Do not assume an older snapshot is authoritative.
-3. **Preserve advanced work.** Never replace Rocket's working or more advanced implementation with a simpler version merely to resolve a conflict.
-4. **Add non-destructively.** Extend, integrate, repair, or wrap existing systems. Prefer additive changes over rewrites.
-5. **Integrate capability differences.** If Rocket provides functionality this agent cannot reproduce, preserve it. If this agent can provide a capability Rocket cannot, add it around/on top of Rocket's implementation without removing existing behavior.
-6. **No wholesale conflict selection.** Do not resolve conflicts by blindly choosing `ours` or `theirs` for whole files. Compare the implementations and retain useful behavior from both sides.
-7. **No destructive rollback.** Do not reset, force-replace, or discard another agent's work unless the user explicitly requests it.
-8. **Synchronize before continuing.** When Rocket has committed to `main`, synchronize the Rocket working copy from GitHub before making new changes there. When this agent changes the repository, keep the shared branch/PR workflow synchronized as well.
-9. **Keep one game.** The objective is one progressively stronger, playable Brutal-Fist build. Branches and PRs are integration mechanisms, not separate competing versions of the game.
-10. **Verify before claiming.** Inspect diffs, refs, relevant files, and CI/status results when available. Distinguish verified repository state from assumptions.
+---
 
-## Combat/Animation Priority
+## Operating Rules (Binding on All Agents)
 
-Combat and animation work should make the game genuinely playable. Preserve and build upon Rocket's existing locomotion, state-machine, hitbox, hit-stop, animation blending, rig inspection, character normalization, practice-mode, replay, and combat-flow systems rather than replacing them with diagnostic-only scaffolding.
+1. **Every turn/work session**: Check the current GitHub state and what Rocket has done.
+2. **Always align with Rocket's latest work** before changing anything.
+3. **Never overwrite Rocket's advanced implementation** just because another version is easier or conflicts.
+4. **Build non-destructively on top of it** — extend, integrate, repair, or add missing capabilities.
+5. **If Rocket can do something you can't**, preserve Rocket's implementation.
+6. **If you can do something Rocket can't**, add that capability around/on top of Rocket's work, without replacing working pieces.
+7. **Resolve conflicts by integration**, not "pick ours/pick theirs" wholesale.
+8. **Keep main, rocket-update, and the working state synchronized** so both agents are operating from the same reality.
+9. **Before any substantial change**, inspect the relevant existing implementation, tests, commits, and dependencies.
+10. **No destructive rollback/replacement** unless the user explicitly instructs it.
+11. **When Rocket pushes new work**, that work becomes part of the baseline you must account for on the next turn.
+12. **The goal is one progressively stronger Brutal-Fist**, not two competing implementations.
 
-## Git Safety
+---
 
-- Use targeted commits.
-- Compare before merging.
-- Preserve working behavior on both sides.
-- After integration, ensure the shared branches point to a known synchronized state before the next agent session.
+## Sync Workflow (Every Cycle)
+
+```
+1. Pull from GitHub (Rocket panel) — get latest main
+2. Confirm Rocket is working from current main
+3. Make new changes (combat, animation, VFX, etc.)
+4. Push from Rocket
+5. Merge resulting changes back into main without replacing unrelated work
+6. Next cycle starts with Pull from GitHub again
+```
+
+This gives us a **single continuously advancing codebase** instead of Rocket and main drifting into competing versions.
+
+---
+
+## Conflict Resolution Protocol
+
+When a merge conflict arises between Rocket's work and another agent's work:
+
+- **DO NOT** pick one side wholesale.
+- **DO** read both sides, identify what each adds, and write a merged version that preserves both.
+- If Rocket has a more advanced implementation of a system (e.g., locomotion, animation blending, hitbox), keep Rocket's version as the base and layer the other agent's additions on top.
+- If the other agent has capabilities Rocket lacks (e.g., GitHub API calls, complex data transforms), add those capabilities without removing Rocket's existing code.
+
+---
+
+## Architecture Ownership
+
+| System | Owner / Source of Truth |
+|---|---|
+| 3D Combat Arena (CombatArena3D) | Rocket |
+| Fighter Mesh & Animation (FighterMesh) | Rocket |
+| Locomotion System | Rocket |
+| Bone Hitbox System | Rocket |
+| State Machine (FighterStateMachine) | Rocket |
+| Frame Data & Hitbox (FrameDataHitbox) | Rocket |
+| Combo System | Rocket |
+| Post-Match Screen | Rocket |
+| VFX / Bloom / Particles | Rocket |
+| GitHub API / CI / Submodule repair | Other agents |
+| Bannon asset pipeline | Shared |
+| Supabase / matchmaking / stats | Shared |
+
+---
+
+## File Modification Rules
+
+- **Never regenerate** a file from scratch if it already exists with working logic.
+- **Always read** the current file before modifying it.
+- **Use preservation comments** (`// ... existing code ...`) when editing existing files.
+- **Never remove** imports, exports, or hooks that are used elsewhere.
+- **Never downgrade** a system (e.g., replacing a velocity-gated animation blender with a simple state switch).
+
+---
+
+## Communication Between Agents
+
+- Rocket commits to `rocket-update` branch → opens PR to `main`.
+- Other agents commit directly to `main` or feature branches.
+- **Before merging any PR**, check that it does not overwrite Rocket's advanced implementations.
+- Use `docs/ROCKET_HANDOFF.md` and `docs/AI_AGENT_HANDOFF.md` for cross-agent context passing.
+- This file (`AGENTS.md`) is the **authoritative law** — it supersedes any conflicting instruction in conversation history.
+
+---
+
+## ═══════════════════════════════════════════════════════════════════
+## GLB / 3D MODEL AGENT LAWS — Prevent Common AI Mistakes
+## ═══════════════════════════════════════════════════════════════════
+
+These laws exist because AI agents repeatedly make the same 3D model mistakes.
+Every law below was written to prevent a specific recurring failure.
+
+---
+
+### LAW 1 — Animation Mixer Must Target the Visible Cloned Scene
+
+**The mistake**: AI creates an `AnimationMixer` on the outer `THREE.Group` or the original GLTF scene, then adds a cloned scene as a child. The mixer drives the original scene's skeleton (which is invisible), not the cloned scene's skeleton. Characters appear frozen or in T-pose even though the mixer is running.
+
+**The law**:
+- The `AnimationMixer` MUST be created on the **same object that is rendered** (the cloned scene).
+- Animation clips MUST be retargeted to the cloned scene's bone UUIDs before being passed to `clipAction()`.
+- NEVER use `useAnimations(animations, groupRef)` from `@react-three/drei` when the rendered object is a cloned scene added as `<primitive>`. The hook binds to `groupRef`, not the clone.
+- The retargeting pattern is: build a `Map<boneName, clonedObject>`, then for each track replace `boneName.property` with `clonedObject.uuid.property`.
+
+```typescript
+// CORRECT
+const mixer = new THREE.AnimationMixer(clonedScene);
+const cloneMap = new Map<string, THREE.Object3D>();
+clonedScene.traverse(obj => { if (obj.name) cloneMap.set(obj.name, obj); });
+for (const clip of animations) {
+  const retargetedTracks = clip.tracks.map(track => {
+    const dot = track.name.indexOf('.');
+    if (dot === -1) return track.clone();
+    const boneName = track.name.slice(0, dot);
+    const prop = track.name.slice(dot);
+    const obj = cloneMap.get(boneName);
+    const t = track.clone();
+    if (obj) t.name = `${obj.uuid}${prop}`;
+    return t;
+  });
+  const retargeted = new THREE.AnimationClip(clip.name, clip.duration, retargetedTracks);
+  actions[clip.name] = mixer.clipAction(retargeted);
+}
+// WRONG — mixer targets outer group, not the visible clone
+const { actions, mixer } = useAnimations(animations, groupRef);
+```
+
+---
+
+### LAW 2 — Universal Box3 Floor Normalization (No Per-Character Offsets)
+
+**The mistake**: AI hardcodes per-character Y offsets like `position.y = -0.3` for one character and `position.y = -0.8` for another. This breaks every time a new model is added and causes characters to sink into or float above the floor.
+
+**The law**:
+- ALL characters use the same Box3 normalization pipeline.
+- After scaling, compute `scaledBox.min.y` and set `cloned.position.y = -scaledBox.min.y`.
+- This places the bottom of the bounding box exactly at Y=0 for every model, regardless of where the geometry origin is.
+- NEVER add a per-character `nudgeY` or manual Y offset.
+- NEVER use `scene.position.y = someHardcodedValue`.
+
+```typescript
+// CORRECT — works for every model
+cloned.scale.setScalar(scale);
+cloned.updateMatrixWorld(true);
+const scaledBox = new THREE.Box3().setFromObject(cloned);
+const scaledCenter = scaledBox.getCenter(new THREE.Vector3());
+cloned.position.set(-scaledCenter.x, -scaledBox.min.y, -scaledCenter.z);
+
+// WRONG — breaks other characters
+cloned.position.y = -0.3; // hardcoded for one model
+```
+
+---
+
+### LAW 3 — Universal Forward-Direction Detection (No Per-Character Rotation Hardcoding)
+
+**The mistake**: AI hardcodes rotation corrections like `if (characterId === 'onyx') rotation.y = Math.PI` for specific characters. This fails for every new character and is never applied consistently.
+
+**The law**:
+- Forward direction MUST be detected automatically from bone positions.
+- Detection: if `headBone.worldZ > hipsBone.worldZ` by more than 0.05 units, the model faces +Z (Blender default) and needs a 180° Y correction.
+- The correction is applied to an **inner group** wrapping the normalized scene, SEPARATE from the outer group's `rotationY` (which is set by the parent for P1/P2 orientation).
+- NEVER hardcode `rotation.y = Math.PI` for specific character IDs.
+- The outer group's `rotationY` is set by `CombatArena3D` (P1=0, P2=Math.PI) and MUST NOT be modified by `FighterMesh`.
+
+```typescript
+// CORRECT — auto-detected, applied to inner group
+function detectForwardCorrection(scene): number {
+  const headBone = findBone(scene, 'head');
+  const hipsBone = findBone(scene, 'hips');
+  if (!headBone || !hipsBone) return 0;
+  const headZ = getWorldZ(headBone);
+  const hipsZ = getWorldZ(hipsBone);
+  return (headZ - hipsZ > 0.05) ? Math.PI : 0;
+}
+// In JSX:
+<group rotation={[0, rotationY, 0]}>           // outer: P1/P2 orientation
+  <group rotation={[0, forwardCorrectionY, 0]}> // inner: forward fix
+    <primitive object={normalizedScene} />
+  </group>
+</group>
+
+// WRONG — hardcoded per character
+if (id === 'onyx') scene.rotation.y = Math.PI;
+```
+
+---
+
+### LAW 4 — Root Bone Normalization Before Box3
+
+**The mistake**: AI runs Box3 normalization first, then tries to fix the root bone. The root bone offset is already baked into the Box3 result, so the correction is applied twice or not at all.
+
+**The law**:
+- Run `AutoRigDetector.normalizeRootToFloor(cloned)` BEFORE computing the Box3.
+- This ensures the skeleton is at the correct position before the bounding box is measured.
+- Order: (1) clone scene, (2) normalize root bone, (3) compute Box3, (4) scale, (5) recompute Box3, (6) set position.
+
+---
+
+### LAW 5 — Never Reset Child Rotations
+
+**The mistake**: AI calls `scene.traverse(child => child.rotation.set(0,0,0))` to "fix" orientation. This destroys the bone orientations of the rig, causing the model to collapse into a pile of disconnected bones.
+
+**The law**:
+- ONLY reset the root scene node's rotation: `cloned.rotation.set(0, 0, 0)`.
+- NEVER reset rotations on child objects, bones, or meshes.
+- If a model appears rotated, use the forward-detection method (LAW 3) to apply a correction to a wrapper group.
+
+---
+
+### LAW 6 — Mixer Must Be Advanced Manually When Not Using useAnimations
+
+**The mistake**: AI creates a manual `AnimationMixer` but forgets to call `mixer.update(delta)` in the render loop. Animations are created and started but never advance — characters stay frozen in the first frame.
+
+**The law**:
+- When using a manually-created `AnimationMixer` (not `useAnimations`), ALWAYS call `mixer.update(delta)` inside `useFrame`.
+- The mixer update must happen on the same mixer that was used to create the actions.
+- Hit-stop: set `mixer.timeScale = 0` to freeze, `mixer.timeScale = 1` to resume. Do NOT skip `mixer.update()` — just set timeScale to 0.
+
+```typescript
+// CORRECT
+useFrame((_, delta) => {
+  if (!hitStopActive) mixer.update(delta);
+  // or: mixer.update(hitStopActive ? 0 : delta);
+});
+
+// WRONG — mixer never advances
+useEffect(() => { action.play(); }, []);
+// (no useFrame update)
+```
+
+---
+
+### LAW 7 — Animation Timing Must Use Clip Duration, Not Hardcoded Frames
+
+**The mistake**: AI hardcodes animation durations like `setTimeout(() => setState('idle'), 500)` instead of using the actual clip duration. This causes animations to cut off early or transition too late.
+
+**The law**:
+- Use `action.getClip().duration` to get the actual clip length.
+- For one-shot animations (attacks, knockdowns), listen to the `finished` event on the mixer.
+- NEVER hardcode frame counts or millisecond delays for animation transitions.
+
+```typescript
+// CORRECT
+mixer.addEventListener('finished', (e) => {
+  if (e.action === attackAction) transitionToIdle();
+});
+
+// WRONG
+setTimeout(() => transitionToIdle(), 500); // hardcoded
+```
+
+---
+
+### LAW 8 — GLB Roster: No Attire-Count Cap, One Slot Per Character
+
+**The mistake**: AI limits characters to one GLB per slot or creates separate character slots for each attire. This bloats the roster and breaks the Tekken-style select screen.
+
+**The law**:
+- One character slot per unique `id` in `bannonGlbRoster.ts`.
+- Multiple attires for the same character share the same `id`.
+- The character select screen deduplicates by `id` and shows attires as a secondary selection.
+- There is no cap on the number of attires per character.
+
+---
+
+### LAW 9 — Drive GLBs: Use Direct Download URL
+
+**The mistake**: AI uses the Google Drive share URL (`/view?usp=sharing`) as the GLB source. Three.js cannot load this — it returns an HTML page, not binary data.
+
+**The law**:
+- Always convert Drive share URLs to direct download URLs:
+  - Share URL: `https://drive.google.com/file/d/FILE_ID/view?usp=sharing`
+  - Direct URL: `https://drive.google.com/uc?export=download&id=FILE_ID`
+- Store the direct URL in `overrideUrl` in `bannonGlbRoster.ts`.
+- The `getCharacterAttires()` function in `CharacterSelect.tsx` uses `overrideUrl` when present.
+
+---
+
+### LAW 10 — Bannon Naming Canon
+
+**The mistake**: AI mislabels GLBs based on filename assumptions.
+
+**The law** (canonical, permanent):
+- `BANNON.glb` = Bannon **default / muscular** body (the canonical playable Bannon)
+- `BANNON_fat.glb` = Bannon **fat alt** (previously mislabeled as "muscular" — this is wrong)
+- Never reverse this. The filename `BANNON_fat.glb` is the fat version, full stop.
+
+---
+
+### LAW 11 — playableGate Must Default to PASS for New Characters
+
+**The mistake**: AI adds new characters with `playableGate: "BLOCKED_QA"` as a "safe default". This hides them from the character select screen and requires a separate unlock step.
+
+**The law**:
+- New characters added with confirmed GLB URLs get `playableGate: "PASS"`.
+- `BLOCKED_QA` is only for characters whose GLB has known rig failures that prevent combat.
+- `BLOCKED_RIG` is only for characters whose GLB has no skeleton at all.
+- When in doubt, use `PASS` with `rigStatus: "qa-weak"` — the engine handles weak rigs gracefully.
+
+---
+
+### LAW 12 — Never Bind Hitboxes to the Outer Group
+
+**The mistake**: AI initializes `BoneHitboxSystem` on the outer `THREE.Group` instead of the normalized cloned scene. The outer group has no bones, so all hitbox positions are at the world origin.
+
+**The law**:
+- Always call `boneHitboxRef.current.initFromSkeleton(normalizedScene)` after normalization.
+- The normalized scene is the object that contains the actual skeleton.
+- Update hitboxes with `boneHitboxRef.current.update(delta)` inside `useFrame`.
+
+---
+
+*Last updated: Brutal-Fist v7 — GLB normalization + animation binding cycle.*
+*These laws are derived from real recurring failures observed across multiple AI agent sessions.*
