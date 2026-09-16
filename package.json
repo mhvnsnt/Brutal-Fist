@@ -16,6 +16,8 @@
     "bannon:manifest": "node tools/bannon/build-character-manifest.mjs && node tools/bannon/build-animation-manifest.mjs",
     "bannon:verify": "node tools/bannon/verify-and-build-roster.mjs",
     "bannon:find-anim-sources": "node tools/bannon/find-bannon-animation-sources.mjs",
+    "bannon:prove-deformation": "node scripts/prove-bannon-live-deformation.mjs",
+    "bannon:prove-source": "node scripts/prove-bannon-source-deformation.mjs",
     "sources:audit": "node tools/integration/build-source-audit.mjs",
     "glb:normalize": "node scripts/normalize-glb.mjs",
     "glb:normalize:dry": "node scripts/normalize-glb.mjs --dry-run --verbose",

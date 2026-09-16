@@ -1,0 +1,31 @@
+name: Bannon Live Deformation Proof
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "scripts/prove-bannon-live-deformation.mjs"
+      - "scripts/prove-bannon-source-deformation.mjs"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/bannon-live-deformation-proof.yml"
+
+jobs:
+  prove:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prove canonical Bannon deformation
+        run: npm run bannon:prove-source
