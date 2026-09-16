@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, Suspense } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
+import { SkeletonUtils } from 'three-stdlib';
 import { DEFAULT_PSX_RENDER } from '../render/psx';
 import { BoneHitboxSystem } from '../engine/locomotion/BoneHitboxSystem';
 import { AutoRigDetector, type RigDiagnosticReport } from '../engine/locomotion/AutoRigDetector';
@@ -347,19 +348,22 @@ interface NormalizedResult {
 // AGENT LAW: Universal GLB normalization
 //
 // ALL characters use the same normalization pipeline:
-//   1. Clone scene (deep clone preserves skinning)
-//   2. Normalize root bone to floor if needed
-//   3. Scale to TARGET_HEIGHT via Box3
-//   4. Offset so bounding box bottom sits at Y=0 (floor)
-//   5. Reset root scene rotation to 0 (NOT child rotations)
-//   6. Detect forward direction — apply inner correction if model faces +Z
-//   7. Create AnimationMixer on the CLONED scene (not the outer group)
+//   1. Clone scene using SkeletonUtils.clone() — preserves bone bind matrices
+//      and prevents SkinnedMesh Skeleton Desync (dismembered torsos/floating limbs)
+//   2. Disable frustumCulled on every SkinnedMesh — prevents body parts from
+//      disappearing when the root bone leaves the camera frustum during attacks
+//   3. Normalize root bone to floor if needed
+//   4. Scale to TARGET_HEIGHT via Box3
+//   5. Offset so bounding box bottom sits at Y=0 (floor)
+//   6. Reset root scene rotation to 0 (NOT child rotations)
+//   7. Detect forward direction — apply inner correction if model faces +Z
+//   8. Create AnimationMixer on the CLONED scene (not the outer group)
 //      so clips drive the actual visible mesh bones
-//   8. Retarget animation clips from original scene to cloned scene
+//   9. Retarget animation clips from original scene to cloned scene
 //      using NAME-BASED binding (not UUID) for maximum compatibility
-//   9. If model has NO bones (quality='none'), build a synthetic rig from AABB
+//  10. If model has NO bones (quality='none'), build a synthetic rig from AABB
 //      so hitboxes and basic animation still work
-//  10. Build SkeletonHelper for visual bone display
+//  11. Build SkeletonHelper for visual bone display
 //
 // NEVER use per-character manual Y offsets.
 // NEVER hardcode rotation corrections per character.
@@ -371,7 +375,35 @@ function normalizeGLB(
   gltfUrl: string,
   report: RigDiagnosticReport,
 ): NormalizedResult {
-  const cloned = scene.clone(true);
+  // CRITICAL FIX: Use SkeletonUtils.clone() instead of scene.clone(true).
+  // scene.clone(true) copies geometry but DETACHES bone bind matrices from the
+  // SkinnedMesh, causing the "skeleton desync" — torsos floating above legs,
+  // limbs displaced on Y-axis, vertices tearing during animation.
+  // SkeletonUtils.clone() rebuilds the full bone hierarchy and re-binds every
+  // SkinnedMesh to the correct skeleton instance in the cloned scene.
+  const cloned = SkeletonUtils.clone(scene) as THREE.Group;
+
+  // CRITICAL FIX: Disable frustum culling on every SkinnedMesh.
+  // In fighting games, a character's fist or foot can stretch far beyond the
+  // root bone's bounding box during heavy attacks. The default Three.js
+  // frustum culling turns those meshes invisible when the root bone leaves
+  // the camera view. Setting frustumCulled=false forces the renderer to always
+  // draw every SkinnedMesh regardless of camera position.
+  cloned.traverse((child) => {
+    if ((child as THREE.SkinnedMesh).isSkinnedMesh) {
+      const skinnedMesh = child as THREE.SkinnedMesh;
+      skinnedMesh.frustumCulled = false;
+      // Ensure skinning is enabled on the material for WebGL rendering
+      const materials = Array.isArray(skinnedMesh.material)
+        ? skinnedMesh.material
+        : [skinnedMesh.material];
+      materials.forEach((mat) => {
+        if (mat && 'skinning' in mat) {
+          (mat as THREE.MeshStandardMaterial & { skinning: boolean }).skinning = true;
+        }
+      });
+    }
+  });
 
   // Step 1: Normalize root bone to floor BEFORE Box3 (fixes skeleton-offset models)
   if (!report.hasRootAtFloor) {
