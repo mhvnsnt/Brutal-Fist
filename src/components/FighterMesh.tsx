@@ -13,6 +13,12 @@ interface FighterMeshProps {
   facing: 1 | -1;
   rotationY?: number;
   tint?: string;
+  /** When true, renders a wireframe hitbox helper for debugging */
+  showHitbox?: boolean;
+  /** Hitbox geometry for debug visualization */
+  hitboxGeometry?: {
+    offsetX: number; offsetZ: number; width: number; depth: number;
+  } | null;
 }
 
 const animationAliases: Record<string, string[]> = {
@@ -26,6 +32,19 @@ const animationAliases: Record<string, string[]> = {
   ko: ['ko', 'KO', 'knockout', 'Knockout', 'death', 'Death', 'fall', 'Fall'],
 };
 
+// ── Crossfade durations per animation key ────────────────────────────────────
+const FADE_DURATIONS: Record<string, number> = {
+  idle: 0.15,
+  walk: 0.12,
+  light: 0.06,
+  heavy: 0.08,
+  hit: 0.05,
+  ko: 0.08,
+  guard: 0.10,
+  block: 0.10,
+};
+const DEFAULT_FADE = 0.10;
+
 /**
  * FighterMesh — Dynamic bounding-box normalization for ALL roster models.
  * - Every loaded GLB is normalized to 2.8 units tall regardless of export scale.
@@ -34,8 +53,12 @@ const animationAliases: Record<string, string[]> = {
  * - P2 (facing=-1): rotationY=Math.PI — faces -Z (toward P1), correct for right-side fighter.
  * - AnimationMixer is updated inside useFrame every frame so animations play on all models.
  * - Default idle clip plays on mount via reset().play().
+ * - Crossfading via crossFadeTo() for smooth state transitions.
  */
-export function FighterMesh({ state, animation, modelUrl, position, facing, rotationY = 0, tint }: FighterMeshProps) {
+export function FighterMesh({
+  state, animation, modelUrl, position, facing, rotationY = 0, tint,
+  showHitbox = false, hitboxGeometry = null,
+}: FighterMeshProps) {
   const groupRef = useRef<THREE.Group>(null);
   const mixerRef = useRef<THREE.AnimationMixer | null>(null);
   const actionsRef = useRef<Record<string, THREE.AnimationAction>>({});
@@ -52,25 +75,20 @@ export function FighterMesh({ state, animation, modelUrl, position, facing, rota
       const cloned = gltf.scene.clone(true);
 
       // ── Dynamic bounding-box normalization — works for ALL roster models ──
-      // Recompute after clone to get accurate world-space bounds
       const box = new THREE.Box3().setFromObject(cloned);
       const size = box.getSize(new THREE.Vector3());
       const center = box.getCenter(new THREE.Vector3());
 
-      // Normalize every fighter to 2.8 units tall (arena scale)
-      // This handles models exported at any unit scale (cm, m, unscaled)
       const targetHeight = 2.8;
       const scale = size.y > 0.01 ? targetHeight / size.y : 1;
       cloned.scale.setScalar(scale);
 
-      // Re-center: align X/Z to origin, align bottom of bounding box to Y=0 (floor)
       cloned.position.set(
         -center.x * scale,
         -box.min.y * scale,
         -center.z * scale,
       );
 
-      // Clear any rotation baked into the root — facing is controlled by parent group
       cloned.rotation.set(0, 0, 0);
 
       // Apply PSX vertex snapping + optional tint to all meshes
@@ -101,7 +119,7 @@ export function FighterMesh({ state, animation, modelUrl, position, facing, rota
         });
       });
 
-      // ── AnimationMixer setup — required for skeletal animations ──
+      // ── AnimationMixer setup ──────────────────────────────────────────────
       const mixer = new THREE.AnimationMixer(cloned);
       mixerRef.current = mixer;
       actionsRef.current = {};
@@ -110,8 +128,7 @@ export function FighterMesh({ state, animation, modelUrl, position, facing, rota
         actionsRef.current[clip.name] = mixer.clipAction(clip);
       }
 
-      // ── Auto-play idle on mount ──
-      // Find the best idle clip and start it immediately
+      // ── Auto-play idle on mount ──────────────────────────────────────────
       const idleAliases = animationAliases['idle'];
       const idleClipName = Object.keys(actionsRef.current).find(
         (name) => idleAliases.some((alias) => name.toLowerCase() === alias.toLowerCase())
@@ -138,7 +155,7 @@ export function FighterMesh({ state, animation, modelUrl, position, facing, rota
     };
   }, [modelUrl]);
 
-  // ── Animation state transitions ──────────────────────────────────────────
+  // ── Animation state transitions with crossfading ─────────────────────────
   useEffect(() => {
     if (!model) return;
     const key = animation ?? state.toLowerCase();
@@ -150,27 +167,38 @@ export function FighterMesh({ state, animation, modelUrl, position, facing, rota
     );
     const next = name ? actionsRef.current[name] : null;
     if (next === activeActionRef.current) return;
-    activeActionRef.current?.fadeOut(0.08);
+
+    const fadeDuration = FADE_DURATIONS[key] ?? DEFAULT_FADE;
+    const isLoop = key === 'idle' || key === 'walk';
+
     if (next) {
-      const isLoop = key === 'idle' || key === 'walk';
       next.setLoop(isLoop ? THREE.LoopRepeat : THREE.LoopOnce, isLoop ? Infinity : 1);
-      next.reset().fadeIn(0.08).play();
+      next.reset();
+      next.setEffectiveTimeScale(1);
+      next.setEffectiveWeight(1);
+
+      if (activeActionRef.current) {
+        // Crossfade: blend out old, blend in new
+        activeActionRef.current.crossFadeTo(next, fadeDuration, true);
+        next.play();
+      } else {
+        next.fadeIn(fadeDuration).play();
+      }
+    } else if (activeActionRef.current) {
+      activeActionRef.current.fadeOut(fadeDuration);
     }
+
     activeActionRef.current = next;
   }, [animation, state, model]);
 
   // ── AnimationMixer update — MUST run inside useFrame for animations to play ──
   useFrame(({ clock }, delta) => {
-    // Update mixer every frame — this is what drives skeletal animation playback
     mixerRef.current?.update(delta);
 
     if (!groupRef.current) return;
     const attacking = state === 'Startup' || state === 'Active';
     const bob = state === 'Neutral' ? Math.sin(clock.elapsedTime * 5) * 0.025 : 0;
     groupRef.current.position.set(position[0], position[1] + bob, position[2]);
-    // rotationY from parent controls facing direction
-    // P1: rotationY=0 (faces +Z toward camera, left side)
-    // P2: rotationY=Math.PI (faces -Z toward P1, right side)
     groupRef.current.rotation.y = rotationY;
     groupRef.current.scale.x = Math.abs(groupRef.current.scale.x) * (facing < 0 ? -1 : 1) * (attacking ? 1.03 : 1);
   });
@@ -179,6 +207,19 @@ export function FighterMesh({ state, animation, modelUrl, position, facing, rota
   return (
     <group ref={groupRef} position={position}>
       <primitive object={model} />
+      {/* ── Hitbox debug wireframe ── */}
+      {showHitbox && hitboxGeometry && (
+        <mesh
+          position={[
+            hitboxGeometry.offsetX * (facing < 0 ? -1 : 1),
+            1.0,
+            hitboxGeometry.offsetZ,
+          ]}
+        >
+          <boxGeometry args={[hitboxGeometry.width, 1.6, hitboxGeometry.depth]} />
+          <meshBasicMaterial color="#ff2222" wireframe transparent opacity={0.6} />
+        </mesh>
+      )}
     </group>
   );
 }

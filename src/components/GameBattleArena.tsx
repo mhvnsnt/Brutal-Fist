@@ -13,6 +13,14 @@ import { type CinematicPhase } from './CombatArena3D';
 import { type TournamentSettings, DEFAULT_TOURNAMENT_SETTINGS } from './TournamentSettingsScreen';
 import dynamic from 'next/dynamic';
 
+// ── New combat systems ────────────────────────────────────────────────────────
+import {
+  FighterStateMachine,
+  type FighterInput as SMInput,
+  DEFAULT_SPECIAL_MOVES,
+} from '../engine/combat/FighterStateMachine';
+import { FrameDataHitboxSystem } from '../engine/combat/FrameDataHitbox';
+
 // ── 3D combat arena — loaded client-side only ─────────────────────────────────
 const CombatArena3D = dynamic(() => import('./CombatArena3D'), {
   ssr: false,
@@ -104,6 +112,22 @@ export default function GameBattleArena({
   }>>([]);
   const feedbackIdRef = useRef(0);
 
+  // ── Action state machines (one per fighter) ──────────────────────────────
+  const p1SMRef = useRef<FighterStateMachine>(new FighterStateMachine());
+  const p2SMRef = useRef<FighterStateMachine>(new FighterStateMachine());
+  const p1HitboxRef = useRef<FrameDataHitboxSystem>(new FrameDataHitboxSystem());
+  const p2HitboxRef = useRef<FrameDataHitboxSystem>(new FrameDataHitboxSystem());
+
+  // ── Special move notification state ──────────────────────────────────────
+  const [specialMoveNotice, setSpecialMoveNotice] = useState<{
+    name: string; player: 'p1' | 'p2'; id: number;
+  } | null>(null);
+  const specialNoticeIdRef = useRef(0);
+
+  // ── Fighter world positions (for hitbox collision) ────────────────────────
+  const P1_X = -1.8;
+  const P2_X = 1.8;
+
   // Build engine
   useEffect(() => {
     const p1MoveSet = getCharacterMoveSet(p1Fighter.id);
@@ -126,6 +150,14 @@ export default function GameBattleArena({
     roundStartedRef.current = false;
     setP1Z(0); setP2Z(0);
     p1ZRef.current = 0; p2ZRef.current = 0;
+
+    // Reset state machines and hitbox systems for new match
+    p1SMRef.current = new FighterStateMachine();
+    p2SMRef.current = new FighterStateMachine();
+    p1SMRef.current.registerSpecialMoves(DEFAULT_SPECIAL_MOVES);
+    p2SMRef.current.registerSpecialMoves(DEFAULT_SPECIAL_MOVES);
+    p1HitboxRef.current.reset();
+    p2HitboxRef.current.reset();
 
     // ── Cinematic sequence: sweep → intro → fight ──────────────────────────────
     setCinematicPhase('sweep');
@@ -176,6 +208,7 @@ export default function GameBattleArena({
       const engine = engineRef.current;
       if (!engine) return;
       if (now - lastTime < FRAME_MS - 1) return;
+      const dt = Math.min((now - lastTime) / 1000, 0.05);
       lastTime = now;
 
       const prevP1Health = prevP1HealthRef.current;
@@ -183,81 +216,162 @@ export default function GameBattleArena({
       const prevP1State = prevP1StateRef.current;
       const prevP2State = prevP2StateRef.current;
 
-      engine.tick(inputRef.current);
+      // ── Build SM input from bitmask ────────────────────────────────────
+      const bitmask = inputRef.current;
+      const smInput: SMInput = {
+        forward: bitmask.right ? 1 : bitmask.left ? -1 : 0,
+        strafe: 0,
+        light: bitmask.light ?? false,
+        heavy: bitmask.heavy ?? false,
+        guard: bitmask.guard ?? false,
+        crouch: bitmask.down ?? false,
+        grapple: bitmask.grapple ?? false,
+        escape: bitmask.escape ?? false,
+      };
 
-      const p1Dmg = prevP1Health - engine.p1Health;
-      const p2Dmg = prevP2Health - engine.p2Health;
+      // ── Update P1 state machine ────────────────────────────────────────
+      const p1SM = p1SMRef.current;
+      const p1Hb = p1HitboxRef.current;
+      const prevP1Action = p1SM.action;
 
-      if (settings.soundEnabled) {
-        if (engine.state === FighterState.Startup && prevP1State !== FighterState.Startup) sfx.playMoveExec();
-        if (engine.p2State === FighterState.Startup && prevP2State !== FighterState.Startup) sfx.playMoveExec();
-        if (engine.state === 'Grappled' && prevP1State !== 'Grappled') sfx.playGrapple();
+      // Block inputs during attack recovery (state machine handles this internally)
+      const p1NextMotion = p1SM.update(smInput, dt);
+      const p1HbWindow = p1SM.getHitboxWindow();
+      p1Hb.update(p1HbWindow);
+
+      // Detect special move activation for notification
+      if (p1SM.action === 'Attacking' && prevP1Action !== 'Attacking') {
+        const move = p1HbWindow.move;
+        if (move?.isSpecial && move.specialName) {
+          setSpecialMoveNotice({
+            name: move.specialName,
+            player: 'p1',
+            id: ++specialNoticeIdRef.current,
+          });
+          setTimeout(() => setSpecialMoveNotice(null), 1800);
+        }
       }
 
-      if (p2Dmg > 0 && engine.currentMove) {
-        const move = engine.currentMove;
-        const isBlocked = engine.p2State === FighterState.Blockstun;
+      // ── Check P1 hitbox vs P2 ──────────────────────────────────────────
+      const p2SM = p2SMRef.current;
+      const p2IsBlocking = p2SM.action === 'Guard';
+      const p1Hit = p1Hb.checkCollision(
+        P1_X, p1ZRef.current, 1,
+        P2_X, p2ZRef.current,
+        p2IsBlocking,
+        p1HbWindow.currentFrame,
+      );
+
+      if (p1Hit) {
+        // Apply stun to P2 state machine
+        const isCrumple = p1Hit.launch > 0.3;
+        p2SMRef.current.applyStun(p1Hit.hitstun || 0.3, isCrumple);
+        p2HitboxRef.current.reset();
+
+        const isBlocked = p2IsBlocking;
         const isCounter = prevP2State === FighterState.Startup || prevP2State === FighterState.Active;
         if (settings.soundEnabled) {
           if (isBlocked) sfx.playBlock();
           else if (isCounter) sfx.playCounter();
-          else if (p2Dmg > 300) sfx.playHeavyHit();
+          else if (p1Hit.damage > 200) sfx.playHeavyHit();
           else sfx.playLightHit();
         }
         setDamageEvent({
           count: ++damageEventCountRef.current,
           player: 'p2',
-          damage: p2Dmg,
+          damage: p1Hit.damage,
           isCounter,
           factionColor: p2Color,
         });
         setFeedbackEvents(prev => [...prev.slice(-6), {
           id: ++feedbackIdRef.current,
-          moveId: (move as any).id ?? 'hit',
-          moveName: (move as any).displayName ?? 'Hit',
-          damage: p2Dmg, isBlocked, isCounter, player: 'p1',
-          x: 65 + Math.random() * 10, y: 20 + Math.random() * 20,
+          moveId: p1HbWindow.move?.animation ?? 'hit',
+          moveName: p1HbWindow.move?.specialName ?? (p1HbWindow.move?.animation === 'heavyAttack' ? 'Heavy' : 'Light'),
+          damage: p1Hit.damage,
+          isBlocked,
+          isCounter,
+          player: 'p1',
+          x: 65 + Math.random() * 10,
+          y: 20 + Math.random() * 20,
         }]);
       }
 
-      if (p1Dmg > 0 && engine.p2Move) {
-        const move = engine.p2Move;
-        const isBlocked = engine.state === FighterState.Blockstun;
+      // ── Update P2 state machine (AI: simple reactive) ─────────────────
+      const p2Hb = p2HitboxRef.current;
+
+      // Simple AI input for P2
+      const p2AIInput: SMInput = buildP2AIInput(
+        engine.p2State, engine.p1Health, engine.p2Health,
+      );
+      const p2NextMotion = p2SM.update(p2AIInput, dt);
+      const p2HbWindow = p2SM.getHitboxWindow();
+      p2Hb.update(p2HbWindow);
+
+      // ── Check P2 hitbox vs P1 ──────────────────────────────────────────
+      const p1IsBlocking = p1SM.action === 'Guard';
+      const p2Hit = p2Hb.checkCollision(
+        P2_X, p2ZRef.current, -1,
+        P1_X, p1ZRef.current,
+        p1IsBlocking,
+        p2HbWindow.currentFrame,
+      );
+
+      if (p2Hit) {
+        const isCrumple = p2Hit.launch > 0.3;
+        p1SMRef.current.applyStun(p2Hit.hitstun || 0.3, isCrumple);
+        p1HitboxRef.current.reset();
+
+        const isBlocked = p1IsBlocking;
         const isCounter = prevP1State === FighterState.Startup || prevP1State === FighterState.Active;
         if (settings.soundEnabled) {
           if (isBlocked) sfx.playBlock();
           else if (isCounter) sfx.playCounter();
-          else if (p1Dmg > 300) sfx.playHeavyHit();
+          else if (p2Hit.damage > 200) sfx.playHeavyHit();
           else sfx.playLightHit();
         }
         setDamageEvent({
           count: ++damageEventCountRef.current,
           player: 'p1',
-          damage: p1Dmg,
+          damage: p2Hit.damage,
           isCounter,
           factionColor: p1Color,
         });
         setFeedbackEvents(prev => [...prev.slice(-6), {
           id: ++feedbackIdRef.current,
-          moveId: (move as any).id ?? 'hit',
-          moveName: (move as any).displayName ?? 'Hit',
-          damage: p1Dmg, isBlocked, isCounter, player: 'p2',
-          x: 25 + Math.random() * 10, y: 20 + Math.random() * 20,
+          moveId: p2HbWindow.move?.animation ?? 'hit',
+          moveName: p2HbWindow.move?.specialName ?? (p2HbWindow.move?.animation === 'heavyAttack' ? 'Heavy' : 'Light'),
+          damage: p2Hit.damage,
+          isBlocked,
+          isCounter,
+          player: 'p2',
+          x: 25 + Math.random() * 10,
+          y: 20 + Math.random() * 20,
         }]);
       }
 
+      // ── Tick legacy engine for health/state tracking ───────────────────
+      engine.tick(inputRef.current);
+
+      const p1Dmg = prevP1Health - engine.p1Health;
+      const p2Dmg = prevP2Health - engine.p2Health;
+
       prevP1HealthRef.current = engine.p1Health;
       prevP2HealthRef.current = engine.p2Health;
-      prevP1StateRef.current = engine.state;
-      prevP2StateRef.current = engine.p2State;
+
+      // ── Map SM action state → display state ───────────────────────────
+      const p1DisplayState = mapActionToDisplayState(p1SM.action, p1NextMotion, engine.state);
+      const p2DisplayState = mapActionToDisplayState(p2SM.action, p2NextMotion, engine.p2State);
+
+      prevP1StateRef.current = p1DisplayState;
+      prevP2StateRef.current = p2DisplayState;
 
       setFrame(engine.currentFrame);
       setP1Health(engine.p1Health);
       setP2Health(engine.p2Health);
-      setP1State(engine.state);
-      setP2State(engine.p2State);
-      setP1Animation(engine.p1Animation);
-      setP2Animation(engine.p2Animation);
+      setP1State(p1DisplayState);
+      setP2State(p2DisplayState);
+      setP1Animation(p1NextMotion);
+      setP2Animation(p2NextMotion);
       setHitStopActive(engine.hitStopFrames > 0);
 
       if (engine.isMatchOver() && !koHandledRef.current) {
@@ -377,11 +491,13 @@ export default function GameBattleArena({
 
   const getStateLabel = (state: string, anim: string) => {
     if (state === 'KO') return 'KO';
-    if (state === 'Hitstun') return 'HIT';
-    if (state === 'Blockstun') return 'BLOCK';
-    if (state === 'Startup') return 'ATK';
+    if (state === 'Hitstun' || state === 'Stunned') return 'HIT';
+    if (state === 'Crumple') return 'DOWN';
+    if (state === 'Blockstun' || state === 'Guard') return 'BLOCK';
+    if (state === 'Startup' || state === 'Attacking') return 'ATK';
     if (state === 'Active') return 'ACTIVE';
     if (state === 'Grappled') return 'GRAPPLE';
+    if (state === 'Walking') return 'WALK';
     return anim.toUpperCase();
   };
 
@@ -470,6 +586,38 @@ export default function GameBattleArena({
             </div>
           </div>
 
+          {/* ── Special Move Notification ── */}
+          {specialMoveNotice && (
+            <div
+              key={specialMoveNotice.id}
+              className="absolute z-40 pointer-events-none"
+              style={{
+                top: '18%',
+                left: specialMoveNotice.player === 'p1' ? '8%' : 'auto',
+                right: specialMoveNotice.player === 'p2' ? '8%' : 'auto',
+              }}
+            >
+              <div
+                className="px-3 py-1 text-xs font-black tracking-widest uppercase animate-pulse"
+                style={{
+                  color: '#facc15',
+                  textShadow: '0 0 20px #facc15, 0 0 40px #facc1566',
+                  border: '1px solid #facc1544',
+                  background: 'rgba(0,0,0,0.7)',
+                }}
+              >
+                ⚡ {specialMoveNotice.name}
+              </div>
+            </div>
+          )}
+
+          {/* ── Input Queue Indicator ── */}
+          {p1SMRef.current.isRecovering && (
+            <div className="absolute bottom-32 left-4 z-40 pointer-events-none">
+              <div className="text-[7px] text-yellow-400/70 tracking-widest animate-pulse">QUEUED</div>
+            </div>
+          )}
+
           {/* Move Execution Feedback */}
           <MoveExecutionFeedback
             events={feedbackEvents}
@@ -497,6 +645,7 @@ export default function GameBattleArena({
           {/* Controls legend */}
           <div className="absolute bottom-2 left-3 z-30 text-[7px] text-zinc-500 space-y-0.5 pointer-events-none">
             <div>ARROWS: MOVE · Z: LIGHT · X: HEAVY · C: GUARD · V: GRAPPLE · Q/E: SIDESTEP</div>
+            <div className="text-zinc-600">SPECIAL: L+L+H or H+H+L</div>
           </div>
         </>
       )}
@@ -512,4 +661,46 @@ export default function GameBattleArena({
       )}
     </div>
   );
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+/** Map SM ActionState + motion to a display state string */
+function mapActionToDisplayState(
+  action: import('../engine/combat/FighterStateMachine').ActionState,
+  motion: string,
+  legacyState: string,
+): string {
+  switch (action) {
+    case 'Attacking': return 'Startup';
+    case 'Stunned':   return 'Hitstun';
+    case 'Crumple':   return 'Hitstun';
+    case 'Guard':     return 'Blockstun';
+    case 'Walking':   return 'Neutral';
+    case 'Idle':      return legacyState === 'KO' ? 'KO' : 'Neutral';
+    default:          return legacyState;
+  }
+}
+
+/** Simple reactive AI input for P2 */
+function buildP2AIInput(
+  p2State: string,
+  p1Health: number,
+  p2Health: number,
+): SMInput {
+  const now = performance.now();
+  const cycle = Math.floor(now / 1200) % 4;
+  const isAggressive = p2Health < p1Health;
+
+  if (p2State === 'Hitstun' || p2State === 'Blockstun') {
+    return { forward: 0, strafe: 0, light: false, heavy: false, guard: true, crouch: false };
+  }
+
+  switch (cycle) {
+    case 0: return { forward: -1, strafe: 0, light: false, heavy: false, guard: false, crouch: false };
+    case 1: return { forward: 0, strafe: 0, light: true, heavy: false, guard: false, crouch: false };
+    case 2: return { forward: 0, strafe: 0, light: false, heavy: isAggressive, guard: !isAggressive, crouch: false };
+    case 3: return { forward: -1, strafe: 0, light: false, heavy: false, guard: false, crouch: false };
+    default: return { forward: 0, strafe: 0, light: false, heavy: false, guard: false, crouch: false };
+  }
 }
