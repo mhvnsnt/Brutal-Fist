@@ -6,6 +6,18 @@
 
 ---
 
+## CANON / PRONOUN LAW — BANNON BOOKS WIN
+
+> **Never guess who is male or female.** Read `mhvnsnt/Bannon` canon (books, `canon/*.md`, `canon/characters/*.txt`, conversations in that repo) before writing a bio or pronoun.
+
+- **Bannon is not a her.** Marquis Deshaun Whitacre → Bannon (mask) → Maime (alter). All **he/him**.
+- **Maime is not a woman.** He is Bannon's/Marquis's feral inner voice given a body (skull/clown paint). Same man.
+- **Tyneshia (Tye) Hall is she/her** (book). Do not flip anyone else to match.
+- If Brutal-Fist roster text disagrees with the book, **fix the roster**, do not invent a new gender.
+- Full table: `docs/CANON_SOURCE.md`
+
+---
+
 ## ═══════════════════════════════════════════════════════════════════
 ## USER-BUILT FEATURE PRESERVATION LAW — ABSOLUTE RULE
 ## ═══════════════════════════════════════════════════════════════════

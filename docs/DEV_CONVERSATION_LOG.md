@@ -109,3 +109,17 @@ Default look is **Maime's ~18k PS1 budget**, not 8-bit sprites. Bannon is alread
 
 Open-source already in stack: `three-stdlib` (SkeletonUtils), `@gltf-transform/*`, `howler`, `@use-gesture/react`. Do not invent a second rigging path.
 
+## 2026-09-16 — Stop guessing gender; Bannon books are canon
+
+User correction: do not assume who is male/female. Bannon is not a "her". Use mhvnsnt/Bannon books, txt, canon/, and conversations in that repo.
+
+Locked from Book 1 (`canon/01_book1_life_in_limbo.md`):
+
+- Marquis Deshaun Whitacre = the man. he/him.
+- Bannon = his masked heel. he/him.
+- Maime = his psychotic alter-ego (Verbal Leakage). Same man, he/him. Not a technical-striker woman.
+- Tyneshia (Tye) Hall = she/her (book).
+
+Roster Maime bio was fabricated she/her. Replaced with book canon. Agents: `docs/CANON_SOURCE.md` + AGENTS.md CANON / PRONOUN LAW.
+
+
