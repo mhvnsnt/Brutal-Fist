@@ -2,26 +2,38 @@
 
 **Do not guess gender, names, or bios.** Authoritative source is `mhvnsnt/Bannon`:
 
-- `canon/01_book1_life_in_limbo.md`
-- `Off The Top Rope_ Life In Limbo Book 1 (book only no preface).txt` and later books
+- `canon/01_book1_life_in_limbo.md` and later `canon/0*_book*.md`
+- `Off The Top Rope_ *.txt` book files
 - `canon/characters/*.txt`
 - `canon/godwithin/`
-- `assets/models/CANON_MODELS.md` (visual ID: Bannon = steel mask + jaw plate + dreads + vale tudo trunks; Maime = white skull/clown facepaint + tattered gear)
+- `assets/models/CANON_MODELS.md`
 
 If a roster line contradicts those files, the book wins.
 
-## Pronouns (Book 1)
+## Pronouns
 
 | Identity | Who | Pronouns |
 |---|---|---|
 | **Marquis Deshaun Whitacre** | Real man under every mask | he/him |
-| **Bannon** | His masked heel (Broken Architect / Executioner) | he/him |
-| **Maime** | His psychotic/feral **alter-ego**, same man, not a separate woman | he/him |
+| **Bannon** | His masked heel | he/him |
+| **Maime** | Feral alter, **same man**, not a woman | he/him |
 | **Finxsse** | Narvin Jackson | he/him |
 | **Stick-Up / Jackboy** | Andre Curtis | he/him |
 | **Tyneshia (Tye) Hall** | The Anchor | she/her |
 | **Grixf / Artemis** | Analytical rival | he/him |
+| **Cain Elias** | The Executioner | he/him |
+| **Cody Callahan** | Corduroy Kid | he/him |
+| **Hall Nighter** | Showstopper / HBK, Book 6 | he/him |
+| **Triple XXX** | Lars Van Horn | he/him |
+| **Onyx** | Obsidian Hex, game-only | she/her |
+| **Echo** | Mimic/Read, Onyx stable | she/her |
+| **Cipher** | Anti-Pattern, Lio Rush-type | he/him |
+| **Static** | Enzo-type interference | he/him |
+| **Hollow** | LP 0, silent | **not stated — do not guess** |
+| **Tarzanian Devil** | Tarzan Duran indie | he/him |
 
-Marquis / Bannon / Maime are **one fighter** (persona state machine), even when the game gives Maime his own GLB and select slot.
+Marquis / Bannon / Maime are **one man**. Maime's playable slot still uses he/him.
 
-Agents: if you are about to write she/her for a fighter, open the Bannon book file first.
+## Visual budget
+
+Maime is the PS1 yardstick: **~18,108 triangles, 256px textures**. `src/data/maimePolyBudget.ts`. Do not upscale. Decimate over-budget playable GLBs with `tools/psx/decimate-fighter.mjs`. Do not rewrite skin weights to hit the number (Jager stays slightly over because simplify would eat JOINTS_0).

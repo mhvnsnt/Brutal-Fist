@@ -128,5 +128,12 @@ The tearing/twisting/missing-limb problem is the **skeletal animation pipeline**
 
 2D select portraits did not look like the GLBs. Old 128px drawings archived to `public/concept-art/portraits-v1/`. New HQ likeness cards (from CANON_MODELS tells: Bannon steel mask + jaw plate + dreads + vale tudo; Maime man, white skull paint, jeans/chains) live in `public/portraits/likeness/`. Select mid-strip **CARD** cycles LIKENESS / CONCEPT / PIXEL per fighter (Tekken card-art swap). Default is likeness when it exists.
 
+## 2026-09-16 — Maime poly budget + OTTR bios
+
+Maime is a **man**. Visual law: every playable fighter targets Maime's **~18,108 tris / 256px** (`src/data/maimePolyBudget.ts`). Measured roster: almost all playable GLBs already 17,984–18,108. Only Jager/Jager-beard sit ~32–38k; meshopt simplify will not drop them without eating skin weights, so we do not fake a re-rig to hit the number.
+
+Bios/pronouns rewritten from mhvnsnt/Bannon books + `canon/godwithin/noncanon_roster.md` + `canon/characters/`: Hall Nighter is HBK/Showstopper not a power wall; Onyx/Echo she/her; Maime/Bannon/Stick-Up/Finxsse/Cipher/Static/Triple XXX he/him; Hollow gender unstated.
+
+
 
 
