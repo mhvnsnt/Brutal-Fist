@@ -122,4 +122,11 @@ Locked from Book 1 (`canon/01_book1_life_in_limbo.md`):
 
 Roster Maime bio was fabricated she/her. Replaced with book canon. Agents: `docs/CANON_SOURCE.md` + AGENTS.md CANON / PRONOUN LAW.
 
+## 2026-09-16 — Card art + name of the tearing bug
+
+The tearing/twisting/missing-limb problem is the **skeletal animation pipeline** (bind pose + vertex weighting). Full glossary: `docs/SKELETAL_ANIMATION_PIPELINE.md`.
+
+2D select portraits did not look like the GLBs. Old 128px drawings archived to `public/concept-art/portraits-v1/`. New HQ likeness cards (from CANON_MODELS tells: Bannon steel mask + jaw plate + dreads + vale tudo; Maime man, white skull paint, jeans/chains) live in `public/portraits/likeness/`. Select mid-strip **CARD** cycles LIKENESS / CONCEPT / PIXEL per fighter (Tekken card-art swap). Default is likeness when it exists.
+
+
 

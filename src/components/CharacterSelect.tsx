@@ -5,6 +5,11 @@ import { getAllBannonFighters, getBannonFighter, type BannonFighterProfile } fro
 import { getPlayableAttires } from '../data/bannonGlbRoster';
 import { resolveGlbUrl } from '../data/bannonGlbUrl';
 import { getCharacterMoveSet } from '../engine/CharacterMoveSetSystem';
+import {
+  cycleCardArt,
+  getSelectedCardArtKind,
+  getSelectedCardArtSrc,
+} from '../data/fighterCardArt';
 import dynamic from 'next/dynamic';
 
 const MoveSetCustomizer = dynamic(() => import('./MoveSetCustomizer'), { ssr: false });
@@ -214,6 +219,30 @@ function AttireSelector({
   );
 }
 
+function CardArtSelector({
+  characterId,
+  onChange,
+  slot,
+}: {
+  characterId: string;
+  onChange: () => void;
+  slot: 'P1' | 'P2';
+}) {
+  const kind = getSelectedCardArtKind(characterId);
+  const isP1 = slot === 'P1';
+  return (
+    <button
+      onClick={() => { cycleCardArt(characterId); onChange(); }}
+      className={`text-[8px] font-mono px-2 py-0.5 border tracking-widest ${
+        isP1 ? 'border-blue-800 text-blue-400' : 'border-red-800 text-red-400'
+      }`}
+      title="Tekken-style card art: likeness (GLB/canon), concept (archived), pixel"
+    >
+      CARD {kind.toUpperCase()}
+    </button>
+  );
+}
+
 function RosterSlot({
   fighter,
   p1Selected,
@@ -233,7 +262,7 @@ function RosterSlot({
   const factionColor = FACTION_COLOR[fighter.factionAlignment];
   const moveSet = useMemo(() => getCharacterMoveSet(fighter.id), [fighter.id]);
   const isCustomized = moveSet?.isCustomized ?? false;
-  const face = fighter.gridPortrait ?? `/portraits/${fighter.id}.png`;
+  const face = getSelectedCardArtSrc(fighter.id);
 
   return (
     <button
@@ -350,6 +379,7 @@ export default function CharacterSelect({ onSelectP1, onSelectP2, onStartMatch }
   const [customizerOpen, setCustomizerOpen] = useState(false);
   const [customizerCharId, setCustomizerCharId] = useState<string | null>(null);
   const [layout, setLayout] = useState<CharacterSelectLayout>('arcade');
+  const [cardTick, setCardTick] = useState(0);
 
   useEffect(() => {
     setLayout(readStoredLayout());
@@ -536,13 +566,16 @@ export default function CharacterSelect({ onSelectP1, onSelectP2, onStartMatch }
             <div className="flex items-center gap-2 min-h-0">
               <div className="flex-1 min-w-0">
                 {p1Fighter && (
-                  <AttireSelector
-                    characterId={p1Fighter.id}
-                    selectedAttire={p1Attire}
-                    onSelectAttire={(attire, url) => { setP1Attire(attire); setP1PortraitUrl(url); }}
-                    slot="P1"
-                    compact
-                  />
+                  <div className="flex items-center gap-1">
+                    <AttireSelector
+                      characterId={p1Fighter.id}
+                      selectedAttire={p1Attire}
+                      onSelectAttire={(attire, url) => { setP1Attire(attire); setP1PortraitUrl(url); }}
+                      slot="P1"
+                      compact
+                    />
+                    <CardArtSelector characterId={p1Fighter.id} slot="P1" onChange={() => setCardTick((n) => n + 1)} />
+                  </div>
                 )}
               </div>
               <div className="flex items-center gap-1.5 shrink-0">
@@ -574,13 +607,16 @@ export default function CharacterSelect({ onSelectP1, onSelectP2, onStartMatch }
               </div>
               <div className="flex-1 min-w-0">
                 {p2Fighter && (
-                  <AttireSelector
-                    characterId={p2Fighter.id}
-                    selectedAttire={p2Attire}
-                    onSelectAttire={(attire, url) => { setP2Attire(attire); setP2PortraitUrl(url); }}
-                    slot="P2"
-                    compact
-                  />
+                  <div className="flex items-center justify-end gap-1">
+                    <CardArtSelector characterId={p2Fighter.id} slot="P2" onChange={() => setCardTick((n) => n + 1)} />
+                    <AttireSelector
+                      characterId={p2Fighter.id}
+                      selectedAttire={p2Attire}
+                      onSelectAttire={(attire, url) => { setP2Attire(attire); setP2PortraitUrl(url); }}
+                      slot="P2"
+                      compact
+                    />
+                  </div>
                 )}
               </div>
             </div>
