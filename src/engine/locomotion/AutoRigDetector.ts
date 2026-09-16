@@ -632,4 +632,186 @@ export class AutoRigDetector {
       console.log(`[AutoRig] 🔧 Normalized root bone to floor: offset Y by ${(-worldPos.y).toFixed(4)}`);
     }
   }
+
+  /**
+   * Retarget animation clips from a source scene to a target scene with a synthetic rig.
+   *
+   * When a model has no rig and we build a synthetic skeleton, the original animation
+   * clips (if any) reference bone names that don't exist in the synthetic rig.
+   * This method remaps track names from the source clip to the nearest matching
+   * bone in the synthetic rig using fuzzy name matching.
+   *
+   * For models with NO original animations, this returns an empty array — the
+   * caller should use Mixamo clips or the idle/walk fallback.
+   */
+  static retargetClipsToSyntheticRig(
+    clips: THREE.AnimationClip[],
+    syntheticBones: Map<string, THREE.Bone>,
+  ): THREE.AnimationClip[] {
+    if (clips.length === 0 || syntheticBones.size === 0) return [];
+
+    const syntheticBoneNames = Array.from(syntheticBones.keys());
+
+    return clips.map(clip => {
+      const retargetedTracks: THREE.KeyframeTrack[] = [];
+
+      for (const track of clip.tracks) {
+        // Track name format: "boneName.property" or ".property"
+        const dotIdx = track.name.lastIndexOf('.');
+        if (dotIdx === -1) {
+          retargetedTracks.push(track);
+          continue;
+        }
+
+        const boneName = track.name.substring(0, dotIdx);
+        const property = track.name.substring(dotIdx); // includes the dot
+
+        // Find the best matching synthetic bone
+        const matchedBone = this.findBestBoneMatch(boneName, syntheticBoneNames);
+        if (!matchedBone) {
+          // No match — skip this track
+          continue;
+        }
+
+        // Clone the track with the new bone name
+        const newTrackName = matchedBone + property;
+        let newTrack: THREE.KeyframeTrack;
+
+        if (track instanceof THREE.QuaternionKeyframeTrack) {
+          newTrack = new THREE.QuaternionKeyframeTrack(newTrackName, track.times as any, track.values as any);
+        } else if (track instanceof THREE.VectorKeyframeTrack) {
+          newTrack = new THREE.VectorKeyframeTrack(newTrackName, track.times as any, track.values as any);
+        } else {
+          newTrack = track.clone();
+          (newTrack as any).name = newTrackName;
+        }
+
+        retargetedTracks.push(newTrack);
+      }
+
+      if (retargetedTracks.length === 0) return clip;
+
+      return new THREE.AnimationClip(clip.name, clip.duration, retargetedTracks);
+    });
+  }
+
+  /**
+   * Find the best matching bone name from a list of candidates.
+   * Uses exact match first, then partial substring match, then Mixamo prefix strip.
+   */
+  private static findBestBoneMatch(sourceName: string, candidates: string[]): string | null {
+    // 1. Exact match
+    const exact = candidates.find(c => c === sourceName);
+    if (exact) return exact;
+
+    // 2. Case-insensitive exact
+    const ciExact = candidates.find(c => c.toLowerCase() === sourceName.toLowerCase());
+    if (ciExact) return ciExact;
+
+    // 3. Strip Mixamo prefix from source and try again
+    const stripped = sourceName.replace(/^mixamorig/i, '');
+    if (stripped !== sourceName) {
+      const strippedMatch = candidates.find(c =>
+        c.toLowerCase() === stripped.toLowerCase() ||
+        c.toLowerCase().includes(stripped.toLowerCase())
+      );
+      if (strippedMatch) return strippedMatch;
+    }
+
+    // 4. Partial substring match (source contains candidate or vice versa)
+    const partial = candidates.find(c => {
+      const cl = c.toLowerCase();
+      const sl = sourceName.toLowerCase();
+      return cl.includes(sl) || sl.includes(cl);
+    });
+    if (partial) return partial;
+
+    // 5. Semantic slot matching (e.g. "RightHand" → "mixamorigRightHand")
+    const semanticMap: Record<string, string[]> = {
+      'hips': ['mixamorigHips', 'Hips', 'pelvis'],
+      'spine': ['mixamorigSpine', 'Spine'],
+      'head': ['mixamorigHead', 'Head'],
+      'lefthand': ['mixamorigLeftHand', 'LeftHand'],
+      'righthand': ['mixamorigRightHand', 'RightHand'],
+      'leftfoot': ['mixamorigLeftFoot', 'LeftFoot'],
+      'rightfoot': ['mixamorigRightFoot', 'RightFoot'],
+    };
+    const sl = sourceName.toLowerCase().replace(/[^a-z]/g, '');
+    for (const [key, aliases] of Object.entries(semanticMap)) {
+      if (sl.includes(key)) {
+        let found = candidates.find(c => aliases.some(a => c === a));
+        if (found) return found;
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Build a procedural idle animation clip for a synthetic rig.
+   * Creates a subtle breathing/idle sway using the spine and head bones.
+   * This ensures bone-less models have at least one visible animation.
+   */
+  static buildProceduralIdleClip(syntheticBones: Map<string, THREE.Bone>): THREE.AnimationClip {
+    const duration = 2.0; // 2-second loop
+    const fps = 30;
+    const frameCount = duration * fps;
+    const times: number[] = [];
+    for (let i = 0; i <= frameCount; i++) {
+      times.push(i / fps);
+    }
+
+    const tracks: THREE.KeyframeTrack[] = [];
+
+    // Spine breathing sway (subtle X rotation)
+    const spineBone = syntheticBones.get('mixamorigSpine');
+    if (spineBone) {
+      const spineValues: number[] = [];
+      for (const t of times) {
+        const breathe = Math.sin(t * Math.PI) * 0.015; // subtle forward lean
+        const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(breathe, 0, 0));
+        spineValues.push(q.x, q.y, q.z, q.w);
+      }
+      tracks.push(new THREE.QuaternionKeyframeTrack(
+        'mixamorigSpine.quaternion',
+        times,
+        spineValues,
+      ));
+    }
+
+    // Head subtle nod
+    const headBone = syntheticBones.get('mixamorigHead');
+    if (headBone) {
+      const headValues: number[] = [];
+      for (const t of times) {
+        const nod = Math.sin(t * Math.PI) * 0.02;
+        const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(nod, 0, 0));
+        headValues.push(q.x, q.y, q.z, q.w);
+      }
+      tracks.push(new THREE.QuaternionKeyframeTrack(
+        'mixamorigHead.quaternion',
+        times,
+        headValues,
+      ));
+    }
+
+    // Hips subtle vertical bob
+    const hipsBone = syntheticBones.get('mixamorigHips');
+    if (hipsBone) {
+      const hipPos = new THREE.Vector3();
+      hipsBone.getWorldPosition(hipPos);
+      const hipsValues: number[] = [];
+      for (const t of times) {
+        const bob = Math.sin(t * Math.PI * 2) * 0.008;
+        hipsValues.push(hipPos.x, hipPos.y + bob, hipPos.z);
+      }
+      tracks.push(new THREE.VectorKeyframeTrack(
+        'mixamorigHips.position',
+        times,
+        hipsValues,
+      ));
+    }
+
+    return new THREE.AnimationClip('idle', duration, tracks);
+  }
 }

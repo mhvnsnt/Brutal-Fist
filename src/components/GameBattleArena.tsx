@@ -32,8 +32,9 @@ import type { DebugOverlaySettings, FighterDebugData, ImpactMarker } from '../en
 import { DEFAULT_DEBUG_SETTINGS, computeFrameWindowData, computeRigState } from '../engine/debug/DebugOverlay';
 import ComboCounterHUD from './ComboCounterHUD';
 import DebugOverlayHUD from './DebugOverlayHUD';
-import { MatchRecorderHUD, useMatchRecorder } from './MatchRecorder';
+import { useMatchRecorder, PauseMenuRecorder, saveReplayToSupabase } from './MatchRecorder';
 import { InputStringRecorder } from './InputStringRecorder';
+import { useAuth } from '../contexts/AuthContext';
 // ── Locomotion + bone hitbox systems ─────────────────────────────────────────
 import { LocomotionSystem, ATTACK_ROOT_MOTION_PROFILES } from '../engine/locomotion/LocomotionSystem';
 import { BoneHitboxSystem, HIT_STOP_DURATIONS, HIT_STOP_DEFAULT_MS } from '../engine/locomotion/BoneHitboxSystem';
@@ -279,6 +280,28 @@ export default function GameBattleArena({
 
   // ── Match recorder ────────────────────────────────────────────────────────
   const { startRecording, stopRecording, recordFrame, getBuffer, isRecording } = useMatchRecorder();
+  const { user } = useAuth();
+
+  // ── Cinematic phase state ─────────────────────────────────────────────────
+  const [cinematicPhase, setCinematicPhase] = useState<CinematicPhase>('sweep');
+
+  // ESC key toggles pause (only during fight phase, not during KO)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && cinematicPhase === 'fight' && !ko) {
+        setIsPaused(p => !p);
+        setPauseTab('menu');
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [cinematicPhase, ko]);
+
+  // Pause/resume game loop via ref flag
+  const isPausedRef = useRef(false);
+  useEffect(() => {
+    isPausedRef.current = isPaused;
+  }, [isPaused]);
 
   // ── Position state (X and Z axes) ────────────────────────────────────────
   const [p1X, setP1X] = useState(-1.8);
@@ -289,9 +312,6 @@ export default function GameBattleArena({
   const p2XRef = useRef(1.8);
   const p1ZRef = useRef(0);
   const p2ZRef = useRef(0);
-
-  // ── Cinematic phase state ─────────────────────────────────────────────────
-  const [cinematicPhase, setCinematicPhase] = useState<CinematicPhase>('sweep');
 
   // ── Damage event state ────────────────────────────────────────────────────
   const [damageEvent, setDamageEvent] = useState<{
@@ -330,6 +350,10 @@ export default function GameBattleArena({
 
   // ── Global Audio Manager ──────────────────────────────────────────────────
   const audioManagerRef = useRef(getGlobalAudioManager());
+
+  // ── Pause menu state ──────────────────────────────────────────────────────
+  const [isPaused, setIsPaused] = useState(false);
+  const [pauseTab, setPauseTab] = useState<'menu' | 'replay'>('menu');
 
   // Build engine
   useEffect(() => {
@@ -1531,6 +1555,9 @@ export default function GameBattleArena({
         cancelAnimationFrame(rafRef.current);
         if (settings.soundEnabled) sfx.playKO();
 
+        // ── Auto-save replay ──────────────────────────────────────────────
+        triggerAutoSaveReplay(w);
+
         // ── Announcer: K.O. / Double K.O. / Perfect / Great ──────────────
         const announcer = announcerRef.current;
         if (!announcerFiredRef.current.ko) {
@@ -1614,6 +1641,9 @@ export default function GameBattleArena({
             setWinner(w);
             cancelAnimationFrame(rafRef.current);
             if (settings.soundEnabled) sfx.playKO();
+
+            // ── Auto-save replay on timeout ───────────────────────────────
+            triggerAutoSaveReplay(w);
 
             // ── Announcer: Time Up! + Draw/Winner ─────────────────────────
             const announcer = announcerRef.current;
@@ -1743,6 +1773,53 @@ export default function GameBattleArena({
   };
 
   const winnerName = winner === 'p1' ? p1Fighter.name : winner === 'p2' ? p2Fighter.name : undefined;
+
+  // ── Auto-save replay to Supabase on match end ─────────────────────────────
+  const autoSaveReplayRef = useRef(false);
+
+  const triggerAutoSaveReplay = useCallback(async (
+    winnerPlayer: 'p1' | 'p2' | 'draw',
+  ) => {
+    if (autoSaveReplayRef.current) return; // Only save once per match
+    autoSaveReplayRef.current = true;
+
+    stopRecording();
+    const frames = getBuffer();
+    if (frames.length === 0) return;
+
+    const clip = {
+      id: `auto_${Date.now()}`,
+      label: `${p1Fighter.name} vs ${p2Fighter.name} — ${stageId ?? 'urban_night'} [AUTO]`,
+      p1Name: p1Fighter.name,
+      p2Name: p2Fighter.name,
+      stageName: stageId ?? 'urban_night',
+      frames,
+      inPoint: 0,
+      outPoint: frames.length - 1,
+      speedMultiplier: 1.0,
+      exportedAt: new Date().toISOString(),
+      totalFrames: frames.length,
+      durationMs: frames.length > 1
+        ? (frames[frames.length - 1]?.timestamp ?? 0) - (frames[0]?.timestamp ?? 0)
+        : 0,
+    };
+
+    if (user?.id) {
+      const result = await saveReplayToSupabase(clip, user.id);
+      if (result.success) {
+        console.log('[Arena] ☁ Auto-saved replay to Supabase:', clip.id, `(${frames.length} frames)`);
+      } else {
+        console.warn('[Arena] ⚠ Auto-save replay failed:', result.error);
+      }
+    } else {
+      console.log('[Arena] ℹ Auto-save skipped — user not signed in');
+    }
+  }, [p1Fighter.name, p2Fighter.name, stageId, user?.id, stopRecording, getBuffer]);
+
+  // Reset autoSaveReplayRef on new match
+  useEffect(() => {
+    autoSaveReplayRef.current = false;
+  }, [p1Fighter, p2Fighter]);
 
   return (
     <div className="fixed inset-0 bg-black text-white overflow-hidden touch-none select-none font-mono">
@@ -2117,15 +2194,6 @@ export default function GameBattleArena({
             p2Debug={p2DebugData}
           />
 
-          {/* ── Match Recorder HUD ── */}
-          <MatchRecorderHUD
-            p1Name={p1Fighter.name}
-            p2Name={p2Fighter.name}
-            stageName={stageId ?? 'urban_night'}
-            getBuffer={getBuffer}
-            isRecording={isRecording}
-          />
-
           {/* ── Input String Recorder ── */}
           <InputStringRecorder inputRef={inputRef} />
 
@@ -2284,6 +2352,85 @@ export default function GameBattleArena({
         >
           ← BACK
         </button>
+      )}
+
+      {/* ── Pause button (ESC hint) ── */}
+      {cinematicPhase === 'fight' && !ko && (
+        <button
+          onClick={() => { setIsPaused(p => !p); setPauseTab('menu'); }}
+          className="absolute top-3 right-3 z-40 text-[8px] text-zinc-500 hover:text-zinc-200 border border-zinc-700/40 hover:border-zinc-500 px-2 py-1 transition-colors bg-black/50 font-mono tracking-widest"
+        >
+          ⏸ ESC
+        </button>
+      )}
+
+      {/* ── Pause Menu Overlay ── */}
+      {isPaused && cinematicPhase === 'fight' && !ko && (
+        <div
+          className="absolute inset-0 z-50 flex items-center justify-center"
+          style={{ background: 'rgba(0,0,0,0.82)', backdropFilter: 'blur(6px)' }}
+        >
+          <div
+            className="w-full max-w-sm border border-zinc-700 bg-zinc-950 font-mono"
+            style={{ boxShadow: '0 0 40px rgba(250,204,21,0.08)' }}
+          >
+            {/* Pause header */}
+            <div className="border-b border-zinc-800 px-4 py-2 flex items-center justify-between">
+              <div className="text-[10px] text-yellow-400 tracking-widest font-black">⏸ PAUSED</div>
+              <div className="text-[7px] text-zinc-600">{p1Fighter.name} vs {p2Fighter.name}</div>
+            </div>
+
+            {/* Tab bar */}
+            <div className="flex border-b border-zinc-800">
+              <button
+                onClick={() => setPauseTab('menu')}
+                className={`flex-1 text-[8px] tracking-widest py-1.5 transition-colors ${pauseTab === 'menu' ? 'text-yellow-400 border-b border-yellow-600' : 'text-zinc-500 hover:text-zinc-300'}`}
+              >
+                MENU
+              </button>
+              <button
+                onClick={() => setPauseTab('replay')}
+                className={`flex-1 text-[8px] tracking-widest py-1.5 transition-colors ${pauseTab === 'replay' ? 'text-yellow-400 border-b border-yellow-600' : 'text-zinc-500 hover:text-zinc-300'}`}
+              >
+                ⏺ REPLAY
+              </button>
+            </div>
+
+            <div className="p-4">
+              {pauseTab === 'menu' && (
+                <div className="space-y-2">
+                  <button
+                    onClick={() => setIsPaused(false)}
+                    className="w-full text-[9px] font-black tracking-widest border border-yellow-700 text-yellow-400 hover:bg-yellow-900/30 py-2 transition-colors"
+                  >
+                    ▶ RESUME FIGHT
+                  </button>
+                  {onBack && (
+                    <button
+                      onClick={() => { setIsPaused(false); onBack(); }}
+                      className="w-full text-[9px] font-black tracking-widest border border-zinc-700 text-zinc-400 hover:text-zinc-200 hover:border-zinc-500 py-2 transition-colors"
+                    >
+                      ← QUIT MATCH
+                    </button>
+                  )}
+                  <div className="text-[6px] text-zinc-700 text-center pt-1">
+                    Press ESC to resume
+                  </div>
+                </div>
+              )}
+
+              {pauseTab === 'replay' && (
+                <PauseMenuRecorder
+                  p1Name={p1Fighter.name}
+                  p2Name={p2Fighter.name}
+                  stageName={stageId ?? 'urban_night'}
+                  getBuffer={getBuffer}
+                  isRecording={isRecording}
+                />
+              )}
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ── Post-Match Screen ── */}

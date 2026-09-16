@@ -608,3 +608,258 @@ export function MatchRecorderHUD({
     </div>
   );
 }
+
+// ── PauseMenuRecorder — recorder panel embedded inside the pause menu ─────────
+
+interface PauseMenuRecorderProps {
+  p1Name: string;
+  p2Name: string;
+  stageName: string;
+  getBuffer: () => MatchFrame[];
+  isRecording: () => boolean;
+  onScrubFrame?: (frame: MatchFrame) => void;
+}
+
+export function PauseMenuRecorder({
+  p1Name,
+  p2Name,
+  stageName,
+  getBuffer,
+  isRecording,
+  onScrubFrame,
+}: PauseMenuRecorderProps) {
+  const { user } = useAuth();
+  const [frames, setFrames] = useState<MatchFrame[]>([]);
+  const [scrubIndex, setScrubIndex] = useState(0);
+  const [inPoint, setInPoint] = useState(0);
+  const [outPoint, setOutPoint] = useState(0);
+  const [speed, setSpeed] = useState(1.0);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [exportStatus, setExportStatus] = useState<string | null>(null);
+  const [saveStatus, setSaveStatus] = useState<string | null>(null);
+  const playIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const loadBuffer = useCallback(() => {
+    const buf = getBuffer();
+    setFrames(buf);
+    if (buf.length > 0) {
+      setScrubIndex(buf.length - 1);
+      setInPoint(0);
+      setOutPoint(buf.length - 1);
+    }
+  }, [getBuffer]);
+
+  // Load buffer on mount
+  useEffect(() => { loadBuffer(); }, [loadBuffer]);
+
+  useEffect(() => {
+    if (!isPlaying || frames.length === 0) {
+      if (playIntervalRef.current) clearInterval(playIntervalRef.current);
+      return;
+    }
+    const intervalMs = Math.max(8, (1000 / 60) / speed);
+    playIntervalRef.current = setInterval(() => {
+      setScrubIndex(prev => {
+        const next = prev + 1;
+        if (next > outPoint) return inPoint;
+        return next;
+      });
+    }, intervalMs);
+    return () => { if (playIntervalRef.current) clearInterval(playIntervalRef.current); };
+  }, [isPlaying, speed, inPoint, outPoint, frames.length]);
+
+  useEffect(() => {
+    if (frames[scrubIndex] && onScrubFrame) {
+      onScrubFrame(frames[scrubIndex]);
+    }
+  }, [scrubIndex, frames, onScrubFrame]);
+
+  const buildClip = useCallback((): MatchClip => ({
+    id: `clip_${Date.now()}`,
+    label: `${p1Name} vs ${p2Name} — ${stageName}`,
+    p1Name,
+    p2Name,
+    stageName,
+    frames: frames.slice(inPoint, outPoint + 1),
+    inPoint,
+    outPoint,
+    speedMultiplier: speed,
+    exportedAt: new Date().toISOString(),
+    totalFrames: outPoint - inPoint + 1,
+    durationMs: frames[outPoint]
+      ? frames[outPoint].timestamp - (frames[inPoint]?.timestamp ?? 0)
+      : 0,
+  }), [frames, inPoint, outPoint, speed, p1Name, p2Name, stageName]);
+
+  const exportClip = useCallback(() => {
+    if (frames.length === 0) return;
+    const clip = buildClip();
+    const blob = new Blob([JSON.stringify(clip, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `brutal_fist_clip_${clip.id}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    setExportStatus(`✓ Exported ${clip.totalFrames} frames (${(clip.durationMs / 1000).toFixed(2)}s)`);
+    setTimeout(() => setExportStatus(null), 3000);
+  }, [frames, buildClip]);
+
+  const saveToCloud = useCallback(async () => {
+    if (frames.length === 0 || !user?.id) {
+      setSaveStatus('⚠ Sign in to save replays');
+      setTimeout(() => setSaveStatus(null), 2500);
+      return;
+    }
+    setSaveStatus('⏳ Saving...');
+    const clip = buildClip();
+    const result = await saveReplayToSupabase(clip, user.id);
+    if (result.success) {
+      setSaveStatus('✓ Saved to cloud');
+    } else {
+      setSaveStatus(`✗ ${result.error ?? 'Save failed'}`);
+    }
+    setTimeout(() => setSaveStatus(null), 3000);
+  }, [frames, buildClip, user?.id]);
+
+  const currentFrame = frames[scrubIndex];
+  const totalFrames = frames.length;
+  const durationSec = totalFrames > 0
+    ? ((frames[totalFrames - 1]?.timestamp ?? 0) - (frames[0]?.timestamp ?? 0)) / 1000
+    : 0;
+
+  return (
+    <div className="space-y-2 font-mono">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <span className="text-[9px] text-yellow-400 tracking-widest font-black">⏺ MATCH RECORDER</span>
+        <div className="flex items-center gap-2">
+          {isRecording() && (
+            <span className="text-[7px] text-red-400 animate-pulse tracking-widest">● LIVE</span>
+          )}
+          <span className="text-[7px] text-zinc-500">{totalFrames} frames · {durationSec.toFixed(1)}s</span>
+        </div>
+      </div>
+
+      {/* Timeline scrubber */}
+      {totalFrames > 0 && (
+        <div className="space-y-1">
+          <input
+            type="range" min={0} max={totalFrames - 1} value={scrubIndex}
+            onChange={e => { setIsPlaying(false); setScrubIndex(Number(e.target.value)); }}
+            className="w-full h-1 accent-yellow-400"
+          />
+          <div className="flex justify-between text-[6px] text-zinc-600">
+            <span>F{frames[0]?.frameIndex ?? 0}</span>
+            <span className="text-yellow-400">F{currentFrame?.frameIndex ?? 0}</span>
+            <span>F{frames[totalFrames - 1]?.frameIndex ?? 0}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Playback controls */}
+      <div className="flex items-center gap-1">
+        <button
+          onClick={() => { setIsPlaying(false); setScrubIndex(i => Math.max(0, i - 1)); }}
+          className="text-[8px] border border-zinc-700 bg-zinc-900 text-zinc-300 hover:text-white px-2 py-0.5"
+        >◀</button>
+        <button
+          onClick={() => setIsPlaying(p => !p)}
+          className={`text-[8px] border px-2 py-0.5 flex-1 ${isPlaying ? 'border-yellow-600 text-yellow-400' : 'border-zinc-700 text-zinc-300 hover:text-white'}`}
+        >
+          {isPlaying ? '⏸ PAUSE' : '▶ PLAY'}
+        </button>
+        <button
+          onClick={() => { setIsPlaying(false); setScrubIndex(i => Math.min(totalFrames - 1, i + 1)); }}
+          className="text-[8px] border border-zinc-700 bg-zinc-900 text-zinc-300 hover:text-white px-2 py-0.5"
+        >▶</button>
+      </div>
+
+      {/* Speed */}
+      <div className="flex items-center gap-2">
+        <span className="text-[7px] text-zinc-500 w-10">SPEED</span>
+        <input
+          type="range" min={0.1} max={4} step={0.1} value={speed}
+          onChange={e => setSpeed(Number(e.target.value))}
+          className="flex-1 h-1 accent-yellow-400"
+        />
+        <span className="text-[7px] text-yellow-400 w-8 text-right">{speed.toFixed(1)}x</span>
+      </div>
+
+      {/* Region crop */}
+      <div className="space-y-1">
+        <div className="text-[7px] text-zinc-500 tracking-wider">REGION CROP</div>
+        <div className="flex gap-2">
+          <div className="flex-1">
+            <div className="text-[6px] text-zinc-600 mb-0.5">IN</div>
+            <input
+              type="range" min={0} max={Math.max(0, totalFrames - 1)} value={inPoint}
+              onChange={e => setInPoint(Math.min(Number(e.target.value), outPoint))}
+              className="w-full h-1 accent-blue-400"
+            />
+            <div className="text-[6px] text-blue-400">F{inPoint}</div>
+          </div>
+          <div className="flex-1">
+            <div className="text-[6px] text-zinc-600 mb-0.5">OUT</div>
+            <input
+              type="range" min={0} max={Math.max(0, totalFrames - 1)} value={outPoint}
+              onChange={e => setOutPoint(Math.max(Number(e.target.value), inPoint))}
+              className="w-full h-1 accent-red-400"
+            />
+            <div className="text-[6px] text-red-400">F{outPoint}</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Current frame data */}
+      {currentFrame && (
+        <div className="border border-zinc-800 bg-zinc-950 p-1.5 space-y-0.5">
+          <div className="text-[6px] text-zinc-500 tracking-wider">FRAME DATA</div>
+          <div className="grid grid-cols-2 gap-x-2 text-[6px]">
+            <span className="text-blue-400">P1: {currentFrame.p1Animation}</span>
+            <span className="text-red-400">P2: {currentFrame.p2Animation}</span>
+            <span className="text-blue-300">HP: {Math.ceil(currentFrame.p1Health)}</span>
+            <span className="text-red-300">HP: {Math.ceil(currentFrame.p2Health)}</span>
+          </div>
+          <div className="text-[6px] text-zinc-600">
+            Timer: {currentFrame.roundTimer}s · F{currentFrame.frameIndex}
+          </div>
+        </div>
+      )}
+
+      {/* Action buttons */}
+      <div className="space-y-1">
+        <button
+          onClick={saveToCloud}
+          disabled={totalFrames === 0}
+          className="w-full text-[8px] font-black tracking-widest border border-blue-700 text-blue-400 hover:bg-blue-900/30 py-1 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        >
+          ☁ SAVE TO CLOUD
+        </button>
+        <button
+          onClick={exportClip}
+          disabled={totalFrames === 0}
+          className="w-full text-[8px] font-black tracking-widest border border-yellow-700 text-yellow-400 hover:bg-yellow-900/30 py-1 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        >
+          ⬇ EXPORT CLIP
+        </button>
+      </div>
+
+      {saveStatus && (
+        <div className={`text-[7px] tracking-wider ${saveStatus.startsWith('✓') ? 'text-blue-400' : saveStatus.startsWith('⏳') ? 'text-zinc-400' : 'text-red-400'}`}>
+          {saveStatus}
+        </div>
+      )}
+      {exportStatus && (
+        <div className="text-[7px] text-green-400 tracking-wider">{exportStatus}</div>
+      )}
+
+      <button
+        onClick={loadBuffer}
+        className="w-full text-[7px] text-zinc-600 hover:text-zinc-400 border border-zinc-800 py-0.5 transition-colors"
+      >
+        ↻ REFRESH BUFFER
+      </button>
+    </div>
+  );
+}

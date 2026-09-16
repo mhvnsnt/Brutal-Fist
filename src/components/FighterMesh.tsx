@@ -381,8 +381,10 @@ function normalizeGLB(
   // Step 1b: If no rig at all, build a synthetic skeleton from the mesh AABB
   // AGENT LAW: Bone-less models get a procedural Mixamo-compatible skeleton
   // so animation clips can be retargeted and hitboxes still work.
+  let syntheticBones: Map<string, THREE.Bone> | null = null;
   if (report.quality === 'none' || report.totalBones === 0) {
     const syntheticResult = AutoRigDetector.buildSyntheticRig(cloned);
+    syntheticBones = syntheticResult.bones;
     console.log(
       `[FighterMesh] 🦴 Synthetic rig applied to "${gltfUrl.split('/').pop()}" — ` +
       `${syntheticResult.bones.size} bones generated`
@@ -474,7 +476,25 @@ function normalizeGLB(
   // are not found in the clone map (e.g. synthetic rig bones added after clone).
   const actions: Record<string, THREE.AnimationAction> = {};
 
-  for (const clip of animations) {
+  // For synthetic rigs: retarget existing clips to new bone names, and inject
+  // a procedural idle clip so the model always has at least one animation.
+  let clipsToLoad = [...animations];
+  if (syntheticBones && syntheticBones.size > 0) {
+    // Retarget any existing clips to the synthetic rig bone names
+    if (clipsToLoad.length > 0) {
+      clipsToLoad = AutoRigDetector.retargetClipsToSyntheticRig(clipsToLoad, syntheticBones);
+    }
+    // Always inject a procedural idle clip for synthetic rigs
+    const proceduralIdle = AutoRigDetector.buildProceduralIdleClip(syntheticBones);
+    // Only add if no idle clip already exists
+    const hasIdle = clipsToLoad.some(c => c.name.toLowerCase().includes('idle'));
+    if (!hasIdle) {
+      clipsToLoad.unshift(proceduralIdle);
+      console.log(`[FighterMesh] 🎬 Injected procedural idle clip for synthetic rig`);
+    }
+  }
+
+  for (const clip of clipsToLoad) {
     // Clone the clip so we don't mutate the cached original
     const clonedClip = clip.clone();
 
