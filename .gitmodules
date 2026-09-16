@@ -5,19 +5,3 @@
 [submodule "BannonSource"]
 	path = BannonSource
 	url = https://github.com/mhvnsnt/Bannon.git
-
-[submodule "Research/TekkenUE4"]
-	path = Research/TekkenUE4
-	url = https://github.com/Modding-Zaibatsu/ue4-tekkengame.git
-
-[submodule "Research/TekkenHY352"]
-	path = Research/TekkenHY352
-	url = https://github.com/emiraldol/Tekken_HY352.git
-
-[submodule "Research/Tek3Ex"]
-	path = Research/Tek3Ex
-	url = https://github.com/xan1242/Tek3Ex.git
-
-[submodule "Research/Tekken3Recompiled"]
-	path = Research/Tekken3Recompiled
-	url = https://github.com/FishB0nes98/Tekken3Recompiled.git
