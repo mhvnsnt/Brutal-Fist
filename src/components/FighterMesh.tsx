@@ -4,8 +4,6 @@ import { useEffect, useRef, useState, Suspense } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
-import { SkeletonUtils } from 'three-stdlib';
-import { DEFAULT_PSX_RENDER } from '../render/psx';
 import { BoneHitboxSystem } from '../engine/locomotion/BoneHitboxSystem';
 import { AutoRigDetector, type RigDiagnosticReport } from '../engine/locomotion/AutoRigDetector';
 import { ATTACK_ROOT_MOTION_PROFILES } from '../engine/locomotion/LocomotionSystem';
@@ -13,6 +11,9 @@ import {
   runDeformationIntegrityTest,
   type DeformationIntegrityInput,
 } from '../engine/debug/DeformationIntegrityLogger';
+import {
+  runCharacterPipeline,
+} from '../engine/pipeline/CharacterPipeline';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props
@@ -226,84 +227,14 @@ const VELOCITY_ANIM_THRESHOLD = 0.12;
 const MIN_CROSSFADE_HOLD_S = 0.05; // 3 frames at 60fps
 
 // ─────────────────────────────────────────────────────────────────────────────
-// AGENT LAW: Forward-direction detection
-// Many GLBs are exported from Blender with +Z as forward (Blender default).
-// Three.js / glTF standard is -Z forward. When a model faces +Z it appears
-// 180° wrong in the arena. We detect this by sampling the bounding box:
-// if the model's geometry centroid is behind the origin in Z after normalization,
-// the model was exported facing +Z and needs a 180° Y correction.
-// This is applied INSIDE the normalized scene group so it never affects the
-// outer group's rotationY (which is set by the parent for P1/P2 orientation).
+// FORWARD DIRECTION NOTE
 // ─────────────────────────────────────────────────────────────────────────────
-function detectForwardCorrection(scene: THREE.Object3D): number {
-  // Collect all skinned mesh / mesh positions to find the "face" direction.
-  // Strategy: find the nose/head area. If the model has a head bone, use it.
-  // Otherwise, use the bounding box centroid Z vs the hips Z.
-  // If head centroid Z > hips centroid Z, model faces +Z → needs 180° correction.
-  const allBones: THREE.Bone[] = [];
-  scene.traverse((child) => {
-    if ((child as THREE.Bone).isBone) allBones.push(child as THREE.Bone);
-  });
-
-  if (allBones.length > 0) {
-    // Find head bone
-    const headBone = allBones.find(b => {
-      const n = b.name.toLowerCase();
-      return n.includes('head') && !n.includes('headtop') && !n.includes('headend');
-    });
-    // Find hips bone
-    const hipsBone = allBones.find(b => {
-      const n = b.name.toLowerCase();
-      return n.includes('hip') || n.includes('pelvis') || n.includes('root') || n === 'hips';
-    });
-
-    if (headBone && hipsBone) {
-      const headPos = new THREE.Vector3();
-      const hipsPos = new THREE.Vector3();
-      headBone.getWorldPosition(headPos);
-      hipsBone.getWorldPosition(hipsPos);
-
-      // If head is in front of hips in +Z direction, model faces +Z → needs 180° flip
-      // glTF standard: character should face -Z (toward camera at Z+)
-      // Threshold: only correct if difference is significant (> 0.05 units)
-      if (headPos.z - hipsPos.z > 0.05) {
-        console.log(`[FighterMesh] 🔄 Forward correction (bone): head.z=${headPos.z.toFixed(3)} > hips.z=${hipsPos.z.toFixed(3)} → applying 180° Y rotation`);
-        return Math.PI;
-      }
-      // Bones found and no correction needed
-      return 0;
-    }
-  }
-
-  // FALLBACK: No usable head/hips bones found.
-  // Use bounding-box geometry centroid Z to infer facing direction.
-  // Most Blender-exported models face +Z by default. If the mesh centroid
-  // is at positive Z relative to the scene origin, the model faces +Z.
-  // We measure the centroid of all mesh geometry in the scene.
-  const meshPositions: THREE.Vector3[] = [];
-  scene.traverse((child) => {
-    if (!(child as THREE.Mesh).isMesh) return;
-    const mesh = child as THREE.Mesh;
-    if (!mesh.geometry || !mesh.geometry.attributes.position) return;
-    const box = new THREE.Box3().setFromObject(mesh);
-    const center = box.getCenter(new THREE.Vector3());
-    meshPositions.push(center);
-  });
-
-  if (meshPositions.length === 0) return 0;
-
-  // Average centroid Z across all meshes
-  const avgZ = meshPositions.reduce((sum, p) => sum + p.z, 0) / meshPositions.length;
-
-  // If the average mesh centroid is at positive Z, the model faces +Z
-  // Threshold: 0.05 units to avoid false positives on symmetric models
-  if (avgZ > 0.05) {
-    console.log(`[FighterMesh] 🔄 Forward correction (bbox fallback): avgMeshZ=${avgZ.toFixed(3)} > 0.05 → applying 180° Y rotation`);
-    return Math.PI;
-  }
-
-  return 0;
-}
+// Forward direction detection is handled by CharacterPipeline.determineForwardCorrection().
+// It uses GEOMETRY CENTROID ONLY — no bone position inference (head Z vs hips Z).
+// The pose-based heuristic was removed because a fighting stance can put the
+// head forward without the character's actual forward axis being +Z.
+// See src/engine/pipeline/CharacterPipeline.ts for the authoritative implementation.
+// ─────────────────────────────────────────────────────────────────────────────
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Resolve the best matching clip name from available actions
@@ -389,23 +320,19 @@ interface NormalizedResult {
 // ─────────────────────────────────────────────────────────────────────────────
 // AGENT LAW: Universal GLB normalization
 //
-// ALL characters use the same normalization pipeline:
-//   1. Clone scene using SkeletonUtils.clone() — preserves bone bind matrices
-//      and prevents SkinnedMesh Skeleton Desync (dismembered torsos/floating limbs)
-//   2. Disable frustumCulled on every SkinnedMesh — prevents body parts from
-//      disappearing when the root bone leaves the camera frustum during attacks
-//   3. Normalize root bone to floor if needed
-//   4. Scale to TARGET_HEIGHT via Box3
-//   5. Offset so bounding box bottom sits at Y=0 (floor)
-//   6. Reset root scene rotation to 0 (NOT child rotations)
-//   7. Detect forward direction — apply inner correction if model faces +Z
-//   8. Create AnimationMixer on the CLONED scene (not the outer group)
-//      so clips drive the actual visible mesh bones
-//   9. Retarget animation clips from original scene to cloned scene
-//      using NAME-BASED binding (not UUID) for maximum compatibility
-//  10. If model has NO bones (quality='none'), build a synthetic rig from AABB
-//      so hitboxes and basic animation still work
-//  11. Build SkeletonHelper for visual bone display
+// Delegates to the shared CharacterPipeline (src/engine/pipeline/CharacterPipeline.ts).
+// Both Character Select and Combat use the same pipeline — no divergence.
+//
+// Pipeline:
+//   SkeletonUtils.clone() → frustum culling disabled → skin weights normalized
+//   → Box3 floor normalization (instance, not bones) → geometry-centroid forward detection
+//   → AnimationMixer on cloned scene → name-based clip binding
+//
+// AUTHORED SKELETON LAW:
+//   - NO synthetic rig generation for bone-less models
+//   - NO character-specific corrections
+//   - Characters that fail validation return null (BLOCKED)
+//   - The caller (FighterMeshInner) must handle null as BLOCKED
 //
 // NEVER use per-character manual Y offsets.
 // NEVER hardcode rotation corrections per character.
@@ -415,292 +342,31 @@ function normalizeGLB(
   scene: THREE.Group,
   animations: THREE.AnimationClip[],
   gltfUrl: string,
-  report: RigDiagnosticReport,
-): NormalizedResult {
-  // CRITICAL FIX: Use SkeletonUtils.clone() instead of scene.clone(true).
-  // scene.clone(true) copies geometry but DETACHES bone bind matrices from the
-  // SkinnedMesh, causing the "skeleton desync" — torsos floating above legs,
-  // limbs displaced on Y-axis, vertices tearing during animation.
-  // SkeletonUtils.clone() rebuilds the full bone hierarchy and re-binds every
-  // SkinnedMesh to the correct skeleton instance in the cloned scene.
-  const cloned = SkeletonUtils.clone(scene) as THREE.Group;
+  _report: RigDiagnosticReport,
+): NormalizedResult | null {
+  // Delegate to the universal CharacterPipeline.
+  // applyPSXShader=true for combat renderer.
+  const result = runCharacterPipeline(scene, animations, gltfUrl, true);
 
-  // ── STEP 0: Zero internal GLB rotation IMMEDIATELY on clone ──────────────
-  // AGENT LAW: The cloned scene's internal rotation must be [0,0,0] so that
-  // the parent component (CharacterSelect / CombatArena3D) holds FULL authority
-  // over facing/orientation via the rotationY prop.
-  // This must happen BEFORE any Box3 measurement so the bounding box is
-  // computed in the canonical axis-aligned orientation.
-  cloned.rotation.set(0, 0, 0);
-
-  // CRITICAL FIX: Disable frustum culling on every SkinnedMesh.
-  // In fighting games, a character's fist or foot can stretch far beyond the
-  // root bone's bounding box during heavy attacks. The default Three.js
-  // frustum culling turns those meshes invisible when the root bone leaves
-  // the camera view. Setting frustumCulled=false forces the renderer to always
-  // draw every SkinnedMesh regardless of camera position.
-  cloned.traverse((child) => {
-    if ((child as THREE.SkinnedMesh).isSkinnedMesh) {
-      const skinnedMesh = child as THREE.SkinnedMesh;
-      skinnedMesh.frustumCulled = false;
-
-      // RUNTIME INVARIANT (PR #14/#15): Normalize skin weights so they sum to 1.
-      // Three.js normalizeSkinWeights() enforces the Khronos glTF spec requirement
-      // that float weights sum as closely as possible to 1.0 per vertex.
-      // Without this, vertices with weights that don't sum to 1 produce
-      // stretched/displaced geometry during animation.
-      skinnedMesh.normalizeSkinWeights();
-
-      // RUNTIME INVARIANT: Validate SkinnedMesh ↔ Skeleton binding.
-      // After SkeletonUtils.clone(), every SkinnedMesh must reference a skeleton
-      // whose bones are all present in the cloned scene hierarchy.
-      // If the skeleton is missing or has zero bones, log a warning so the
-      // deformation gate can catch it.
-      if (!skinnedMesh.skeleton || skinnedMesh.skeleton.bones.length === 0) {
-        console.warn(
-          `[FighterMesh] ⚠️ SkinnedMesh "${skinnedMesh.name}" has no bound skeleton after clone — ` +
-          `visible deformation will not occur. Check GLB export.`
-        );
-      } else {
-        // Verify every bone in the skeleton is reachable from the cloned root
-        let allBonesReachable = true;
-        for (const bone of skinnedMesh.skeleton.bones) {
-          if (!bone.parent && bone !== skinnedMesh.skeleton.bones[0]) {
-            allBonesReachable = false;
-            console.warn(
-              `[FighterMesh] ⚠️ Bone "${bone.name}" in skeleton of "${skinnedMesh.name}" ` +
-              `has no parent — skeleton may be detached from scene hierarchy.`
-            );
-            break;
-          }
-        }
-        if (allBonesReachable) {
-          console.log(
-            `[FighterMesh] ✅ SkinnedMesh "${skinnedMesh.name}" bound to skeleton ` +
-            `with ${skinnedMesh.skeleton.bones.length} bones — binding valid.`
-          );
-        }
-      }
-
-      // Ensure skinning is enabled on the material for WebGL rendering
-      const materials = Array.isArray(skinnedMesh.material)
-        ? skinnedMesh.material
-        : [skinnedMesh.material];
-      materials.forEach((mat) => {
-        if (mat && 'skinning' in mat) {
-          (mat as THREE.MeshStandardMaterial & { skinning: boolean }).skinning = true;
-        }
-      });
-    }
-  });
-
-  // ── STEP 1: If no rig at all, build a synthetic skeleton from the mesh AABB ──
-  // AGENT LAW: Bone-less models get a procedural Mixamo-compatible skeleton
-  // so animation clips can be retargeted and hitboxes still work.
-  let syntheticBones: Map<string, THREE.Bone> | null = null;
-  if (report.quality === 'none' || report.totalBones === 0) {
-    const syntheticResult = AutoRigDetector.buildSyntheticRig(cloned);
-    syntheticBones = syntheticResult.bones;
-    console.log(
-      `[FighterMesh] 🦴 Synthetic rig applied to "${gltfUrl.split('/').pop()}" — ` +
-      `${syntheticResult.bones.size} bones generated`
+  if (!result) {
+    // BLOCKED — asset failed pre-clone validation.
+    // DO NOT secretly re-rig. DO NOT generate synthetic bones.
+    // The caller must handle null as BLOCKED — ASSET DEFORMATION INTEGRITY FAILURE.
+    console.error(
+      `[FighterMesh] 🚫 BLOCKED — "${gltfUrl.split('/').pop()}" failed CharacterPipeline validation. ` +
+      `Combat entry blocked. Fix the source GLB asset.`
     );
+    return null;
   }
 
-  // ── STEP 2: Compute bounding box AFTER zeroing rotation ──────────────────
-  // Rotation is already [0,0,0] from Step 0, so Box3 is axis-aligned and
-  // correctly reflects the character's canonical geometry extents.
-  // NOTE: normalizeRootToFloor is intentionally NOT called here — the Box3
-  // Y-offset below is the sole floor-snapping authority for ALL characters,
-  // replacing any per-character hardcoded offsets.
-  cloned.updateMatrixWorld(true);
-  const rawBox = new THREE.Box3().setFromObject(cloned);
-  const rawSize = rawBox.getSize(new THREE.Vector3());
-
-  // ── STEP 3: Apply uniform scale so total height = 1.85 units ─────────────
-  // AGENT LAW: Every character is scaled uniformly to TARGET_HEIGHT so the
-  // roster has consistent physical proportions regardless of GLB export scale.
-  const TARGET_HEIGHT = 1.85;
-  const scale = rawSize.y > 0.01 ? TARGET_HEIGHT / rawSize.y : 1;
-  cloned.scale.setScalar(scale);
-
-  // ── STEP 4: Recompute Box3 AFTER scaling ─────────────────────────────────
-  cloned.updateMatrixWorld(true);
-  const scaledBox = new THREE.Box3().setFromObject(cloned);
-  const scaledCenter = scaledBox.getCenter(new THREE.Vector3());
-
-  // ── STEP 5: Dynamic Y-offset — snap lowest vertex to Y=0 ─────────────────
-  // AGENT LAW: Use THREE.Box3 to find the absolute lowest vertex of the
-  // character's geometry (scaledBox.min.y) and offset the clone's Y position
-  // by the exact inverse so every character's feet sit at Y=0.
-  // This works universally for every GLB regardless of origin placement —
-  // no per-character hardcoded offsets are needed or permitted.
-  cloned.position.set(
-    -scaledCenter.x,
-    -scaledBox.min.y,
-    -scaledCenter.z,
-  );
-
-  // ── STEP 6: Force matrix world update so bone world positions are accurate ─
-  cloned.updateMatrixWorld(true);
-
-  // ── STEP 7: Detect forward direction AFTER normalization ──────────────────
-  // This must happen after position/scale are set so world positions are correct.
-  // All facing/rotation authority is delegated to the parent via rotationY prop.
-  // forwardCorrectionY is applied to the INNER group only (never the outer group).
-  const forwardCorrectionY = detectForwardCorrection(cloned);
-
-  // Step 8: Apply PSX vertex snapping to visible meshes
-  cloned.traverse((child) => {
-    if (!(child as THREE.Mesh).isMesh) return;
-    const mesh = child as THREE.Mesh;
-    const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-    materials.forEach((mat) => {
-      const m = mat as THREE.MeshStandardMaterial;
-      if (m.map) {
-        m.map.minFilter = THREE.NearestFilter;
-        m.map.magFilter = THREE.NearestFilter;
-        m.map.generateMipmaps = false;
-        m.needsUpdate = true;
-      }
-      m.onBeforeCompile = (shader) => {
-        shader.vertexShader = shader.vertexShader.replace(
-          '#include <project_vertex>',
-          `vec4 mvPosition = modelViewMatrix * vec4(transformed, 1.0);
-           vec4 clipPosition = projectionMatrix * mvPosition;
-           float snapRes = ${DEFAULT_PSX_RENDER.renderWidth.toFixed(1)};
-           vec2 ndc = clipPosition.xy / clipPosition.w;
-           ndc = floor(ndc * snapRes + 0.5) / snapRes;
-           clipPosition.xy = ndc * clipPosition.w;
-           gl_Position = clipPosition;`
-        );
-      };
-    });
-  });
-
-  // Step 9: AGENT LAW — Create AnimationMixer on the CLONED scene.
-  // This is the critical fix for "animations play on invisible skeleton":
-  // The mixer MUST target the same object that is rendered (the cloned scene),
-  // not the outer Three.js group. When the mixer targets the outer group but
-  // the cloned scene is added as a child, bone transforms from the mixer
-  // apply to the original (invisible) scene's skeleton, not the visible clone.
-  const mixer = new THREE.AnimationMixer(cloned);
-
-  // Step 10: NAME-BASED clip retargeting from original scene to cloned scene.
-  //
-  // AGENT LAW: Use name-based binding, NOT UUID-based binding.
-  // UUID changes every time a scene is cloned. Name-based binding is stable
-  // and works correctly with THREE.AnimationMixer's internal bone resolver.
-  //
-  // The mixer resolves track names by searching the root object's subtree
-  // for an object with a matching name. Since the cloned scene has the same
-  // bone names as the original, name-based tracks resolve correctly.
-  //
-  // We do NOT remap track names to UUIDs — that approach breaks when bones
-  // are not found in the clone map (e.g. synthetic rig bones added after clone).
-  const actions: Record<string, THREE.AnimationAction> = {};
-
-  // For synthetic rigs: retarget existing clips to new bone names, and inject
-  // a procedural idle clip so the model always has at least one animation.
-  let clipsToLoad = [...animations];
-  if (syntheticBones && syntheticBones.size > 0) {
-    // Retarget any existing clips to the synthetic rig bone names
-    if (clipsToLoad.length > 0) {
-      clipsToLoad = AutoRigDetector.retargetClipsToSyntheticRig(clipsToLoad, syntheticBones);
-    }
-    // Always inject a procedural idle clip for synthetic rigs
-    const proceduralIdle = AutoRigDetector.buildProceduralIdleClip(syntheticBones);
-    // Only add if no idle clip already exists
-    const hasIdle = clipsToLoad.some(c => c.name.toLowerCase().includes('idle'));
-    if (!hasIdle) {
-      clipsToLoad.unshift(proceduralIdle);
-      console.log(`[FighterMesh] 🎬 Injected procedural idle clip for synthetic rig`);
-    }
-  }
-
-  for (const clip of clipsToLoad) {
-    // Clone the clip so we don't mutate the cached original
-    const clonedClip = clip.clone();
-
-    // Bind the clip action to the cloned scene root.
-    // THREE.AnimationMixer will traverse cloned scene to find bones by name.
-    const action = mixer.clipAction(clonedClip, cloned);
-    actions[clip.name] = action;
-  }
-
-  // Step 11: Build SkeletonHelper for visual bone display
-  // This makes bones/joints visible as a wireframe skeleton overlay.
-  let skeletonHelper: THREE.SkeletonHelper | null = null;
-  let hasAnyBones = false;
-  cloned.traverse((child) => {
-    if ((child as THREE.Bone).isBone) hasAnyBones = true;
-  });
-  if (hasAnyBones) {
-    skeletonHelper = new THREE.SkeletonHelper(cloned);
-    // Make skeleton lines visible but subtle — not distracting during fights
-    (skeletonHelper.material as THREE.LineBasicMaterial).linewidth = 2;
-    (skeletonHelper.material as THREE.LineBasicMaterial).color.set(0x00ff88);
-    skeletonHelper.visible = false; // Hidden by default; toggled by showHitbox prop
-  }
-
-  // DEFORMATION INTEGRITY CHECK (replaces the broken test-tick gate):
-  // AGENT LAW: Do NOT advance the mixer at load time to test deformation.
-  // mixer.update(0.016) followed by mixer.setTime(0) does NOT cleanly reset
-  // the mixer — it leaves actions in a partially-played state, causing the
-  // first real animation frame to be wrong (visible as a single-frame glitch
-  // or incorrect bind pose on combat entry).
-  //
-  // Instead, validate deformation readiness by checking skeleton binding:
-  //   1. Every SkinnedMesh must have a skeleton with > 0 bones
-  //   2. The skeleton must be reachable from the cloned scene root
-  //   3. Skin weight attributes must exist on the geometry
-  // This is a pure structural check — no mixer state is modified.
-  let deformationConfirmed = false;
-  const skinnedMeshes: THREE.SkinnedMesh[] = [];
-  cloned.traverse((child) => {
-    if ((child as THREE.SkinnedMesh).isSkinnedMesh) {
-      skinnedMeshes.push(child as THREE.SkinnedMesh);
-    }
-  });
-
-  if (skinnedMeshes.length > 0) {
-    // Check that at least one SkinnedMesh has a valid skeleton with bones
-    // AND has skinWeight attributes on its geometry (required for deformation)
-    const validMesh = skinnedMeshes.find(sm => {
-      const hasSkeleton = sm.skeleton && sm.skeleton.bones.length > 0;
-      const hasSkinWeights = sm.geometry.attributes.skinWeight != null;
-      const hasSkinIndices = sm.geometry.attributes.skinIndex != null;
-      return hasSkeleton && hasSkinWeights && hasSkinIndices;
-    });
-    deformationConfirmed = validMesh != null;
-  } else if (skinnedMeshes.length === 0) {
-    // No SkinnedMesh at all — synthetic rig path, deformation will be confirmed after rig build
-    deformationConfirmed = true;
-  }
-
-  if (!deformationConfirmed && animations.length > 0) {
-    console.warn(
-      `[FighterMesh] ⚠️ DEFORMATION GATE: "${gltfUrl.split('/').pop()}" — ` +
-      `SkinnedMesh has no valid skeleton binding or missing skinWeight/skinIndex attributes. ` +
-      `Check: skeleton binding, inverse bind matrices, skin weights. ` +
-      `This fighter will not animate correctly in combat.`
-    );
-  } else if (deformationConfirmed) {
-    console.log(
-      `[FighterMesh] ✅ DEFORMATION GATE PASS: "${gltfUrl.split('/').pop()}" — ` +
-      `skeleton binding and skin weight attributes confirmed.`
-    );
-  }
-
-  console.log(
-    `[FighterMesh] ✅ Normalized "${gltfUrl.split('/').pop()}" — ` +
-    `rigQuality=${report.quality} convention=${report.convention} ` +
-    `bones=${report.totalBones} rootAtFloor=${report.hasRootAtFloor} ` +
-    `forwardCorrection=${(forwardCorrectionY * 180 / Math.PI).toFixed(0)}° ` +
-    `clips=[${animations.map(a => a.name).join(', ')}]`
-  );
-
-  return { scene: cloned, forwardCorrectionY, mixer, actions, skeletonHelper };
+  // Map PipelineResult to NormalizedResult (same shape, just aliased)
+  return {
+    scene: result.scene,
+    forwardCorrectionY: result.forwardCorrectionY,
+    mixer: result.mixer,
+    actions: result.actions,
+    skeletonHelper: result.skeletonHelper,
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -782,6 +448,18 @@ function FighterMeshInner({
 
     // Normalize and create mixer bound to the cloned visible scene
     const result = normalizeGLB(scene as THREE.Group, animations, gltfUrl, report);
+
+    // BLOCKED — asset failed CharacterPipeline validation.
+    // DO NOT secretly re-rig. Fire the blocked callback and stop.
+    if (!result) {
+      const characterName = gltfUrl.split('/').pop()?.replace('.glb', '') ?? gltfUrl;
+      console.error(
+        `[FighterMesh] 🚫 BLOCKED — "${characterName}" failed CharacterPipeline validation. ` +
+        `ASSET DEFORMATION INTEGRITY FAILURE. Fix the source GLB.`
+      );
+      onDeformationBlocked?.(characterName, ['PIPELINE_VALIDATION_FAILED']);
+      return;
+    }
 
     // Initialize bone hitbox system from the normalized scene
     result.scene.updateMatrixWorld(true);

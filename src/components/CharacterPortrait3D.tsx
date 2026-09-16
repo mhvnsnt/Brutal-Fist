@@ -6,6 +6,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import { SkeletonUtils } from 'three-stdlib';
+import { determineForwardCorrection } from '../engine/pipeline/CharacterPipeline';
 
 interface CharacterPortrait3DProps {
   modelUrl: string;
@@ -42,56 +43,12 @@ interface CharacterPortrait3DProps {
  * PORTRAIT ORIENTATION IS COMPLETELY DECOUPLED FROM IN-FIGHT ORIENTATION.
  */
 
-// ── Forward direction detection (same logic as FighterMesh) ──────────────────
-function detectForwardCorrection(scene: THREE.Object3D): number {
-  const allBones: THREE.Bone[] = [];
-  scene.traverse((child) => {
-    if ((child as THREE.Bone).isBone) allBones.push(child as THREE.Bone);
-  });
-
-  if (allBones.length > 0) {
-    const headBone = allBones.find(b => {
-      const n = b.name.toLowerCase();
-      return n.includes('head') && !n.includes('headtop') && !n.includes('headend');
-    });
-    const hipsBone = allBones.find(b => {
-      const n = b.name.toLowerCase();
-      return n.includes('hip') || n.includes('pelvis') || n.includes('root') || n === 'hips';
-    });
-
-    if (headBone && hipsBone) {
-      const headPos = new THREE.Vector3();
-      const hipsPos = new THREE.Vector3();
-      headBone.getWorldPosition(headPos);
-      hipsBone.getWorldPosition(hipsPos);
-
-      if (headPos.z - hipsPos.z > 0.05) {
-        return Math.PI;
-      }
-      return 0;
-    }
-  }
-
-  // FALLBACK: No usable head/hips bones — use bounding-box centroid Z.
-  // Most Blender-exported models face +Z by default.
-  const meshPositions: THREE.Vector3[] = [];
-  scene.traverse((child) => {
-    if (!(child as THREE.Mesh).isMesh) return;
-    const mesh = child as THREE.Mesh;
-    if (!mesh.geometry || !mesh.geometry.attributes.position) return;
-    const box = new THREE.Box3().setFromObject(mesh);
-    const center = box.getCenter(new THREE.Vector3());
-    meshPositions.push(center);
-  });
-
-  if (meshPositions.length === 0) return 0;
-
-  const avgZ = meshPositions.reduce((sum, p) => sum + p.z, 0) / meshPositions.length;
-  if (avgZ > 0.05) {
-    return Math.PI;
-  }
-  return 0;
-}
+// ── Forward direction detection (delegated to CharacterPipeline) ──────────────
+// REMOVED: local detectForwardCorrection using head/hips bone position heuristic.
+// The pose-based heuristic was banned because a fighting stance can put the head
+// forward without the character's actual forward axis being +Z.
+// CharacterPipeline.determineForwardCorrection() uses GEOMETRY CENTROID ONLY.
+// Both Character Select and Combat now use the same authoritative implementation.
 
 /** Select the best idle animation clip from available clips */
 function selectIdleClip(clips: THREE.AnimationClip[]): THREE.AnimationClip {
@@ -194,7 +151,7 @@ function PortraitModel({
         cloned.updateMatrixWorld(true);
 
         // ── Step 8: Detect forward direction ──────────────────────────────────
-        const forwardCorrectionY = detectForwardCorrection(cloned);
+        const forwardCorrectionY = determineForwardCorrection(cloned);
 
         // ── Step 9: Apply faction color tint ──────────────────────────────────
         const color = new THREE.Color(factionColor);
