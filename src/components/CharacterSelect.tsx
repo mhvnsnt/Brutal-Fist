@@ -3,6 +3,7 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { getAllBannonFighters, getBannonFighter, type BannonFighterProfile } from '../data/bannonRoster';
 import { BANNON_GLB_MODELS } from '../data/bannonGlbRoster';
+import { resolveFighterGlbUrl } from '../data/FighterAssetResolver';
 import { getCharacterMoveSet } from '../engine/CharacterMoveSetSystem';
 import dynamic from 'next/dynamic';
 
@@ -94,7 +95,8 @@ function FighterPortrait({
 
   const factionBg = FACTION_BG[fighter.factionAlignment];
   const factionColor = FACTION_COLOR[fighter.factionAlignment];
-  const portraitUrl = attirePortraitUrl ?? fighter.portraitUrl;
+  // Use attire-specific URL if provided, otherwise resolve canonical rigged_ready GLB
+  const portraitUrl = attirePortraitUrl ?? resolveFighterGlbUrl(fighter);
 
   return (
     <div className="relative flex flex-col items-center justify-end h-full w-full overflow-hidden">
@@ -185,6 +187,8 @@ function RosterSlot({
   const factionColor = FACTION_COLOR[fighter.factionAlignment];
   const moveSet = useMemo(() => getCharacterMoveSet(fighter.id), [fighter.id]);
   const isCustomized = moveSet?.isCustomized ?? false;
+  // Use canonical rigged_ready GLB for roster slot 3D preview
+  const modelUrl = useMemo(() => resolveFighterGlbUrl(fighter), [fighter]);
 
   return (
     <button
@@ -205,10 +209,10 @@ function RosterSlot({
         backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.5) 2px, rgba(0,0,0,0.5) 4px)'
       }} />
 
-      {/* 3D character portrait */}
+      {/* 3D character portrait — uses canonical rigged_ready GLB */}
       <div className="absolute inset-0 z-0">
         <CharacterPortrait3D
-          modelUrl={fighter.portraitUrl}
+          modelUrl={modelUrl}
           factionColor={factionColor}
           mode="full"
         />
@@ -291,7 +295,8 @@ export default function CharacterSelect({ onSelectP1, onSelectP2, onStartMatch }
   const handleFighterSelect = (fighter: BannonFighterProfile) => {
     const attires = getCharacterAttires(fighter.id);
     const defaultAttire = attires[0]?.attire ?? 'Default';
-    const defaultPortrait = attires[0]?.portraitUrl ?? fighter.portraitUrl;
+    // Use canonical rigged_ready GLB as default portrait — falls back to first attire URL
+    const defaultPortrait = attires[0]?.portraitUrl ?? resolveFighterGlbUrl(fighter);
 
     if (activeSlot === 'p1') {
       setP1Id(fighter.id);

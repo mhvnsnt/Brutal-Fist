@@ -5,7 +5,8 @@ import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, useGLTF, Grid } from '@react-three/drei';
 import * as THREE from 'three';
 import { getAllBannonFighters, type BannonFighterProfile } from '../data/bannonRoster';
-import { BANNON_GLB_PLAYABLE_MODELS } from '../data/bannonGlbRoster';
+
+import { resolveFighterGlbUrl } from '../data/FighterAssetResolver';
 import { runCharacterPipeline } from '../engine/pipeline/CharacterPipeline';
 import { AutoRigDetector } from '../engine/locomotion/AutoRigDetector';
 import {
@@ -219,6 +220,178 @@ function CharacterViewer(props: CharacterViewerProps) {
   );
 }
 
+// ── Deformation measurement result per semantic state ─────────────────────────
+interface DeformationMeasurement {
+  semanticState: string;
+  clipSource: ClipSourceType;
+  clipName: string | null;
+  skinnedMeshCount: number;
+  skeletonBoneCount: number;
+  trackCount: number;
+  resolvedTracks: number;
+  unresolvedTracks: number;
+  mixerRootIsClone: boolean;
+  maxBoneTravelMetres: number;
+  maxBoneRotationDegrees: number;
+  maxVertexDeltaMetres: number;
+  verdict: 'PASS' | 'WARN' | 'UNKNOWN' | 'MISSING_CLIP';
+  verdictReasons: string[];
+}
+
+// ── Measure bone travel over N mixer ticks ────────────────────────────────────
+function measureBoneTravel(
+  scene: THREE.Group,
+  mixer: THREE.AnimationMixer,
+  tickCount = 8,
+  tickDelta = 0.033,
+): { maxTravelMetres: number; maxRotationDegrees: number } {
+  const bones: THREE.Bone[] = [];
+  scene.traverse((child) => {
+    if ((child as THREE.Bone).isBone) bones.push(child as THREE.Bone);
+  });
+
+  if (bones.length === 0) return { maxTravelMetres: 0, maxRotationDegrees: 0 };
+
+  // Record initial world positions and quaternions
+  scene.updateMatrixWorld(true);
+  const initPos = bones.map(b => b.getWorldPosition(new THREE.Vector3()));
+  const initQuat = bones.map(b => b.getWorldQuaternion(new THREE.Quaternion()));
+
+  let maxTravel = 0;
+  let maxRotDeg = 0;
+
+  for (let tick = 0; tick < tickCount; tick++) {
+    mixer.update(tickDelta);
+    scene.updateMatrixWorld(true);
+    bones.forEach((bone, i) => {
+      const pos = bone.getWorldPosition(new THREE.Vector3());
+      const quat = bone.getWorldQuaternion(new THREE.Quaternion());
+      const travel = pos.distanceTo(initPos[i]);
+      const dot = Math.abs(quat.dot(initQuat[i]));
+      const rotRad = 2 * Math.acos(Math.min(1, dot));
+      const rotDeg = (rotRad * 180) / Math.PI;
+      if (travel > maxTravel) maxTravel = travel;
+      if (rotDeg > maxRotDeg) maxRotDeg = rotDeg;
+    });
+  }
+
+  return { maxTravelMetres: maxTravel, maxRotationDegrees: maxRotDeg };
+}
+
+// ── Measure vertex displacement on SkinnedMeshes ─────────────────────────────
+function measureVertexDisplacement(scene: THREE.Group): number {
+  let maxDelta = 0;
+  scene.traverse((child) => {
+    const sm = child as THREE.SkinnedMesh;
+    if (!sm.isSkinnedMesh) return;
+    const geo = sm.geometry;
+    if (!geo.attributes.position) return;
+    const posAttr = geo.attributes.position;
+    const count = Math.min(posAttr.count, 64); // sample up to 64 verts
+    const before = new THREE.Vector3();
+    const after = new THREE.Vector3();
+    for (let i = 0; i < count; i++) {
+      before.fromBufferAttribute(posAttr, i);
+      sm.boneTransform(i, after);
+      const delta = before.distanceTo(after);
+      if (delta > maxDelta) maxDelta = delta;
+    }
+  });
+  return maxDelta;
+}
+
+// ── Build deformation measurement for current state ───────────────────────────
+function buildDeformationMeasurement(
+  semanticState: string,
+  clipName: string | null,
+  clipSource: ClipSourceType,
+  normalized: NormalizedResult,
+  integrityReport: AnimationIntegrityReport,
+): DeformationMeasurement {
+  const verdictReasons: string[] = [];
+
+  // Count resolved/unresolved tracks for active clip
+  let trackCount = 0;
+  let resolvedTracks = 0;
+  let unresolvedTracks = 0;
+
+  if (clipName && normalized.actions[clipName]) {
+    const action = normalized.actions[clipName];
+    const clip = action.getClip();
+    trackCount = clip.tracks.length;
+    // Count tracks that resolve to bones in the scene
+    const boneNames = new Set<string>();
+    normalized.scene.traverse((child) => {
+      if ((child as THREE.Bone).isBone && child.name) boneNames.add(child.name);
+    });
+    for (const track of clip.tracks) {
+      const dotIdx = track.name.lastIndexOf('.');
+      const boneName = dotIdx !== -1 ? track.name.slice(0, dotIdx) : track.name;
+      if (boneNames.has(boneName)) resolvedTracks++;
+      else unresolvedTracks++;
+    }
+  }
+
+  // Measure bone travel with current active action
+  const { maxTravelMetres, maxRotationDegrees } = measureBoneTravel(
+    normalized.scene,
+    normalized.mixer,
+    6,
+    0.033,
+  );
+
+  // Measure vertex displacement
+  const maxVertexDelta = measureVertexDisplacement(normalized.scene);
+
+  // Determine verdict
+  let verdict: DeformationMeasurement['verdict'] = 'UNKNOWN';
+
+  if (!clipName || clipSource === 'MISSING_CLIP') {
+    verdict = 'MISSING_CLIP';
+    verdictReasons.push('No clip for this semantic state');
+  } else {
+    const hasSkinnedMesh = integrityReport.skinnedMeshCount > 0;
+    const hasSkeleton = integrityReport.skeletonBoneCount > 0;
+    const hasTracks = resolvedTracks > 0;
+    const mixerBound = integrityReport.mixerRootIsVisibleClone;
+    const bonesMoved = maxRotationDegrees > 0.1;
+    const meshDeformed = maxVertexDelta > 0.0001;
+
+    if (!hasSkinnedMesh) verdictReasons.push('No visible SkinnedMesh');
+    if (!hasSkeleton) verdictReasons.push('No skeleton bones');
+    if (!hasTracks) verdictReasons.push('No resolved tracks');
+    if (!mixerBound) verdictReasons.push('Mixer root ≠ visible clone');
+    if (!bonesMoved) verdictReasons.push(`Bone rotation < 0.1° (measured: ${maxRotationDegrees.toFixed(3)}°)`);
+    if (!meshDeformed) verdictReasons.push(`Vertex Δ < 0.0001m (measured: ${maxVertexDelta.toFixed(6)}m)`);
+
+    if (hasSkinnedMesh && hasSkeleton && hasTracks && mixerBound && bonesMoved && meshDeformed) {
+      verdict = 'PASS';
+    } else if (hasSkinnedMesh && hasSkeleton && hasTracks && mixerBound && bonesMoved) {
+      verdict = 'WARN';
+      if (verdictReasons.length === 0) verdictReasons.push('Mesh deformation not yet measured');
+    } else {
+      verdict = 'WARN';
+    }
+  }
+
+  return {
+    semanticState,
+    clipSource,
+    clipName,
+    skinnedMeshCount: integrityReport.skinnedMeshCount,
+    skeletonBoneCount: integrityReport.skeletonBoneCount,
+    trackCount,
+    resolvedTracks,
+    unresolvedTracks,
+    mixerRootIsClone: integrityReport.mixerRootIsVisibleClone,
+    maxBoneTravelMetres: maxTravelMetres,
+    maxBoneRotationDegrees: maxRotationDegrees,
+    maxVertexDeltaMetres: maxVertexDelta,
+    verdict,
+    verdictReasons,
+  };
+}
+
 // ── Main Animation Test Arena ─────────────────────────────────────────────────
 interface AnimationTestArenaProps {
   onBack: () => void;
@@ -237,22 +410,24 @@ export default function AnimationTestArena({ onBack }: AnimationTestArenaProps) 
   const [currentClipName, setCurrentClipName] = useState<string | null>(null);
   const [currentClipSource, setCurrentClipSource] = useState<ClipSourceType>('MISSING_CLIP');
   const [showLog, setShowLog] = useState(false);
+  const [deformMeasurement, setDeformMeasurement] = useState<DeformationMeasurement | null>(null);
+  const normalizedResultRef = useRef<NormalizedResult | null>(null);
   const autoCycleRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const currentSemanticState = SEMANTIC_STATES[currentStateIndex];
 
-  // ── Fighter selection ─────────────────────────────────────────────────────
+  // ── Fighter selection — use canonical rigged_ready GLB ────────────────────
   const handleSelectFighter = useCallback((fighter: BannonFighterProfile) => {
     setSelectedFighter(fighter);
     setIntegrityReport(null);
     setCurrentClipName(null);
     setCurrentClipSource('MISSING_CLIP');
     setCurrentStateIndex(0);
+    setDeformMeasurement(null);
+    normalizedResultRef.current = null;
 
-    // Find the best GLB URL for this fighter
-    const glbEntry = BANNON_GLB_PLAYABLE_MODELS.find(e => e.id === fighter.id);
-    const BANNON_RAW = 'https://raw.githubusercontent.com/mhvnsnt/Bannon/main/assets/models';
-    const url = glbEntry?.overrideUrl ?? (glbEntry ? `${BANNON_RAW}/${glbEntry.model}` : fighter.portraitUrl);
+    // Use canonical FighterAssetResolver — always picks rigged_ready.glb for Bannon/Maime
+    const url = resolveFighterGlbUrl(fighter);
     setModelUrl(url);
     console.log(`[AnimTestArena] 🎭 Selected fighter: ${fighter.name} → ${url}`);
   }, []);
@@ -293,18 +468,47 @@ export default function AnimationTestArena({ onBack }: AnimationTestArenaProps) 
 
   const handleReady = useCallback((result: NormalizedResult, report: AnimationIntegrityReport) => {
     setIntegrityReport(report);
+    normalizedResultRef.current = result;
     console.log(`[AnimTestArena] ✅ Character ready — verdict: ${report.verdict}`);
   }, []);
 
   const handleClipChange = useCallback((clipName: string | null, sourceType: ClipSourceType) => {
     setCurrentClipName(clipName);
     setCurrentClipSource(sourceType);
+    setDeformMeasurement(null); // reset until measured
   }, []);
+
+  // ── Measure deformation for current state ─────────────────────────────────
+  const handleMeasureDeformation = useCallback(() => {
+    const normalized = normalizedResultRef.current;
+    const report = integrityReport;
+    if (!normalized || !report) return;
+
+    const measurement = buildDeformationMeasurement(
+      currentSemanticState,
+      currentClipName,
+      currentClipSource,
+      normalized,
+      report,
+    );
+    setDeformMeasurement(measurement);
+    console.log(
+      `[AnimTestArena] 📐 Deformation measurement for "${currentSemanticState}":`,
+      `verdict=${measurement.verdict}`,
+      `boneRot=${measurement.maxBoneRotationDegrees.toFixed(2)}°`,
+      `vertexΔ=${measurement.maxVertexDeltaMetres.toFixed(6)}m`,
+    );
+  }, [currentSemanticState, currentClipName, currentClipSource, integrityReport]);
 
   const verdictColor = integrityReport
     ? integrityReport.verdict === 'PASS'      ? '#22c55e'
     : integrityReport.verdict === 'TEST_ONLY' ? '#f59e0b'
     : integrityReport.verdict === 'BLOCKED'? '#ef4444' :'#94a3b8' :'#94a3b8';
+
+  const deformVerdictColor = deformMeasurement
+    ? deformMeasurement.verdict === 'PASS'         ? '#22c55e'
+    : deformMeasurement.verdict === 'WARN'         ? '#f59e0b'
+    : deformMeasurement.verdict === 'MISSING_CLIP'? '#ef4444' :'#94a3b8' :'#94a3b8';
 
   return (
     <div className="fixed inset-0 bg-[#0a0c12] text-white font-mono flex flex-col">
@@ -465,9 +669,21 @@ export default function AnimationTestArena({ onBack }: AnimationTestArenaProps) 
               ))}
             </div>
           )}
+
+          {/* ── Measure deformation button ── */}
+          {modelUrl && integrityReport && (
+            <div className="absolute bottom-20 right-4">
+              <button
+                onClick={handleMeasureDeformation}
+                className="px-3 py-1.5 text-[9px] tracking-widest border border-yellow-700 text-yellow-500 hover:bg-yellow-400/10 hover:text-yellow-300 transition-colors"
+              >
+                📐 MEASURE DEFORMATION
+              </button>
+            </div>
+          )}
         </div>
 
-        {/* ── Right panel: integrity report ── */}
+        {/* ── Right panel: integrity report + deformation ── */}
         <div className="w-64 border-l border-zinc-800 bg-[#0d1018] overflow-y-auto flex-shrink-0">
           <div className="px-3 py-2 text-[9px] tracking-widest text-zinc-500 border-b border-zinc-800 flex items-center justify-between">
             <span>INTEGRITY GATE</span>
@@ -566,6 +782,58 @@ export default function AnimationTestArena({ onBack }: AnimationTestArenaProps) 
                 />
               </div>
 
+              {/* ── Per-state deformation measurement ── */}
+              <div className="border-t border-zinc-800 pt-2 space-y-1">
+                <div className="text-[9px] tracking-widest text-zinc-500 mb-1 flex items-center justify-between">
+                  <span>DEFORMATION: {currentSemanticState.toUpperCase()}</span>
+                  {deformMeasurement && (
+                    <span
+                      className="text-[8px] font-bold px-1 py-0.5"
+                      style={{ color: deformVerdictColor, background: `${deformVerdictColor}22` }}
+                    >
+                      {deformMeasurement.verdict}
+                    </span>
+                  )}
+                </div>
+                {deformMeasurement ? (
+                  <>
+                    <Row label="CLIP SOURCE" value={deformMeasurement.clipSource} color={CLIP_SOURCE_COLORS[deformMeasurement.clipSource]} />
+                    <Row label="TRACKS" value={deformMeasurement.trackCount} />
+                    <Row label="RESOLVED" value={deformMeasurement.resolvedTracks} color="#22c55e" />
+                    <Row label="UNRESOLVED" value={deformMeasurement.unresolvedTracks} warn={deformMeasurement.unresolvedTracks > 0} />
+                    <Row label="MIXER ROOT=CLONE" value={deformMeasurement.mixerRootIsClone ? 'YES ✅' : 'NO ❌'} warn={!deformMeasurement.mixerRootIsClone} />
+                    <Row
+                      label="BONE ROT"
+                      value={`${deformMeasurement.maxBoneRotationDegrees.toFixed(2)}°`}
+                      warn={deformMeasurement.maxBoneRotationDegrees < 0.1}
+                      color={deformMeasurement.maxBoneRotationDegrees >= 0.1 ? '#22c55e' : undefined}
+                    />
+                    <Row
+                      label="BONE TRAVEL"
+                      value={`${deformMeasurement.maxBoneTravelMetres.toFixed(4)}m`}
+                      warn={deformMeasurement.maxBoneTravelMetres < 0.0001}
+                    />
+                    <Row
+                      label="VERTEX Δ"
+                      value={`${deformMeasurement.maxVertexDeltaMetres.toFixed(6)}m`}
+                      warn={deformMeasurement.maxVertexDeltaMetres < 0.0001}
+                      color={deformMeasurement.maxVertexDeltaMetres >= 0.0001 ? '#22c55e' : undefined}
+                    />
+                    {deformMeasurement.verdictReasons.length > 0 && (
+                      <div className="mt-1 space-y-0.5">
+                        {deformMeasurement.verdictReasons.map((r, i) => (
+                          <div key={i} className="text-[8px] text-yellow-500">⚠ {r}</div>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="text-[9px] text-zinc-600 italic">
+                    Press 📐 MEASURE DEFORMATION to run live bone + vertex measurement
+                  </div>
+                )}
+              </div>
+
               {/* Warnings */}
               {integrityReport.warningChecks.length > 0 && (
                 <div className="space-y-1">
@@ -629,6 +897,7 @@ export default function AnimationTestArena({ onBack }: AnimationTestArenaProps) 
         <span>← → NAVIGATE STATES</span>
         <span>SPACE AUTO-CYCLE</span>
         <span>ORBIT DRAG TO ROTATE</span>
+        <span>📐 MEASURE DEFORMATION (right panel)</span>
         {integrityReport && (
           <span style={{ color: verdictColor }}>
             VERDICT: {integrityReport.verdict}

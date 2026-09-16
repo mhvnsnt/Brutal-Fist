@@ -20,6 +20,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { type BannonFighterProfile } from '../data/bannonRoster';
 import { BANNON_GLB_PLAYABLE_MODELS } from '../data/bannonGlbRoster';
+import { resolveFighterGlbFilename } from '../data/FighterAssetResolver';
 import { REQUIRED_SEMANTIC_STATES } from '../engine/retarget/AnimationSourceRegistry';
 
 // ── Checklist item types ──────────────────────────────────────────────────────
@@ -55,9 +56,10 @@ function validateFighterRoster(fighter: BannonFighterProfile): FighterValidation
   const checks: ChecklistItem[] = [];
   const remediationSteps: string[] = [];
 
-  // Find the fighter's GLB entry
+  // Find the fighter's GLB entry — use canonical resolver for the display filename
   const glbEntry = BANNON_GLB_PLAYABLE_MODELS.find(e => e.id === fighter.id);
-  const glbFile = glbEntry?.model ?? 'UNKNOWN.glb';
+  // Use FighterAssetResolver to get the canonical rigged_ready filename
+  const glbFile = resolveFighterGlbFilename(fighter.id);
   const rigStatus = glbEntry?.rigStatus ?? 'unknown';
   const playableGate = glbEntry?.playableGate ?? 'BLOCKED_RIG';
 
