@@ -13,6 +13,7 @@ import {
   type CustomizedMoveSet,
 } from '../engine/CharacterMoveSetSystem';
 import { getMoveById, type BrutalFistMove } from '../engine/BrutalFistMoveCatalog';
+import BannonDebugViewport from './BannonDebugViewport';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -158,6 +159,7 @@ export default function MoveSetCustomizer({ onClose, onConfirm, initialCharacter
     return map;
   });
   const [activeCategory, setActiveCategory] = useState<string>('all');
+  const [showDebugViewport, setShowDebugViewport] = useState(false);
 
   const selectedFighter = useMemo(() => getBannonFighter(selectedId), [selectedId]);
   const selectedMoveSet = moveSets.get(selectedId);
@@ -216,6 +218,16 @@ export default function MoveSetCustomizer({ onClose, onConfirm, initialCharacter
             </p>
           </div>
           <div className="flex gap-3">
+            <button
+              onClick={() => setShowDebugViewport(v => !v)}
+              className={`px-4 py-2 text-sm font-mono border rounded transition-colors ${
+                showDebugViewport
+                  ? 'text-purple-300 border-purple-600 bg-purple-900/30' :'text-gray-400 border-gray-700 hover:bg-gray-800 hover:text-purple-300 hover:border-purple-700'
+              }`}
+              title="Toggle Bannon debug viewport — live bone rotations, quaternion tracks, vertex deltas"
+            >
+              {showDebugViewport ? '⬛ DEBUG' : '🔬 DEBUG'}
+            </button>
             {selectedMoveSet.isCustomized && (
               <button
                 onClick={handleResetAll}
@@ -340,6 +352,17 @@ export default function MoveSetCustomizer({ onClose, onConfirm, initialCharacter
 
           </div>
         </div>
+
+        {/* Debug Viewport Panel */}
+        {showDebugViewport && (
+          <div className="border-t border-purple-900/50 bg-[#080a10]" style={{ height: '420px' }}>
+            <BannonDebugViewport
+              fighter={selectedFighter}
+              onClose={() => setShowDebugViewport(false)}
+            />
+          </div>
+        )}
+
       </div>
     </div>
   );
