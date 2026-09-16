@@ -14,14 +14,12 @@ interface CharacterPortrait3DProps {
   /** Whether to apply a hit-stop brightness flash */
   flash?: boolean;
   /**
-   * Flip horizontally for P2 side — rotates 180° on Y so character faces toward P1.
-   * @deprecated Use rotationY for precise control. flip=true is equivalent to rotationY=Math.PI.
-   * NOTE: This prop is ONLY for portrait display. It has NO effect on in-fight orientation.
+   * @deprecated Use rotationY for precise control.
    */
   flip?: boolean;
   /**
    * Explicit Y-axis rotation in radians for the character model IN THE PORTRAIT ONLY.
-   * This is COMPLETELY DECOUPLED from in-fight rotationY (which is always 0 for P1, Math.PI for P2).
+   * COMPLETELY DECOUPLED from in-fight rotationY.
    * Portrait convention:
    *   P1 (left panel):  -0.45 rad → slight right-facing inward angle
    *   P2 (right panel): +0.45 rad → slight left-facing inward angle
@@ -31,55 +29,46 @@ interface CharacterPortrait3DProps {
 }
 
 /**
- * NORMALIZATION CONTRACT (v9 — Universal Box3 + No Manual Nudge):
+ * NORMALIZATION CONTRACT (v10 — Universal Box3 + Forward Detection):
  *
  * All characters use the same Box3 normalization as FighterMesh:
  *   - Scale to 2.0 units tall
  *   - Offset so bottom of bounding box sits at Y=0
  *   - No character-specific manual offsets
- *   - No child rotation resets (preserves model's original bone orientations)
+ *   - Forward direction auto-detected: models facing +Z get 180° Y correction
+ *     applied to the inner scene group (not the outer portrait rotation group)
  *
- * Camera positions are fixed — no nudgeY needed since all models are normalized to Y=0 baseline.
- *
- * PORTRAIT ORIENTATION IS COMPLETELY DECOUPLED FROM IN-FIGHT ORIENTATION:
- *   - Portrait rotationY prop only affects the portrait Canvas rotation
- *   - In-fight rotationY is set by CombatArena3D (0 for P1, Math.PI for P2)
- *   - These two systems never share state
+ * PORTRAIT ORIENTATION IS COMPLETELY DECOUPLED FROM IN-FIGHT ORIENTATION.
  */
 
-/**
- * Returns the Y nudge for a character.
- * v9: All characters use Box3 normalization — nudgeY is always 0.
- * Kept for API compatibility but always returns 0.
- */
-function getYNudge(_modelUrl: string): number {
-  return 0;
-}
-
-/**
- * Retarget animation clips from the original GLTF scene to a cloned scene.
- */
-function retargetClips(
-  clips: THREE.AnimationClip[],
-  sourceRoot: THREE.Object3D,
-  targetRoot: THREE.Object3D
-): THREE.AnimationClip[] {
-  const targetMap = new Map<string, string>();
-  targetRoot.traverse((obj) => targetMap.set(obj.name, obj.uuid));
-
-  return clips.map((clip) => {
-    const retargeted = clip.clone();
-    retargeted.tracks = clip.tracks.map((track) => {
-      const dotIdx = track.name.indexOf('.');
-      if (dotIdx === -1) return track.clone();
-      const boneName = track.name.slice(0, dotIdx);
-      const property = track.name.slice(dotIdx);
-      const newTrack = track.clone();
-      newTrack.name = `${boneName}${property}`;
-      return newTrack;
-    });
-    return retargeted;
+// ── Forward direction detection (same logic as FighterMesh) ──────────────────
+function detectForwardCorrection(scene: THREE.Object3D): number {
+  const allBones: THREE.Bone[] = [];
+  scene.traverse((child) => {
+    if ((child as THREE.Bone).isBone) allBones.push(child as THREE.Bone);
   });
+  if (allBones.length === 0) return 0;
+
+  const headBone = allBones.find(b => {
+    const n = b.name.toLowerCase();
+    return n.includes('head') && !n.includes('headtop') && !n.includes('headend');
+  });
+  const hipsBone = allBones.find(b => {
+    const n = b.name.toLowerCase();
+    return n.includes('hip') || n.includes('pelvis') || n.includes('root') || n === 'hips';
+  });
+
+  if (!headBone || !hipsBone) return 0;
+
+  const headPos = new THREE.Vector3();
+  const hipsPos = new THREE.Vector3();
+  headBone.getWorldPosition(headPos);
+  hipsBone.getWorldPosition(hipsPos);
+
+  if (headPos.z - hipsPos.z > 0.05) {
+    return Math.PI;
+  }
+  return 0;
 }
 
 /** Select the best idle animation clip from available clips */
@@ -92,8 +81,8 @@ function selectIdleClip(clips: THREE.AnimationClip[]): THREE.AnimationClip {
   return clips[0];
 }
 
-/** Fixed camera — all models normalized to Y=0 baseline, so camera targets are fixed */
-function FixedCamera({ mode, nudgeY }: { mode: 'bust' | 'full'; nudgeY: number }) {
+/** Fixed camera — all models normalized to Y=0 baseline */
+function FixedCamera({ mode }: { mode: 'bust' | 'full' }) {
   const { camera } = useThree();
   useEffect(() => {
     const cam = camera as THREE.PerspectiveCamera;
@@ -107,13 +96,11 @@ function FixedCamera({ mode, nudgeY }: { mode: 'bust' | 'full'; nudgeY: number }
       cam.lookAt(0, 1.0, 0);
     }
     cam.updateProjectionMatrix();
-  }, [mode, nudgeY, camera]);
+  }, [mode, camera]);
   return null;
 }
 
-/**
- * 3-Point Portrait Lighting
- */
+/** 3-Point Portrait Lighting */
 function PortraitLighting({ factionColor }: { factionColor: string }) {
   return (
     <>
@@ -134,9 +121,8 @@ function PortraitModel({
   flip = false,
   rotationY,
 }: CharacterPortrait3DProps) {
-  const groupRef = useRef<THREE.Group>(null);
   const mixerRef = useRef<THREE.AnimationMixer | null>(null);
-  const [model, setModel] = useState<{ scene: THREE.Group; nudgeY: number } | null>(null);
+  const [model, setModel] = useState<{ scene: THREE.Group; forwardCorrectionY: number } | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -152,7 +138,7 @@ function PortraitModel({
         const rawBox = new THREE.Box3().setFromObject(cloned);
         const rawSize = rawBox.getSize(new THREE.Vector3());
 
-        // ── Step 2: Compute scale to make model exactly 2.0 units tall ────────
+        // ── Step 2: Scale to 2.0 units tall ───────────────────────────────────
         const scale = rawSize.y > 0 ? 2.0 / rawSize.y : 1;
         cloned.scale.setScalar(scale);
 
@@ -164,17 +150,18 @@ function PortraitModel({
         const scaledCenter = scaledBox.getCenter(new THREE.Vector3());
 
         // ── Step 5: Center horizontally; floor bottom of bounding box at Y=0 ──
-        // CRITICAL: use scaledBox.min.y (not scaledCenter.y) so ALL characters
-        // stand on the floor regardless of where their root bone is.
-        // Do NOT reset child rotations — that breaks models whose root bone
-        // is oriented away from the camera.
         cloned.position.set(-scaledCenter.x, -scaledBox.min.y, -scaledCenter.z);
 
         // ── Step 6: Reset ONLY the root scene rotation (not children) ─────────
-        // Resetting children breaks models with non-zero root bone orientations.
         cloned.rotation.set(0, 0, 0);
 
-        // ── Step 7: Apply faction color tint ──────────────────────────────────
+        // ── Step 7: Force update so bone world positions are accurate ──────────
+        cloned.updateMatrixWorld(true);
+
+        // ── Step 8: Detect forward direction ──────────────────────────────────
+        const forwardCorrectionY = detectForwardCorrection(cloned);
+
+        // ── Step 9: Apply faction color tint ──────────────────────────────────
         const color = new THREE.Color(factionColor);
         cloned.traverse((child) => {
           if (!(child as THREE.Mesh).isMesh) return;
@@ -190,24 +177,38 @@ function PortraitModel({
           });
         });
 
-        // ── Step 8: Idle animation ─────────────────────────────────────────────
+        // ── Step 10: Idle animation — mixer bound to CLONED scene ─────────────
         if (gltf.animations && gltf.animations.length > 0) {
-          const retargeted = retargetClips(gltf.animations, gltf.scene, cloned);
+          // Build name→object map for retargeting
+          const cloneMap = new Map<string, THREE.Object3D>();
+          cloned.traverse((obj) => { if (obj.name) cloneMap.set(obj.name, obj); });
+
           mixerRef.current = new THREE.AnimationMixer(cloned);
-          const idleClip = selectIdleClip(retargeted);
-          const action = mixerRef.current.clipAction(idleClip);
+          const idleClip = selectIdleClip(gltf.animations);
+
+          // Retarget clip to cloned scene
+          const retargetedTracks: THREE.KeyframeTrack[] = [];
+          for (const track of idleClip.tracks) {
+            const dotIdx = track.name.indexOf('.');
+            if (dotIdx === -1) { retargetedTracks.push(track.clone()); continue; }
+            const boneName = track.name.slice(0, dotIdx);
+            const property = track.name.slice(dotIdx);
+            const targetObj = cloneMap.get(boneName);
+            const newTrack = track.clone();
+            if (targetObj) newTrack.name = `${targetObj.uuid}${property}`;
+            retargetedTracks.push(newTrack);
+          }
+          const retargetedClip = new THREE.AnimationClip(idleClip.name, idleClip.duration, retargetedTracks);
+          const action = mixerRef.current.clipAction(retargetedClip);
           action.setLoop(THREE.LoopRepeat, Infinity);
           action.fadeIn(0.3);
           action.play();
         }
 
-        // nudgeY is always 0 in v9 — Box3 normalization handles all characters uniformly
-        const nudgeY = 0;
-
-        setModel({ scene: cloned, nudgeY });
+        setModel({ scene: cloned, forwardCorrectionY });
       },
       undefined,
-      (err) => console.warn('Portrait GLB load failed:', modelUrl, err)
+      (err) => console.warn('[Portrait] GLB load failed:', modelUrl, err)
     );
     return () => {
       active = false;
@@ -222,21 +223,22 @@ function PortraitModel({
 
   if (!model) return null;
 
+  // Portrait rotation = explicit rotationY prop (or flip fallback) + forward correction
+  // The forward correction is applied to the inner group so it doesn't interfere
+  // with the portrait's intentional inward-facing angle.
+  const portraitRotY = rotationY !== undefined ? rotationY : (flip ? Math.PI : 0);
+
   return (
-    // OUTER GROUP: holds the Y nudge offset — never touched by the animation mixer
-    // rotationY here is PORTRAIT-ONLY — completely separate from in-fight rotation
-    <group
-      ref={groupRef}
-      position={[0, model.nudgeY, 0]}
-      rotation={[0, rotationY !== undefined ? rotationY : (flip ? Math.PI : 0), 0]}
-    >
-      {/* INNER SCENE: animation mixer runs here at Y=0 */}
-      <primitive object={model.scene} />
+    // OUTER GROUP: portrait orientation (inward angle for P1/P2 panels)
+    <group rotation={[0, portraitRotY, 0]}>
+      {/* INNER GROUP: forward correction — makes +Z-facing models face -Z */}
+      <group rotation={[0, model.forwardCorrectionY, 0]}>
+        <primitive object={model.scene} />
+      </group>
     </group>
   );
 }
 
-// Wrapper that passes nudgeY to FixedCamera via a shared state
 function PortraitScene({
   modelUrl,
   factionColor,
@@ -245,12 +247,9 @@ function PortraitScene({
   flip = false,
   rotationY,
 }: CharacterPortrait3DProps) {
-  // Compute nudgeY here so FixedCamera can use it
-  const nudgeY = getYNudge(modelUrl);
-
   return (
     <>
-      <FixedCamera mode={mode} nudgeY={nudgeY} />
+      <FixedCamera mode={mode} />
       <PortraitLighting factionColor={factionColor} />
       <Suspense fallback={null}>
         <PortraitModel
@@ -276,7 +275,6 @@ export default function CharacterPortrait3D({
 }: CharacterPortrait3DProps) {
   return (
     <div className="relative w-full h-full">
-      {/* Faction color atmosphere glow behind canvas */}
       <div
         className="absolute inset-0 pointer-events-none"
         style={{

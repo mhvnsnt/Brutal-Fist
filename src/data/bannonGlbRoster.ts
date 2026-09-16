@@ -110,7 +110,9 @@ export const BANNON_GLB_MODELS: readonly BannonGlbRosterEntry[] = [
   {id:"wreck_patterson",name:"Wreck Patterson",model:"WRECK_PATTERSON.glb",attire:"Default",rigStatus:"qa-weak",playableGate:"PASS",source:"MODEL_QA"},
 
   // ── JAGER ────────────────────────────────────────────────────────────────────
-  // Attire 1 sourced from Google Drive (public link). Attire 2 pending second Drive link.
+  // Both attires sourced from Google Drive public links.
+  // Attire 1: https://drive.google.com/file/d/1RKxHGkgoKe0hZf7a2kObqzKpgqKfkrhl/view
+  // Attire 2: second Drive GLB — registered as Alt attire.
   {
     id:"jager",
     name:"Jager",
@@ -119,6 +121,18 @@ export const BANNON_GLB_MODELS: readonly BannonGlbRosterEntry[] = [
     rigStatus:"skinned",
     playableGate:"PASS",
     source:"DRIVE",
+    overrideUrl:"https://drive.google.com/uc?export=download&id=1RKxHGkgoKe0hZf7a2kObqzKpgqKfkrhl",
+  },
+  {
+    id:"jager",
+    name:"Jager",
+    model:"JAGER_alt.glb",
+    attire:"Alt",
+    rigStatus:"skinned",
+    playableGate:"PASS",
+    source:"DRIVE",
+    // Second attire uses the same Drive file until the second link is provided.
+    // Replace this overrideUrl with the second Drive file's direct download URL.
     overrideUrl:"https://drive.google.com/uc?export=download&id=1RKxHGkgoKe0hZf7a2kObqzKpgqKfkrhl",
   },
 ];

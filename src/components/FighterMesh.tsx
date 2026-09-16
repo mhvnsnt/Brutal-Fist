@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, Suspense } from 'react';
 import { useFrame } from '@react-three/fiber';
-import { useAnimations, useGLTF } from '@react-three/drei';
+import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
 import { DEFAULT_PSX_RENDER } from '../render/psx';
 import { BoneHitboxSystem } from '../engine/locomotion/BoneHitboxSystem';
@@ -178,6 +178,57 @@ const VELOCITY_ANIM_THRESHOLD = 0.12;
 const MIN_CROSSFADE_HOLD_S = 0.05; // 3 frames at 60fps
 
 // ─────────────────────────────────────────────────────────────────────────────
+// AGENT LAW: Forward-direction detection
+// Many GLBs are exported from Blender with +Z as forward (Blender default).
+// Three.js / glTF standard is -Z forward. When a model faces +Z it appears
+// 180° wrong in the arena. We detect this by sampling the bounding box:
+// if the model's geometry centroid is behind the origin in Z after normalization,
+// the model was exported facing +Z and needs a 180° Y correction.
+// This is applied INSIDE the normalized scene group so it never affects the
+// outer group's rotationY (which is set by the parent for P1/P2 orientation).
+// ─────────────────────────────────────────────────────────────────────────────
+function detectForwardCorrection(scene: THREE.Object3D): number {
+  // Collect all skinned mesh / mesh positions to find the "face" direction.
+  // Strategy: find the nose/head area. If the model has a head bone, use it.
+  // Otherwise, use the bounding box centroid Z vs the hips Z.
+  // If head centroid Z > hips centroid Z, model faces +Z → needs 180° correction.
+  const allBones: THREE.Bone[] = [];
+  scene.traverse((child) => {
+    if ((child as THREE.Bone).isBone) allBones.push(child as THREE.Bone);
+  });
+
+  if (allBones.length === 0) return 0;
+
+  // Find head bone
+  const headBone = allBones.find(b => {
+    const n = b.name.toLowerCase();
+    return n.includes('head') && !n.includes('headtop') && !n.includes('headend');
+  });
+  // Find hips bone
+  const hipsBone = allBones.find(b => {
+    const n = b.name.toLowerCase();
+    return n.includes('hip') || n.includes('pelvis') || n.includes('root') || n === 'hips';
+  });
+
+  if (!headBone || !hipsBone) return 0;
+
+  const headPos = new THREE.Vector3();
+  const hipsPos = new THREE.Vector3();
+  headBone.getWorldPosition(headPos);
+  hipsBone.getWorldPosition(hipsPos);
+
+  // If head is in front of hips in +Z direction, model faces +Z → needs 180° flip
+  // glTF standard: character should face -Z (toward camera at Z+)
+  // Threshold: only correct if difference is significant (> 0.05 units)
+  if (headPos.z - hipsPos.z > 0.05) {
+    console.log(`[FighterMesh] 🔄 Forward correction: head.z=${headPos.z.toFixed(3)} > hips.z=${hipsPos.z.toFixed(3)} → applying 180° Y rotation`);
+    return Math.PI;
+  }
+
+  return 0;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Resolve the best matching clip name from available actions
 // ─────────────────────────────────────────────────────────────────────────────
 function resolveClipName(key: string, availableClips: string[]): string | null {
@@ -244,6 +295,169 @@ function resolveClipName(key: string, availableClips: string[]): string | null {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Normalized scene result
+// ─────────────────────────────────────────────────────────────────────────────
+interface NormalizedResult {
+  scene: THREE.Group;
+  /** Y rotation to apply to the inner scene to correct forward direction */
+  forwardCorrectionY: number;
+  /** AnimationMixer bound to the normalized scene's actual bones */
+  mixer: THREE.AnimationMixer;
+  /** Actions map: clip name → AnimationAction */
+  actions: Record<string, THREE.AnimationAction>;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AGENT LAW: Universal GLB normalization
+//
+// ALL characters use the same normalization pipeline:
+//   1. Clone scene (deep clone preserves skinning)
+//   2. Normalize root bone to floor if needed
+//   3. Scale to TARGET_HEIGHT via Box3
+//   4. Offset so bounding box bottom sits at Y=0 (floor)
+//   5. Reset root scene rotation to 0 (NOT child rotations)
+//   6. Detect forward direction — apply inner correction if model faces +Z
+//   7. Create AnimationMixer on the CLONED scene (not the outer group)
+//      so clips drive the actual visible mesh bones
+//   8. Retarget animation clips from original scene to cloned scene
+//
+// NEVER use per-character manual Y offsets.
+// NEVER hardcode rotation corrections per character.
+// NEVER bind the mixer to the outer group — it must target the cloned scene.
+// ─────────────────────────────────────────────────────────────────────────────
+function normalizeGLB(
+  scene: THREE.Group,
+  animations: THREE.AnimationClip[],
+  gltfUrl: string,
+  report: RigDiagnosticReport,
+): NormalizedResult {
+  const cloned = scene.clone(true);
+
+  // Step 1: Normalize root bone to floor BEFORE Box3 (fixes skeleton-offset models)
+  if (!report.hasRootAtFloor) {
+    AutoRigDetector.normalizeRootToFloor(cloned);
+  }
+
+  // Step 2: Compute bounding box on raw clone
+  cloned.updateMatrixWorld(true);
+  const rawBox = new THREE.Box3().setFromObject(cloned);
+  const rawSize = rawBox.getSize(new THREE.Vector3());
+
+  // Step 3: Scale uniformly so total Y height = 1.85 units
+  const TARGET_HEIGHT = 1.85;
+  const scale = rawSize.y > 0.01 ? TARGET_HEIGHT / rawSize.y : 1;
+  cloned.scale.setScalar(scale);
+
+  // Step 4: Recompute box AFTER scaling
+  cloned.updateMatrixWorld(true);
+  const scaledBox = new THREE.Box3().setFromObject(cloned);
+  const scaledCenter = scaledBox.getCenter(new THREE.Vector3());
+
+  // Step 5: Offset so bottom of bounding box sits exactly at Y=0
+  // CRITICAL: use scaledBox.min.y so ALL characters stand on the floor
+  // regardless of where their geometry origin is.
+  cloned.position.set(
+    -scaledCenter.x,
+    -scaledBox.min.y,
+    -scaledCenter.z,
+  );
+
+  // Step 6: Reset ONLY the root scene rotation (not children)
+  // Resetting children breaks models with non-zero root bone orientations.
+  cloned.rotation.set(0, 0, 0);
+
+  // Step 7: Force matrix world update so bone world positions are accurate
+  cloned.updateMatrixWorld(true);
+
+  // Step 8: Detect forward direction AFTER normalization
+  // This must happen after position/scale are set so world positions are correct.
+  const forwardCorrectionY = detectForwardCorrection(cloned);
+
+  // Step 9: Apply PSX vertex snapping to visible meshes
+  cloned.traverse((child) => {
+    if (!(child as THREE.Mesh).isMesh) return;
+    const mesh = child as THREE.Mesh;
+    const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    materials.forEach((mat) => {
+      const m = mat as THREE.MeshStandardMaterial;
+      if (m.map) {
+        m.map.minFilter = THREE.NearestFilter;
+        m.map.magFilter = THREE.NearestFilter;
+        m.map.generateMipmaps = false;
+        m.needsUpdate = true;
+      }
+      m.onBeforeCompile = (shader) => {
+        shader.vertexShader = shader.vertexShader.replace(
+          '#include <project_vertex>',
+          `vec4 mvPosition = modelViewMatrix * vec4(transformed, 1.0);
+           vec4 clipPosition = projectionMatrix * mvPosition;
+           float snapRes = ${DEFAULT_PSX_RENDER.renderWidth.toFixed(1)};
+           vec2 ndc = clipPosition.xy / clipPosition.w;
+           ndc = floor(ndc * snapRes + 0.5) / snapRes;
+           clipPosition.xy = ndc * clipPosition.w;
+           gl_Position = clipPosition;`
+        );
+      };
+    });
+  });
+
+  // Step 10: AGENT LAW — Create AnimationMixer on the CLONED scene.
+  // This is the critical fix for "animations play on invisible skeleton":
+  // The mixer MUST target the same object that is rendered (the cloned scene),
+  // not the outer Three.js group. When the mixer targets the outer group but
+  // the cloned scene is added as a child, bone transforms from the mixer
+  // apply to the original (invisible) scene's skeleton, not the visible clone.
+  const mixer = new THREE.AnimationMixer(cloned);
+
+  // Step 11: Retarget animation clips from original scene to cloned scene.
+  // Build a name→uuid map for the cloned scene's objects.
+  const cloneMap = new Map<string, THREE.Object3D>();
+  cloned.traverse((obj) => {
+    if (obj.name) cloneMap.set(obj.name, obj);
+  });
+
+  const actions: Record<string, THREE.AnimationAction> = {};
+
+  for (const clip of animations) {
+    // Retarget: remap track names to cloned scene objects
+    const retargetedTracks: THREE.KeyframeTrack[] = [];
+    for (const track of clip.tracks) {
+      const dotIdx = track.name.indexOf('.');
+      if (dotIdx === -1) {
+        retargetedTracks.push(track.clone());
+        continue;
+      }
+      const boneName = track.name.slice(0, dotIdx);
+      const property = track.name.slice(dotIdx);
+      const targetObj = cloneMap.get(boneName);
+      if (targetObj) {
+        const newTrack = track.clone();
+        // Use UUID-based binding so mixer targets the cloned bone directly
+        newTrack.name = `${targetObj.uuid}${property}`;
+        retargetedTracks.push(newTrack);
+      } else {
+        // Bone not found in clone — keep original name (mixer will try to resolve)
+        retargetedTracks.push(track.clone());
+      }
+    }
+
+    const retargetedClip = new THREE.AnimationClip(clip.name, clip.duration, retargetedTracks);
+    const action = mixer.clipAction(retargetedClip);
+    actions[clip.name] = action;
+  }
+
+  console.log(
+    `[FighterMesh] ✅ Normalized "${gltfUrl.split('/').pop()}" — ` +
+    `rigQuality=${report.quality} convention=${report.convention} ` +
+    `bones=${report.totalBones} rootAtFloor=${report.hasRootAtFloor} ` +
+    `forwardCorrection=${(forwardCorrectionY * 180 / Math.PI).toFixed(0)}° ` +
+    `clips=[${animations.map(a => a.name).join(', ')}]`
+  );
+
+  return { scene: cloned, forwardCorrectionY, mixer, actions };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Inner component — loaded inside Suspense, receives the GLTF scene + animations
 // ─────────────────────────────────────────────────────────────────────────────
 function FighterMeshInner({
@@ -278,8 +492,7 @@ function FighterMeshInner({
   onBoneHitboxReady?: (system: BoneHitboxSystem) => void;
 }) {
   const groupRef = useRef<THREE.Group>(null);
-  const normalizedRef = useRef<THREE.Group | null>(null);
-  const [normalizedScene, setNormalizedScene] = useState<THREE.Group | null>(null);
+  const [normalized, setNormalized] = useState<NormalizedResult | null>(null);
 
   // ── Jitter-prevention refs ────────────────────────────────────────────────
   /** The clip name that is currently playing (or crossfading to) */
@@ -292,103 +505,41 @@ function FighterMeshInner({
   // ── Bone hitbox system ────────────────────────────────────────────────────
   const boneHitboxRef = useRef<BoneHitboxSystem>(new BoneHitboxSystem());
 
-  // ── Hit-stop mixer time scale ref ────────────────────────────────────────
-  const mixerTimeScaleRef = useRef<number>(1);
-
   // ── Active attack key for root motion ────────────────────────────────────
   const activeAttackKeyRef = useRef<string | null>(null);
 
   // useGLTF caches the result — safe to call per-fighter
   const { scene, animations } = useGLTF(gltfUrl);
 
-  // useAnimations from @react-three/drei — handles mixer + useFrame update automatically
-  const { actions, mixer } = useAnimations(animations, groupRef);
-
-  // ── Universal Box3 normalization + root bone floor-zero ──────────────────
+  // ── Universal normalization + mixer creation ──────────────────────────────
   useEffect(() => {
     if (!scene) return;
 
-    const cloned = scene.clone(true);
-
-    // Run rig diagnostic
-    const report = AutoRigDetector.analyze(cloned, animations);
+    // Run rig diagnostic on the original scene
+    const report = AutoRigDetector.analyze(scene, animations);
     onRigDiagnostic?.(report);
 
-    // Normalize root bone to floor zero BEFORE bounding box normalization
-    if (!report.hasRootAtFloor) {
-      AutoRigDetector.normalizeRootToFloor(cloned);
-    }
-
-    // Compute bounding box on the raw clone
-    const box = new THREE.Box3().setFromObject(cloned);
-    const size = box.getSize(new THREE.Vector3());
-
-    // Scale uniformly so total Y height = 1.85 units
-    const TARGET_HEIGHT = 1.85;
-    const scale = size.y > 0.01 ? TARGET_HEIGHT / size.y : 1;
-    cloned.scale.setScalar(scale);
-
-    // Recompute box AFTER scaling
-    cloned.updateMatrixWorld(true);
-    const scaledBox = new THREE.Box3().setFromObject(cloned);
-    const scaledCenter = scaledBox.getCenter(new THREE.Vector3());
-
-    // Offset so bottom of bounding box sits exactly at Y=0 (root at floor)
-    cloned.position.set(
-      -scaledCenter.x,
-      -scaledBox.min.y,
-      -scaledCenter.z,
-    );
-
-    cloned.rotation.set(0, 0, 0);
-
-    // Apply PSX vertex snapping
-    cloned.traverse((child) => {
-      if (!(child as THREE.Mesh).isMesh) return;
-      const mesh = child as THREE.Mesh;
-      const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-      materials.forEach((mat) => {
-        const m = mat as THREE.MeshStandardMaterial;
-        if (m.map) {
-          m.map.minFilter = THREE.NearestFilter;
-          m.map.magFilter = THREE.NearestFilter;
-          m.map.generateMipmaps = false;
-          m.needsUpdate = true;
-        }
-        m.onBeforeCompile = (shader) => {
-          shader.vertexShader = shader.vertexShader.replace(
-            '#include <project_vertex>',
-            `vec4 mvPosition = modelViewMatrix * vec4(transformed, 1.0);
-             vec4 clipPosition = projectionMatrix * mvPosition;
-             float snapRes = ${DEFAULT_PSX_RENDER.renderWidth.toFixed(1)};
-             vec2 ndc = clipPosition.xy / clipPosition.w;
-             ndc = floor(ndc * snapRes + 0.5) / snapRes;
-             clipPosition.xy = ndc * clipPosition.w;
-             gl_Position = clipPosition;`
-          );
-        };
-      });
-    });
+    // Normalize and create mixer bound to the cloned visible scene
+    const result = normalizeGLB(scene as THREE.Group, animations, gltfUrl, report);
 
     // Initialize bone hitbox system from the normalized scene
-    cloned.updateMatrixWorld(true);
-    boneHitboxRef.current.initFromSkeleton(cloned);
+    result.scene.updateMatrixWorld(true);
+    boneHitboxRef.current.initFromSkeleton(result.scene);
     onBoneHitboxReady?.(boneHitboxRef.current);
 
-    normalizedRef.current = cloned;
-    setNormalizedScene(cloned);
+    setNormalized(result);
 
-    console.log(
-      `[FighterMesh] ✅ Normalized "${gltfUrl.split('/').pop()}" — ` +
-      `rigQuality=${report.quality} convention=${report.convention} ` +
-      `bones=${report.totalBones} rootAtFloor=${report.hasRootAtFloor} ` +
-      `clips=[${animations.map(a => a.name).join(', ')}]`
-    );
-  }, [scene, gltfUrl, animations]);
+    // Cleanup: stop all actions when model changes
+    return () => {
+      result.mixer.stopAllAction();
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scene, gltfUrl]);
 
   // ── Bind FighterStateMachine state → AnimationMixer playback ─────────────
   useEffect(() => {
-    if (!normalizedScene || !actions) return;
+    if (!normalized) return;
+    const { actions, mixer } = normalized;
 
     const availableClips = Object.keys(actions);
     if (availableClips.length === 0) {
@@ -508,11 +659,12 @@ function FighterMeshInner({
     activeClipRef.current = clipName;
     committedClipRef.current = clipName;
     lastCrossfadeTimeRef.current = now;
-  }, [state, animation, animationTrigger, normalizedScene, actions, gltfUrl, locomotionVelocity]);
+  }, [state, animation, animationTrigger, normalized, gltfUrl, locomotionVelocity]);
 
   // ── Auto-play idle on mount once scene is normalized ─────────────────────
   useEffect(() => {
-    if (!normalizedScene || !actions) return;
+    if (!normalized) return;
+    const { actions } = normalized;
     const availableClips = Object.keys(actions);
     if (availableClips.length === 0) return;
 
@@ -527,20 +679,20 @@ function FighterMeshInner({
       console.log(`[FighterMesh] 🟢 Auto-play idle="${idleClip}" on mount for "${gltfUrl.split('/').pop()}"`);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [normalizedScene]);
+  }, [normalized]);
 
   // ── Hit-stop: pause/resume mixer time scale ───────────────────────────────
   useEffect(() => {
-    if (!mixer) return;
+    if (!normalized) return;
+    const { mixer } = normalized;
     if (hitStopActive) {
-      mixerTimeScaleRef.current = mixer.timeScale;
-      mixer.timeScale = 0; // Freeze animation
+      mixer.timeScale = 0;
     } else {
-      mixer.timeScale = 1; // Resume
+      mixer.timeScale = 1;
     }
-  }, [hitStopActive, mixer]);
+  }, [hitStopActive, normalized]);
 
-  // ── useFrame: position + rotation + bone hitbox update ───────────────────
+  // ── useFrame: position + rotation + mixer update + bone hitbox ───────────
   useFrame((_, delta) => {
     if (!groupRef.current) return;
 
@@ -559,19 +711,34 @@ function FighterMeshInner({
     const attackScale = attacking ? 1.03 : 1.0;
     groupRef.current.scale.set(attackScale, attackScale, attackScale);
 
+    // AGENT LAW: Advance the mixer manually since we no longer use useAnimations.
+    // The mixer is bound to the cloned scene, so this drives the actual visible mesh.
+    if (!hitStopActive && normalized) {
+      normalized.mixer.update(delta);
+    }
+
     // Update bone hitbox system (tracks bone world positions)
     if (!hitStopActive) {
       boneHitboxRef.current.update(delta);
     }
   });
 
-  if (!normalizedScene) return null;
+  if (!normalized) return null;
 
   const activeSpheres = boneHitboxRef.current.getActiveSpheres();
 
   return (
     <group ref={groupRef} position={position}>
-      <primitive object={normalizedScene} />
+      {/*
+        AGENT LAW: The inner group applies the forward correction rotation.
+        This is SEPARATE from the outer group's rotationY (P1/P2 orientation).
+        forwardCorrectionY is 0 for correctly-exported models (Bannon, Maime).
+        forwardCorrectionY is Math.PI for models exported facing +Z (most others).
+        This is detected automatically — never hardcoded per character.
+      */}
+      <group rotation={[0, normalized.forwardCorrectionY, 0]}>
+        <primitive object={normalized.scene} />
+      </group>
 
       {/* Legacy AABB hitbox (shown when bone hitboxes are unavailable) */}
       {showHitbox && hitboxGeometry && activeSpheres.length === 0 && (
