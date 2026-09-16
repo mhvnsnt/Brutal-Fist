@@ -187,13 +187,13 @@ function VFXOverlay({ particles, screenFlash, hitStopActive, hitEffectPool }: VF
       if (p.type === 'impact') {
         ctx.fillStyle = p.color;
         ctx.beginPath();
-        ctx.arc(p.x, p.y, p.size * alpha, 0, Math.PI * 2);
+        ctx.arc(p.x, p.y, Math.max(0, p.size * alpha), 0, Math.PI * 2);
         ctx.fill();
       } else if (p.type === 'burst') {
         ctx.strokeStyle = p.color;
         ctx.lineWidth = p.size * 0.5;
         ctx.beginPath();
-        ctx.arc(p.x, p.y, p.size * (1 - alpha) * 20, 0, Math.PI * 2);
+        ctx.arc(p.x, p.y, Math.max(0, p.size * (1 - alpha) * 20), 0, Math.PI * 2);
         ctx.stroke();
       } else if (p.type === 'trail') {
         ctx.fillStyle = p.color;
@@ -229,37 +229,40 @@ function VFXOverlay({ particles, screenFlash, hitStopActive, hitEffectPool }: VF
         if (type === 'block') {
           // Block: circular shield spark (pale blue/grey)
           ctx.globalAlpha = alpha * 0.8;
-          const shieldGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, coronaRadius);
+          const safeCoronaBlock = Math.max(0.001, coronaRadius);
+          const shieldGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, safeCoronaBlock);
           shieldGrad.addColorStop(0, 'rgba(138,180,212,0.9)');
           shieldGrad.addColorStop(0.5, 'rgba(138,180,212,0.4)');
           shieldGrad.addColorStop(1, 'rgba(138,180,212,0)');
           ctx.fillStyle = shieldGrad;
           ctx.beginPath();
-          ctx.arc(0, 0, coronaRadius, 0, Math.PI * 2);
+          ctx.arc(0, 0, safeCoronaBlock, 0, Math.PI * 2);
           ctx.fill();
         } else {
           // Clean hit / counter-hit: character color corona
           ctx.globalAlpha = alpha * 0.85;
-          const coronaGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, coronaRadius);
+          const safeCorona = Math.max(0.001, coronaRadius);
+          const coronaGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, safeCorona);
           const hex = characterColor;
           coronaGrad.addColorStop(0, `${hex}ff`);
           coronaGrad.addColorStop(0.4, `${hex}cc`);
           coronaGrad.addColorStop(1, `${hex}00`);
           ctx.fillStyle = coronaGrad;
           ctx.beginPath();
-          ctx.arc(0, 0, coronaRadius, 0, Math.PI * 2);
+          ctx.arc(0, 0, safeCorona, 0, Math.PI * 2);
           ctx.fill();
         }
 
         // ── Layer 1: White-hot core (always pure white, always on top) ────
         ctx.globalAlpha = alpha;
-        const coreGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, coreRadius);
+        const safeCore = Math.max(0.001, coreRadius);
+        const coreGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, safeCore);
         coreGrad.addColorStop(0, 'rgba(255,255,255,1)');
         coreGrad.addColorStop(0.6, 'rgba(255,255,255,0.8)');
         coreGrad.addColorStop(1, 'rgba(255,255,255,0)');
         ctx.fillStyle = coreGrad;
         ctx.beginPath();
-        ctx.arc(0, 0, coreRadius, 0, Math.PI * 2);
+        ctx.arc(0, 0, safeCore, 0, Math.PI * 2);
         ctx.fill();
 
         ctx.restore();
