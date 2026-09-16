@@ -22,14 +22,22 @@ function collectBones(rig: ProceduralRigResult): THREE.Bone[] {
   return Array.from(rig.bones.values());
 }
 
-function chooseInfluences(position: THREE.Vector3, bones: THREE.Bone[]): BoneInfluence[] {
+function chooseInfluences(
+  localPosition: THREE.Vector3,
+  bones: THREE.Bone[],
+  meshWorldMatrix: THREE.Matrix4,
+): BoneInfluence[] {
+  // Vertex positions are local to the mesh; bone positions are world-space.
+  // Comparing them directly produces systematically wrong weights and can
+  // create the exact limb/torso tearing this runtime is meant to prevent.
+  const worldPosition = localPosition.clone().applyMatrix4(meshWorldMatrix);
   const scored = bones
     .map((bone, index) => {
       const world = new THREE.Vector3();
       bone.getWorldPosition(world);
-      const dx = position.x - world.x;
-      const dy = position.y - world.y;
-      const dz = position.z - world.z;
+      const dx = worldPosition.x - world.x;
+      const dy = worldPosition.y - world.y;
+      const dz = worldPosition.z - world.z;
       const distance = Math.sqrt(dx * dx + dy * dy + dz * dz) + 0.0001;
       return { index, weight: 1 / distance };
     })
@@ -76,9 +84,10 @@ export function attachSyntheticSkinning(
     const weights = new Float32Array(position.count * 4);
     const local = new THREE.Vector3();
 
+    const meshWorldMatrix = mesh.matrixWorld.clone();
     for (let i = 0; i < position.count; i++) {
       local.fromBufferAttribute(position, i);
-      const influences = chooseInfluences(local, bones);
+      const influences = chooseInfluences(local, bones, meshWorldMatrix);
       for (let j = 0; j < 4; j++) {
         const influence = influences[j] ?? { index: 0, weight: 0 };
         indices[i * 4 + j] = influence.index;
@@ -88,6 +97,8 @@ export function attachSyntheticSkinning(
 
     geometry.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(indices, 4));
     geometry.setAttribute('skinWeight', new THREE.Float32BufferAttribute(weights, 4));
+    // Three.js consumes a vec4 of skin indices/weights for this runtime path.
+    // Every vertex receives at most four influences and the weights sum to 1.
 
     const skinned = new THREE.SkinnedMesh(geometry, mesh.material);
     skinned.name = mesh.name || 'SyntheticSkinnedMesh';
