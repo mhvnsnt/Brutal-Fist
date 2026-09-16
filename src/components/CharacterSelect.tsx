@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { getAllBannonFighters, getBannonFighter, type BannonFighterProfile } from '../data/bannonRoster';
-import { getPlayableAttires } from '../data/bannonGlbRoster';
+import { getPlayableAttires, getGlbEntryForFighter } from '../data/bannonGlbRoster';
 import { resolveGlbUrl } from '../data/bannonGlbUrl';
 import { getCharacterMoveSet } from '../engine/CharacterMoveSetSystem';
 import dynamic from 'next/dynamic';
@@ -185,7 +185,7 @@ function RosterSlot({
   const factionColor = FACTION_COLOR[fighter.factionAlignment];
   const moveSet = useMemo(() => getCharacterMoveSet(fighter.id), [fighter.id]);
   const isCustomized = moveSet?.isCustomized ?? false;
-  const previewUrl = fighter.portraitUrl;
+  // Character-select previews must resolve the authoritative 3D GLB, not the 2D portrait URL.\n  const glbEntry = getGlbEntryForFighter(fighter.id);\n  const previewUrl = glbEntry ? resolveGlbUrl(glbEntry.model, glbEntry.overrideUrl) : fighter.portraitUrl;
 
   return (
     <button
