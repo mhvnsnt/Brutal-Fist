@@ -766,7 +766,7 @@ export default function CombatArena3D({
   // ── P2 rotation: always face P1 (face -X = Math.PI / 2 rotation toward P1) ──
   // P1 at -X faces +X → rotationY = 0 (default, faces camera/+Z, then FighterMesh faces correctly)
   // P2 at +X must face -X → rotationY = Math.PI
-  const p2RotationY = Math.PI;
+  const p2RotationY = -Math.PI / 2;
 
   // ── Stage-specific fog color ──────────────────────────────────────────────
   const fogColor = stageId === 'urban_night' ? '#050508' : '#050508';
@@ -805,14 +805,14 @@ export default function CombatArena3D({
         {/* ── AAA Point light flashes at impact coordinates ── */}
         <HitPointLights lights={getActivePointLights(hitEffectPool)} />
 
-        {/* P1 Fighter — faces +X (toward P2), rotationY=0 for ALL characters */}
+        {/* P1 Fighter — faces +X (toward P2). Slot rotation only; GLB stays at authored bind. */}
         <FighterMesh
           state={p1State}
           animation={p1Animation}
           modelUrl={getFighterGlbUrl(p1Fighter.id, p1Fighter.model) ?? p1Fighter.portraitUrl}
           position={[p1FinalX, 0, p1FinalZ]}
           facing={1}
-          rotationY={0}
+          rotationY={Math.PI / 2}
           tint={p1SkinTint ?? p1Color}
           animationTrigger={p1AnimTrigger}
           locomotionVelocity={p1LocomotionVelocity}

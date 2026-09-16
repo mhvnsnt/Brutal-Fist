@@ -6,6 +6,7 @@ import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
 import { BoneHitboxSystem } from '../engine/locomotion/BoneHitboxSystem';
 import { AutoRigDetector, type RigDiagnosticReport } from '../engine/locomotion/AutoRigDetector';
+import { shouldApplyPsxShader } from '../render/graphicsQuality';
 import { ATTACK_ROOT_MOTION_PROFILES } from '../engine/locomotion/LocomotionSystem';
 import {
   runDeformationIntegrityTest,
@@ -358,7 +359,7 @@ async function normalizeGLB(
 ): Promise<NormalizedResult | null> {
   // Delegate to the universal CharacterPipeline.
   // applyPSXShader=true for combat renderer.
-  const result = await runCharacterPipeline(scene, animations, gltfUrl, true);
+  const result = await runCharacterPipeline(scene, animations, gltfUrl, shouldApplyPsxShader());
 
   if (!result) {
     // BLOCKED — asset failed pre-clone validation.

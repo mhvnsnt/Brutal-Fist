@@ -69,3 +69,43 @@ The user also explicitly corrected that Bannon characters can have more alternat
 - Character Select and all fighter-facing systems must consume the validated GLB-backed catalog rather than Bannon's broad procedural roster.
 - Do not fabricate stats, bios, moves, or other character facts when authoritative Bannon data is missing; mark them unknown/pending.
 - Prop GLBs and NPC/manager GLBs do not automatically become playable fighters.
+
+## 2026-09-16 — Skeletal animation pipeline, Maime poly budget, graphics modes
+
+User: combat models face away, twist, and tear apart (torso floating, limbs detached). That discipline is the **skeletal animation pipeline / character deformation**. Specific bugs:
+
+- floating/separated limbs → **skeleton desync / bind matrix corruption** (clone without SkeletonUtils, or runtime re-rig fighting the GLB)
+- twisted limbs → **transform space mismatch / retarget error**
+- spikes/tears → **weight painting / >4 bone influences**
+- missing body parts → **frustum culling**
+
+AAA (Tekken / Schwarzerblitz / Night Sky): immutable bind pose, dumb mesh glued to bones, mixer talks only to the master skeleton. Never re-rig in the game engine.
+
+### Measured triangle counts (public/models)
+
+| File | tris | skins | images |
+|---|---|---|---|
+| MAIME.glb (painted named-part) | ~18,108 | 0 | 1 |
+| MAIME_skinned.glb | ~18,108 | 1 (22 joints) | 0 — **texture was stripped; restoring from MAIME.glb** |
+| BANNON.glb (named-part) | ~17,984 | 0 | 1 |
+| BANNON_rigged.glb | ~17,998 | 1 (58 Mixamo) | 1 |
+| BANNON_muscular_skinned.glb | ~17,995 | 1 (58) | 1 |
+
+Default look is **Maime's ~18k PS1 budget**, not 8-bit sprites. Bannon is already ~18k tris; the shredded combat look is bind/desync, not poly count.
+
+### Graphics modes (menu GRAPHICS, stored `bf-graphics-quality`)
+
+1. **PS1 3D (default)** — Maime-style, nearest, vertex snap, ~18k
+2. **8-BIT** — optional crunchier profile (`retro8`)
+3. **HIGH RES** — native, no PSX snap, linear filters
+
+### Code laws locked this session
+
+- Clone with `SkeletonUtils.clone` only. No AutoRig generation. No `normalizeSkinWeights` at runtime.
+- Do not zero cloned root rotation (fights bind pose).
+- Clone materials before PSX snap so P1/P2 do not share mutated shaders.
+- Combat slot facing: P1 `+π/2` (toward +X / P2), P2 `−π/2` (toward −X / P1).
+- Frustum: `frustumCulled = false` on SkinnedMesh.
+
+Open-source already in stack: `three-stdlib` (SkeletonUtils), `@gltf-transform/*`, `howler`, `@use-gesture/react`. Do not invent a second rigging path.
+

@@ -198,19 +198,19 @@ export function computeMeshWorldBox(scene: THREE.Object3D): THREE.Box3 {
 /**
  * Universal instance normalize used by Character Select AND Combat.
  *
- * 1. Zero authored root rotation (facing is applied later on an outer group).
+ * 1. Do NOT zero authored root rotation (that fights the GLB bind pose).
  * 2. Uniform-scale mesh AABB to PIPELINE_TARGET_HEIGHT.
  * 3. ADD a floor/center offset — never SET position (that wipes Mixamo hip-root
  *    translations and drops Cain/Echo/Cody/etc. through the floor).
  * 4. Detect rest-pose forward from the Mixamo limb axes, not mesh centroid.
  *
  * No per-character offsets. Any roster GLB goes through this exact path.
+ * The engine does not re-rig, re-weight, or rebuild joints.
  */
 export function normalizeClonedFighter(
   cloned: THREE.Object3D,
   targetHeight = PIPELINE_TARGET_HEIGHT,
 ): FighterNormalizeResult {
-  cloned.rotation.set(0, 0, 0);
   cloned.updateMatrixWorld(true);
 
   const rawBox = computeMeshWorldBox(cloned);
@@ -887,24 +887,20 @@ function resolveClipSemanticState(clipName: string): string | null {
  *
  * Pipeline steps:
  *   1. Validate authored skeleton/SkinnedMesh/skin data (FAIL CLOSED)
- *   2. SkeletonUtils.clone() — skeleton-aware clone
+ *   2. SkeletonUtils.clone() — skeleton-aware clone (ONLY allowed skeleton op)
  *   3. Disable frustum culling on all SkinnedMeshes
- *   4. Normalize skin weights (Khronos spec compliance)
- *   5. Zero the cloned scene's rotation (canonical pose for measurement)
- *   6. Measure actual visible geometry via Box3
- *   7. Apply uniform scale to TARGET_HEIGHT
- *   8. Re-measure post-scale Box3
- *   9. Apply Y offset to outer instance so lowest vertex = Y=0 (floor)
- *  10. Update world matrices
- *  11. Determine authored forward axis from geometry centroid (NOT bone positions)
- *  12. Apply PSX vertex snapping to materials
- *  13. Create AnimationMixer targeting the cloned scene
- *  14. Load animation clips with name-based binding (NOT UUID)
- *  15. Build SkeletonHelper for diagnostic display
+ *   4. Do NOT rewrite skin weights or bind matrices
+ *   5. Box3 floor/scale on the INSTANCE (not bones)
+ *   6. Rest-pose forward from limb axes
+ *   7. PSX snap on cloned materials only (combat / non-native quality)
+ *   8. AnimationMixer on the cloned scene
+ *   9. Name-based clip binding
+ *  10. SkeletonHelper for diagnostics
  *
  * NEVER:
  *   - Generates synthetic bones
  *   - Modifies authored skeleton/bind matrices
+ *   - Zeroes cloned root rotation
  *   - Applies character-specific corrections
  *   - Uses bone positions to infer facing direction
  *
@@ -942,12 +938,11 @@ export async function runCharacterPipeline(
   // SkinnedMesh to the correct skeleton instance in the cloned scene.
   const cloned = SkeletonUtils.clone(scene) as THREE.Group;
 
-  // ── STEP 3: Zero the cloned scene's rotation BEFORE any measurement ───────
-  // AGENT LAW: The cloned scene's internal rotation must be [0,0,0] so that:
-  //   a) Box3 measurement is axis-aligned and reflects canonical geometry extents
-  //   b) The parent component holds FULL authority over facing via rotationY prop
-  // This must happen BEFORE Box3 measurement.
-  cloned.rotation.set(0, 0, 0);
+  // ── STEP 3: Do NOT zero authored rotation ─────────────────────────────────
+  // AGENT LAW: The GLB bind pose is immutable. Zeroing cloned.rotation fights
+  // Mixamo/Tripo root transforms and is a classic bind-matrix corruption
+  // (torso floating, limbs snapping). Facing belongs on the OUTER group
+  // (FighterMesh rotationY / CharacterSelect slot rotation).
 
   // ── STEP 4: Disable frustum culling on all SkinnedMeshes ─────────────────
   // In fighting games, a character's fist or foot can stretch far beyond the
@@ -1011,13 +1006,17 @@ export async function runCharacterPipeline(
       if (!(child as THREE.Mesh).isMesh) return;
       const mesh = child as THREE.Mesh;
       const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-      materials.forEach((mat) => {
-        const m = mat as THREE.MeshStandardMaterial;
+      const clonedMats = materials.map((mat) => {
+        const m = (mat as THREE.MeshStandardMaterial).clone();
         if (m.map) {
+          m.map = m.map.clone();
           m.map.minFilter = THREE.NearestFilter;
           m.map.magFilter = THREE.NearestFilter;
           m.map.generateMipmaps = false;
-          m.needsUpdate = true;
+          m.map.needsUpdate = true;
+        }
+        if ('skinning' in m) {
+          (m as THREE.MeshStandardMaterial & { skinning: boolean }).skinning = true;
         }
         m.onBeforeCompile = (shader) => {
           shader.vertexShader = shader.vertexShader.replace(
@@ -1031,7 +1030,10 @@ export async function runCharacterPipeline(
              gl_Position = clipPosition;`
           );
         };
+        m.needsUpdate = true;
+        return m;
       });
+      mesh.material = Array.isArray(mesh.material) ? clonedMats : clonedMats[0];
     });
   }
 

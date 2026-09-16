@@ -7,6 +7,8 @@ import { useAuth } from './contexts/AuthContext';
 import { type TournamentEndData } from './components/TournamentBracket';
 import { type TournamentSettings, DEFAULT_TOURNAMENT_SETTINGS } from './components/TournamentSettingsScreen';
 import { type StageId } from './components/StageSelectScreen';
+import { getGraphicsQuality, setGraphicsQuality, GRAPHICS_LABELS } from './render/graphicsQuality';
+import type { RenderQualityMode } from './render/psx';
 
 const CharacterSelect = dynamic(() => import('./components/CharacterSelect'), { ssr: false });
 const GameBattleArena = dynamic(() => import('./components/GameBattleArena'), { ssr: false });
@@ -38,6 +40,11 @@ export default function App() {
   const [tournamentEndData, setTournamentEndData] = useState<TournamentEndData | null>(null);
   const [tournamentSettings, setTournamentSettings] = useState<TournamentSettings>(DEFAULT_TOURNAMENT_SETTINGS);
   const [selectedStageId, setSelectedStageId] = useState<StageId>('urban_night');
+  const [graphicsQuality, setGraphicsQualityState] = useState<RenderQualityMode>('ps1');
+
+  useEffect(() => {
+    setGraphicsQualityState(getGraphicsQuality());
+  }, []);
 
   useEffect(() => {
     if (screen !== AppScreen?.Boot) return;
@@ -163,6 +170,18 @@ export default function App() {
             >
               TRAINING
               <span className="ml-3 text-[10px] text-green-400 tracking-widest">PRACTICE ARENA</span>
+            </button>
+            <button
+              onClick={() => {
+                const order: RenderQualityMode[] = ['ps1', 'retro8', 'native'];
+                const next = order[(order.indexOf(graphicsQuality) + 1) % order.length];
+                setGraphicsQuality(next);
+                setGraphicsQualityState(next);
+              }}
+              className="block w-full border border-slate-600 px-6 py-4 text-left text-xl font-black tracking-widest hover:bg-white hover:text-black transition-all"
+            >
+              GRAPHICS
+              <span className="ml-3 text-[10px] text-cyan-400 tracking-widest">{GRAPHICS_LABELS[graphicsQuality].toUpperCase()}</span>
             </button>
             <button
               onClick={() => setScreen('anim_test_arena' as any)}
