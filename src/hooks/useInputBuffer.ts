@@ -17,7 +17,7 @@
  *    pressure stays zero during gameplay.
  */
 
-import { useRef, useMemo } from 'react';
+import { useRef } from 'react';
 import { InputBitmask } from '../types';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -46,54 +46,71 @@ export interface InputBuffer {
   drain(): BufferedFrame[];
 }
 
+// ─── Internal ring-buffer state ───────────────────────────────────────────────
+
+interface RingBufferState {
+  frames: (BufferedFrame | null)[];
+  writeHead: number;
+  readHead: number;
+  count: number;
+}
+
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
 /**
  * Returns a stable InputBuffer object with push() and drain() methods.
- * The returned object reference is stable across renders (useMemo).
+ * Uses useRef so the buffer object identity is guaranteed stable across
+ * renders and React Strict Mode double-invocations.
  */
 export function useInputBuffer(): InputBuffer {
-  // Ring buffer — pre-allocated to avoid GC during gameplay.
-  const frames = useRef<(BufferedFrame | null)[]>(
-    Array(BUFFER_FRAMES).fill(null),
-  );
-  const writeHead = useRef(0);
-  const readHead = useRef(0);
-  const count = useRef(0);
+  // All ring-buffer state lives in a single ref to avoid closure capture issues.
+  const stateRef = useRef<RingBufferState>({
+    frames: Array(BUFFER_FRAMES).fill(null) as (BufferedFrame | null)[],
+    writeHead: 0,
+    readHead: 0,
+    count: 0,
+  });
 
-  const buffer = useMemo<InputBuffer>(() => ({
-    push(snapshot: InputBitmask): void {
-      if (count.current >= BUFFER_FRAMES) {
-        // Buffer full — overwrite oldest entry (recency wins in fighting games).
-        readHead.current = (readHead.current + 1) % BUFFER_FRAMES;
-        count.current--;
-      }
-      frames.current[writeHead.current] = {
-        snapshot: { ...snapshot },
-        ts: performance.now(),
-      };
-      writeHead.current = (writeHead.current + 1) % BUFFER_FRAMES;
-      count.current++;
-    },
+  // The buffer object itself is stored in a ref — created once, never recreated.
+  const bufferRef = useRef<InputBuffer | null>(null);
 
-    drain(): BufferedFrame[] {
-      if (count.current === 0) return [];
-
-      const result: BufferedFrame[] = [];
-      while (count.current > 0) {
-        const frame = frames.current[readHead.current];
-        if (frame) {
-          result.push(frame);
-          frames.current[readHead.current] = null;
+  if (bufferRef.current === null) {
+    bufferRef.current = {
+      push(snapshot: InputBitmask): void {
+        const s = stateRef.current;
+        if (s.count >= BUFFER_FRAMES) {
+          // Buffer full — overwrite oldest entry (recency wins in fighting games).
+          s.readHead = (s.readHead + 1) % BUFFER_FRAMES;
+          s.count--;
         }
-        readHead.current = (readHead.current + 1) % BUFFER_FRAMES;
-        count.current--;
-      }
-      return result;
-    },
-  }), []); // stable — never recreated
+        s.frames[s.writeHead] = {
+          snapshot: { ...snapshot },
+          ts: performance.now(),
+        };
+        s.writeHead = (s.writeHead + 1) % BUFFER_FRAMES;
+        s.count++;
+      },
 
-  return buffer;
+      drain(): BufferedFrame[] {
+        const s = stateRef.current;
+        if (s.count === 0) return [];
+
+        const result: BufferedFrame[] = [];
+        while (s.count > 0) {
+          const frame = s.frames[s.readHead];
+          if (frame) {
+            result.push(frame);
+            s.frames[s.readHead] = null;
+          }
+          s.readHead = (s.readHead + 1) % BUFFER_FRAMES;
+          s.count--;
+        }
+        return result;
+      },
+    };
+  }
+
+  return bufferRef.current;
 }
 
 // ─── Legacy export for any callers that used the old API ──────────────────────

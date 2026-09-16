@@ -245,8 +245,13 @@ export function validateAuthoredAsset(
   });
 
   // Check 1: Visible mesh exists — HARD BLOCK (nothing to render)
+  // NOTE: THREE.SkinnedMesh extends THREE.Mesh, so isMesh is true for SkinnedMesh.
+  // We also explicitly check isSkinnedMesh to be safe with any Three.js version quirks.
   let hasMesh = false;
-  scene.traverse((child) => { if ((child as THREE.Mesh).isMesh) hasMesh = true; });
+  scene.traverse((child) => {
+    const c = child as THREE.Mesh;
+    if (c.isMesh || (c as THREE.SkinnedMesh).isSkinnedMesh) hasMesh = true;
+  });
   if (!hasMesh) {
     failingChecks.push('NO_VISIBLE_MESH');
     details.push('No visible mesh found in GLB — asset has no renderable geometry');
