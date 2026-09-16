@@ -9,6 +9,10 @@ import { DEFAULT_PSX_RENDER } from '../render/psx';
 import { BoneHitboxSystem } from '../engine/locomotion/BoneHitboxSystem';
 import { AutoRigDetector, type RigDiagnosticReport } from '../engine/locomotion/AutoRigDetector';
 import { ATTACK_ROOT_MOTION_PROFILES } from '../engine/locomotion/LocomotionSystem';
+import {
+  runDeformationIntegrityTest,
+  type DeformationIntegrityInput,
+} from '../engine/debug/DeformationIntegrityLogger';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props
@@ -59,6 +63,15 @@ export interface FighterMeshProps {
    * Used by GameBattleArena for bone-parented collision checks.
    */
   onBoneHitboxReady?: (system: BoneHitboxSystem) => void;
+  /**
+   * AGENT LAW: Callback fired when the 14-point deformation integrity test
+   * returns BLOCKED on combat entry. The caller (CombatArena3D / GameBattleArena)
+   * MUST freeze combat when this fires.
+   *
+   * @param characterName - The character whose deformation test failed
+   * @param failingChecks - The IDs of the failing checks
+   */
+  onDeformationBlocked?: (characterName: string, failingChecks: string[]) => void;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -701,6 +714,7 @@ function FighterMeshInner({
   hitStopActive = false,
   onRigDiagnostic,
   onBoneHitboxReady,
+  onDeformationBlocked,
 }: {
   gltfUrl: string;
   state: string;
@@ -716,6 +730,7 @@ function FighterMeshInner({
   hitStopActive?: boolean;
   onRigDiagnostic?: (report: RigDiagnosticReport) => void;
   onBoneHitboxReady?: (system: BoneHitboxSystem) => void;
+  onDeformationBlocked?: (characterName: string, failingChecks: string[]) => void;
 }) {
   const groupRef = useRef<THREE.Group>(null);
   const [normalized, setNormalized] = useState<NormalizedResult | null>(null);
@@ -733,6 +748,19 @@ function FighterMeshInner({
 
   // ── Active attack key for root motion ────────────────────────────────────
   const activeAttackKeyRef = useRef<string | null>(null);
+
+  // ── Deformation integrity: track whether combat-entry check has run ───────
+  // AGENT LAW: The 14-point deformation integrity test runs ONCE per fighter
+  // load when the first combat-active state is entered. It never runs on
+  // select-screen idle states. If the test returns BLOCKED, combat is frozen
+  // by logging the failure — the caller (CombatArena3D) reads the ref.
+  const combatEntryCheckedRef = useRef<boolean>(false);
+  /**
+   * Set to true if the deformation integrity test PASSED.
+   * Set to false if BLOCKED — CombatArena3D should freeze combat.
+   * Exposed via onDeformationBlocked callback if provided.
+   */
+  const deformationPassedRef = useRef<boolean>(true);
 
   // useGLTF caches the result — safe to call per-fighter
   const { scene, animations } = useGLTF(gltfUrl);
@@ -820,6 +848,65 @@ function FighterMeshInner({
       `[FighterMesh] 🎬 input="${inputKey}" → clip="${clipName ?? 'NONE'}" ` +
       `(trigger=${animationTrigger}) vel={fwd=${locomotionVelocity?.forward?.toFixed(2) ?? '?'},str=${locomotionVelocity?.strafe?.toFixed(2) ?? '?'}}`
     );
+
+    // ── COMBAT ENTRY: Run 14-point deformation integrity test ─────────────────
+    // AGENT LAW: The deformation integrity test runs ONCE when the first
+    // non-idle combat state is entered. This catches any skeleton/skin/mixer
+    // desync that only manifests when animation actually drives the bones.
+    // If BLOCKED, the failure is logged to console and deformationPassedRef
+    // is set to false so CombatArena3D can freeze combat.
+    //
+    // COMBAT-ACTIVE states: any attack, hit reaction, knockdown, guard, walk
+    // (anything that is NOT the initial idle/neutral select-screen state)
+    const isCombatActiveState = inputKey !== 'idle' && inputKey !== 'Neutral' && inputKey !== 'bind';
+    if (isCombatActiveState && !combatEntryCheckedRef.current && normalized) {
+      combatEntryCheckedRef.current = true;
+
+      const integrityInput: DeformationIntegrityInput = {
+        characterName: gltfUrl.split('/').pop()?.replace('.glb', '') ?? gltfUrl,
+        modelUrl: gltfUrl,
+        clonedScene: normalized.scene,
+        mixer: normalized.mixer,
+        actions: normalized.actions,
+        forwardCorrectionY: normalized.forwardCorrectionY,
+      };
+
+      const report = runDeformationIntegrityTest(integrityInput);
+      deformationPassedRef.current = report.verdict === 'PASS';
+
+      if (report.verdict === 'BLOCKED') {
+        console.error(
+          `[FighterMesh] 🚫 COMBAT FROZEN — ${integrityInput.characterName} ` +
+          `failed deformation integrity: [${report.failingChecks.join(', ')}]. ` +
+          `Combat entry blocked. Fix the GLB or skeleton pipeline before proceeding.`
+        );
+        // Fire the blocked callback so CombatArena3D can freeze combat
+        onDeformationBlocked?.(integrityInput.characterName, report.failingChecks);
+        // Re-start idle after the test tick reset the mixer
+        const idleClip = resolveClipName('idle', Object.keys(normalized.actions));
+        if (idleClip && normalized.actions[idleClip]) {
+          const idleAction = normalized.actions[idleClip];
+          idleAction.setLoop(THREE.LoopRepeat, Infinity);
+          idleAction.reset().play();
+        }
+        return; // Freeze: do not proceed to animation playback
+      }
+
+      // PASS: re-start idle after the test tick reset the mixer
+      // The test's FIRST_FRAME_DISPLACEMENT check calls mixer.stopAllAction() + setTime(0)
+      // We must re-start the idle animation so the character doesn't freeze on screen
+      const idleClip = resolveClipName('idle', Object.keys(normalized.actions));
+      if (idleClip && normalized.actions[idleClip]) {
+        const idleAction = normalized.actions[idleClip];
+        idleAction.setLoop(THREE.LoopRepeat, Infinity);
+        idleAction.reset().play();
+      }
+    }
+
+    // If deformation is blocked, do not play any combat animations
+    if (!deformationPassedRef.current) {
+      return;
+    }
 
     if (!clipName || !actions[clipName]) {
       console.warn(`[FighterMesh] ⚠️ No matching clip for state="${state}" animation="${animation}" on "${gltfUrl.split('/').pop()}"`);
@@ -1057,6 +1144,7 @@ export function FighterMesh({
   hitStopActive = false,
   onRigDiagnostic,
   onBoneHitboxReady,
+  onDeformationBlocked,
 }: FighterMeshProps) {
   if (!modelUrl) return <FighterPlaceholder position={position} />;
 
@@ -1077,6 +1165,7 @@ export function FighterMesh({
         hitStopActive={hitStopActive}
         onRigDiagnostic={onRigDiagnostic}
         onBoneHitboxReady={onBoneHitboxReady}
+        onDeformationBlocked={onDeformationBlocked}
       />
     </Suspense>
   );

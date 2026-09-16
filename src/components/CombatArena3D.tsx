@@ -495,6 +495,16 @@ export interface CombatArena3DProps {
   rageArtEvent?: { count: number; player: 'p1' | 'p2' };
   /** Camera shake offset from hit effect system */
   cameraShakeOffset?: { x: number; y: number };
+  /**
+   * AGENT LAW: Callback fired when either fighter fails the 14-point
+   * deformation integrity test on combat entry. The parent component
+   * MUST freeze combat when this fires.
+   *
+   * @param player - 'p1' or 'p2'
+   * @param characterName - The character whose test failed
+   * @param failingChecks - The IDs of the failing checks
+   */
+  onDeformationBlocked?: (player: 'p1' | 'p2', characterName: string, failingChecks: string[]) => void;
 }
 
 export default function CombatArena3D({
@@ -530,6 +540,7 @@ export default function CombatArena3D({
   heatBurstEvent,
   rageArtEvent,
   cameraShakeOffset,
+  onDeformationBlocked,
 }: CombatArena3DProps) {
   const [particles, setParticles] = useState<Particle[]>([]);
   const [screenFlash, setScreenFlash] = useState(0);
@@ -798,6 +809,14 @@ export default function CombatArena3D({
           locomotionVelocity={p1LocomotionVelocity}
           hitStopActive={hitStopActive}
           onBoneHitboxReady={onP1BoneHitboxReady}
+          onDeformationBlocked={(characterName, failingChecks) => {
+            // AGENT LAW: Log combat freeze — no UI, backend only
+            console.error(
+              `[CombatArena3D] 🚫 P1 DEFORMATION BLOCKED — ${characterName} | ` +
+              `Failing: [${failingChecks.join(', ')}] | Combat frozen.`
+            );
+            onDeformationBlocked?.('p1', characterName, failingChecks);
+          }}
         />
 
         {/* P2 Fighter — faces -X (toward P1), rotationY=Math.PI for ALL characters */}
@@ -813,6 +832,14 @@ export default function CombatArena3D({
           locomotionVelocity={p2LocomotionVelocity}
           hitStopActive={hitStopActive}
           onBoneHitboxReady={onP2BoneHitboxReady}
+          onDeformationBlocked={(characterName, failingChecks) => {
+            // AGENT LAW: Log combat freeze — no UI, backend only
+            console.error(
+              `[CombatArena3D] 🚫 P2 DEFORMATION BLOCKED — ${characterName} | ` +
+              `Failing: [${failingChecks.join(', ')}] | Combat frozen.`
+            );
+            onDeformationBlocked?.('p2', characterName, failingChecks);
+          }}
         />
 
         <CinematicCamera
