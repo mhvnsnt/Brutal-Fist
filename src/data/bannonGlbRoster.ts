@@ -20,14 +20,18 @@ export type BannonGlbRosterEntry = {
  * are not playable unless a skinned sibling exists.
  *
  * Preference: *_skinned / *_rigged / *_rig28 over named-part or static previews.
- * BANNON.glb is named-part; BANNON_rigged.glb is the Mixamo-skinned default.
- * BANNON_fat.glb does not exist — the muscular alt is BANNON_muscular_skinned.glb.
+ * Canonical playable defaults:
+ *   BANNON → BANNON_rigged_ready.glb (hardlink of BANNON_rigged.glb, 58 Mixamo joints)
+ *   MAIME  → MAIME_rigged_ready.glb  (hardlink of MAIME_skinned.glb)
+ * Named-part BANNON.glb / MAIME.glb are not playable.
  */
 export const BANNON_GLB_MODELS: readonly BannonGlbRosterEntry[] = [
-  {id:"bannon",name:"Bannon",model:"BANNON_rigged.glb",attire:"Default",rigStatus:"skinned",playableGate:"PASS",source:"CANON_MODELS",measuredJoints:58,measuredJoints0:1},
+  {id:"bannon",name:"Bannon",model:"BANNON_rigged_ready.glb",attire:"Default",rigStatus:"skinned",playableGate:"PASS",source:"CANON_MODELS",measuredJoints:58,measuredJoints0:1},
+  {id:"bannon",name:"Bannon",model:"BANNON_rigged.glb",attire:"Mixamo source",rigStatus:"skinned",playableGate:"PASS",source:"CANON_MODELS",measuredJoints:58,measuredJoints0:1},
   {id:"bannon",name:"Bannon",model:"BANNON_muscular_skinned.glb",attire:"Muscular alt",rigStatus:"skinned",playableGate:"PASS",source:"CANON_MODELS",measuredJoints:58,measuredJoints0:1},
 
-  {id:"maime",name:"Maime",model:"MAIME_skinned.glb",attire:"Default",rigStatus:"skinned",playableGate:"PASS",source:"OFFLINE_NAMEDPART_SKIN",overrideUrl:"/models/MAIME_skinned.glb",measuredJoints:22,measuredJoints0:15},
+  {id:"maime",name:"Maime",model:"MAIME_rigged_ready.glb",attire:"Default",rigStatus:"skinned",playableGate:"PASS",source:"OFFLINE_NAMEDPART_SKIN",overrideUrl:"/models/MAIME_skinned.glb",measuredJoints:22,measuredJoints0:15},
+  {id:"maime",name:"Maime",model:"MAIME_skinned.glb",attire:"Skinned source",rigStatus:"skinned",playableGate:"PASS",source:"OFFLINE_NAMEDPART_SKIN",overrideUrl:"/models/MAIME_skinned.glb",measuredJoints:22,measuredJoints0:15},
   {id:"maime",name:"Maime",model:"MAIME_tattered_skinned.glb",attire:"Tattered",rigStatus:"skinned",playableGate:"PASS",source:"OFFLINE_NAMEDPART_SKIN",overrideUrl:"/models/MAIME_tattered_skinned.glb",measuredJoints:22,measuredJoints0:14},
 
   {id:"onyx",name:"Onyx",model:"ONYX_street.glb",attire:"Street",rigStatus:"skinned",playableGate:"PASS",source:"CANON_MODELS",measuredJoints:58,measuredJoints0:1},
@@ -115,6 +119,9 @@ export function getGlbEntryForFighter(fighterId: string, model?: string): Bannon
   if (model) {
     const exact = BANNON_GLB_MODELS.find(e => e.id === fighterId && e.model === model);
     if (exact) return exact;
+    const aliased = model.replace(/\.glb$/i, '_rigged_ready.glb');
+    const ready = BANNON_GLB_MODELS.find(e => e.id === fighterId && e.model === aliased);
+    if (ready) return ready;
   }
   return BANNON_GLB_MODELS.find(e => e.id === fighterId);
 }
