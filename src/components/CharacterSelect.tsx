@@ -90,8 +90,10 @@ function FighterPortrait({
           modelUrl={fighter.portraitUrl}
           factionColor={factionColor}
           mode="bust"
-          // P1 faces slightly right (inward toward P2), P2 faces slightly left (inward toward P1)
-          // Both face the camera — no full 180° flip in portrait panels
+          // PORTRAIT ORIENTATION — completely decoupled from in-fight orientation.
+          // P1 (left panel): slight inward right angle. P2 (right panel): slight inward left angle.
+          // These values NEVER change regardless of which character is selected.
+          // In-fight: P1=rotationY:0, P2=rotationY:Math.PI — set in CombatArena3D, not here.
           rotationY={isP1 ? -0.45 : 0.45}
         />
       </div>

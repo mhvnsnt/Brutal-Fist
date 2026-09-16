@@ -323,6 +323,9 @@ export interface CombatArena3DProps {
   damageEvent?: { count: number; player: 'p1' | 'p2'; damage: number; isCounter: boolean; factionColor: string };
   /** Stage selection — defaults to 'urban_night' */
   stageId?: StageId;
+  /** Animation trigger counters — increment to force re-trigger on repeated same-key attacks */
+  p1AnimTrigger?: number;
+  p2AnimTrigger?: number;
 }
 
 export default function CombatArena3D({
@@ -345,6 +348,8 @@ export default function CombatArena3D({
   announcerEnabled = true,
   damageEvent,
   stageId = 'urban_night',
+  p1AnimTrigger = 0,
+  p2AnimTrigger = 0,
 }: CombatArena3DProps) {
   const [particles, setParticles] = useState<Particle[]>([]);
   const [screenFlash, setScreenFlash] = useState(0);
@@ -492,7 +497,7 @@ export default function CombatArena3D({
         <BlobShadow x={p1FinalX} z={p1FinalZ} scale={p1State === 'KO' ? 0.7 : 1} />
         <BlobShadow x={p2FinalX} z={p2FinalZ} scale={p2State === 'KO' ? 0.7 : 1} />
 
-        {/* P1 Fighter — faces +X (toward P2) */}
+        {/* P1 Fighter — faces +X (toward P2), rotationY=0 for ALL characters */}
         <FighterMesh
           state={p1State}
           animation={p1Animation}
@@ -501,9 +506,10 @@ export default function CombatArena3D({
           facing={1}
           rotationY={0}
           tint={p1SkinTint ?? p1Color}
+          animationTrigger={p1AnimTrigger}
         />
 
-        {/* P2 Fighter — faces -X (toward P1), rotationY = Math.PI */}
+        {/* P2 Fighter — faces -X (toward P1), rotationY=Math.PI for ALL characters */}
         <FighterMesh
           state={p2State}
           animation={p2Animation}
@@ -512,6 +518,7 @@ export default function CombatArena3D({
           facing={-1}
           rotationY={p2RotationY}
           tint={p2SkinTint ?? p2Color}
+          animationTrigger={p2AnimTrigger}
         />
 
         <CinematicCamera

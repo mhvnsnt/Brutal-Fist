@@ -30,6 +30,8 @@ import type { DebugOverlaySettings, FighterDebugData, ImpactMarker } from '../en
 import { DEFAULT_DEBUG_SETTINGS, computeFrameWindowData } from '../engine/debug/DebugOverlay';
 import ComboCounterHUD from './ComboCounterHUD';
 import DebugOverlayHUD from './DebugOverlayHUD';
+import { MatchRecorderHUD, useMatchRecorder } from './MatchRecorder';
+import { InputStringRecorder } from './InputStringRecorder';
 
 // ── 3D combat arena — loaded client-side only ─────────────────────────────────
 const CombatArena3D = dynamic(() => import('./CombatArena3D'), {
@@ -157,6 +159,17 @@ export default function GameBattleArena({
   const p2ImpactMarkersRef = useRef<ImpactMarker[]>([]);
   const impactMarkerIdRef = useRef(0);
 
+  // ── Animation trigger counters — increment on each new attack to force re-trigger ──
+  const [p1AnimTrigger, setP1AnimTrigger] = useState(0);
+  const [p2AnimTrigger, setP2AnimTrigger] = useState(0);
+  const p1AnimTriggerRef = useRef(0);
+  const p2AnimTriggerRef = useRef(0);
+  const prevP1AnimRef = useRef<string>('idle');
+  const prevP2AnimRef = useRef<string>('idle');
+
+  // ── Match recorder ────────────────────────────────────────────────────────
+  const { startRecording, stopRecording, recordFrame, getBuffer, isRecording } = useMatchRecorder();
+
   // Build engine
   useEffect(() => {
     const p1MoveSet = getCharacterMoveSet(p1Fighter.id);
@@ -204,6 +217,11 @@ export default function GameBattleArena({
     setCinematicPhase('sweep');
     setArenaReady(false);
 
+    // Start recording when fight begins
+    const tRecord = window.setTimeout(() => {
+      startRecording();
+    }, SWEEP_DURATION_MS + INTRO_DURATION_MS);
+
     const t1 = window.setTimeout(() => {
       setCinematicPhase('intro');
     }, SWEEP_DURATION_MS);
@@ -217,6 +235,8 @@ export default function GameBattleArena({
       cancelAnimationFrame(rafRef.current);
       window.clearTimeout(t1);
       window.clearTimeout(t2);
+      window.clearTimeout(tRecord);
+      stopRecording();
     };
   }, [p1Fighter, p2Fighter]);
 
@@ -508,6 +528,47 @@ export default function GameBattleArena({
       setP2Animation(p2NextMotion);
       setHitStopActive(engine.hitStopFrames > 0);
 
+      // ── Record frame to match recorder ────────────────────────────────────
+      recordFrame({
+        timestamp: now,
+        p1State: p1DisplayState,
+        p2State: p2DisplayState,
+        p1Animation: p1NextMotion,
+        p2Animation: p2NextMotion,
+        p1Health: engine.p1Health,
+        p2Health: engine.p2Health,
+        p1X: P1_X,
+        p2X: P2_X,
+        p1Z: p1ZRef.current,
+        p2Z: p2ZRef.current,
+        p1Input: {
+          light: inputRef.current.light ?? false,
+          heavy: inputRef.current.heavy ?? false,
+          guard: inputRef.current.guard ?? false,
+          left: inputRef.current.left ?? false,
+          right: inputRef.current.right ?? false,
+          up: inputRef.current.up ?? false,
+          down: inputRef.current.down ?? false,
+        },
+        roundTimer,
+      });
+
+      // ── Increment animation trigger on attack start ──────────────────────
+      const isP1Attack = p1NextMotion === 'lightAttack' || p1NextMotion === 'heavyAttack';
+      const wasP1Attack = prevP1AnimRef.current === 'lightAttack' || prevP1AnimRef.current === 'heavyAttack';
+      if (isP1Attack && (!wasP1Attack || p1NextMotion !== prevP1AnimRef.current)) {
+        p1AnimTriggerRef.current += 1;
+        setP1AnimTrigger(p1AnimTriggerRef.current);
+      }
+      const isP2Attack = p2NextMotion === 'lightAttack' || p2NextMotion === 'heavyAttack';
+      const wasP2Attack = prevP2AnimRef.current === 'lightAttack' || prevP2AnimRef.current === 'heavyAttack';
+      if (isP2Attack && (!wasP2Attack || p2NextMotion !== prevP2AnimRef.current)) {
+        p2AnimTriggerRef.current += 1;
+        setP2AnimTrigger(p2AnimTriggerRef.current);
+      }
+      prevP1AnimRef.current = p1NextMotion;
+      prevP2AnimRef.current = p2NextMotion;
+
       if (engine.isMatchOver() && !koHandledRef.current) {
         koHandledRef.current = true;
         setKo(true);
@@ -662,6 +723,8 @@ export default function GameBattleArena({
           announcerEnabled={settings.soundEnabled}
           damageEvent={damageEvent}
           stageId={stageId === 'random' ? 'urban_night' : (stageId as 'urban_night' | 'training')}
+          p1AnimTrigger={p1AnimTrigger}
+          p2AnimTrigger={p2AnimTrigger}
         />
       </div>
 
@@ -735,6 +798,18 @@ export default function GameBattleArena({
             p1Debug={p1DebugData}
             p2Debug={p2DebugData}
           />
+
+          {/* ── Match Recorder HUD ── */}
+          <MatchRecorderHUD
+            p1Name={p1Fighter.name}
+            p2Name={p2Fighter.name}
+            stageName={stageId ?? 'urban_night'}
+            getBuffer={getBuffer}
+            isRecording={isRecording}
+          />
+
+          {/* ── Input String Recorder ── */}
+          <InputStringRecorder inputRef={inputRef} />
 
           {/* ── Special Move Notification ── */}
           {specialMoveNotice && (
