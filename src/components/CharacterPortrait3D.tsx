@@ -5,6 +5,7 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
+import { SkeletonUtils } from 'three-stdlib';
 
 interface CharacterPortrait3DProps {
   modelUrl: string;
@@ -47,25 +48,46 @@ function detectForwardCorrection(scene: THREE.Object3D): number {
   scene.traverse((child) => {
     if ((child as THREE.Bone).isBone) allBones.push(child as THREE.Bone);
   });
-  if (allBones.length === 0) return 0;
 
-  const headBone = allBones.find(b => {
-    const n = b.name.toLowerCase();
-    return n.includes('head') && !n.includes('headtop') && !n.includes('headend');
+  if (allBones.length > 0) {
+    const headBone = allBones.find(b => {
+      const n = b.name.toLowerCase();
+      return n.includes('head') && !n.includes('headtop') && !n.includes('headend');
+    });
+    const hipsBone = allBones.find(b => {
+      const n = b.name.toLowerCase();
+      return n.includes('hip') || n.includes('pelvis') || n.includes('root') || n === 'hips';
+    });
+
+    if (headBone && hipsBone) {
+      const headPos = new THREE.Vector3();
+      const hipsPos = new THREE.Vector3();
+      headBone.getWorldPosition(headPos);
+      hipsBone.getWorldPosition(hipsPos);
+
+      if (headPos.z - hipsPos.z > 0.05) {
+        return Math.PI;
+      }
+      return 0;
+    }
+  }
+
+  // FALLBACK: No usable head/hips bones — use bounding-box centroid Z.
+  // Most Blender-exported models face +Z by default.
+  const meshPositions: THREE.Vector3[] = [];
+  scene.traverse((child) => {
+    if (!(child as THREE.Mesh).isMesh) return;
+    const mesh = child as THREE.Mesh;
+    if (!mesh.geometry || !mesh.geometry.attributes.position) return;
+    const box = new THREE.Box3().setFromObject(mesh);
+    const center = box.getCenter(new THREE.Vector3());
+    meshPositions.push(center);
   });
-  const hipsBone = allBones.find(b => {
-    const n = b.name.toLowerCase();
-    return n.includes('hip') || n.includes('pelvis') || n.includes('root') || n === 'hips';
-  });
 
-  if (!headBone || !hipsBone) return 0;
+  if (meshPositions.length === 0) return 0;
 
-  const headPos = new THREE.Vector3();
-  const hipsPos = new THREE.Vector3();
-  headBone.getWorldPosition(headPos);
-  hipsBone.getWorldPosition(hipsPos);
-
-  if (headPos.z - hipsPos.z > 0.05) {
+  const avgZ = meshPositions.reduce((sum, p) => sum + p.z, 0) / meshPositions.length;
+  if (avgZ > 0.05) {
     return Math.PI;
   }
   return 0;
@@ -132,9 +154,22 @@ function PortraitModel({
       modelUrl,
       (gltf) => {
         if (!active) return;
-        const cloned = gltf.scene.clone(true);
+        // CRITICAL FIX: Use SkeletonUtils.clone() instead of gltf.scene.clone(true).
+        // gltf.scene.clone(true) detaches SkinnedMesh bind matrices from the skeleton,
+        // causing skeleton desync when animation plays. SkeletonUtils.clone() preserves
+        // the full bone hierarchy and re-binds every SkinnedMesh to the correct skeleton.
+        const cloned = SkeletonUtils.clone(gltf.scene) as THREE.Group;
+
+        // Disable frustum culling on all SkinnedMeshes
+        cloned.traverse((child) => {
+          if ((child as THREE.SkinnedMesh).isSkinnedMesh) {
+            (child as THREE.SkinnedMesh).frustumCulled = false;
+            (child as THREE.SkinnedMesh).normalizeSkinWeights();
+          }
+        });
 
         // ── Step 1: Measure raw bounding box (pre-scale) ──────────────────────
+        cloned.updateMatrixWorld(true);
         const rawBox = new THREE.Box3().setFromObject(cloned);
         const rawSize = rawBox.getSize(new THREE.Vector3());
 
@@ -178,28 +213,19 @@ function PortraitModel({
         });
 
         // ── Step 10: Idle animation — mixer bound to CLONED scene ─────────────
+        // AGENT LAW: AnimationMixer must target the cloned scene (the rendered object),
+        // not the original gltf.scene. Use name-based track binding (not UUID) so
+        // the mixer resolves bones by name in the cloned hierarchy.
         if (gltf.animations && gltf.animations.length > 0) {
-          // Build name→object map for retargeting
-          const cloneMap = new Map<string, THREE.Object3D>();
-          cloned.traverse((obj) => { if (obj.name) cloneMap.set(obj.name, obj); });
-
           mixerRef.current = new THREE.AnimationMixer(cloned);
           const idleClip = selectIdleClip(gltf.animations);
 
-          // Retarget clip to cloned scene
-          const retargetedTracks: THREE.KeyframeTrack[] = [];
-          for (const track of idleClip.tracks) {
-            const dotIdx = track.name.indexOf('.');
-            if (dotIdx === -1) { retargetedTracks.push(track.clone()); continue; }
-            const boneName = track.name.slice(0, dotIdx);
-            const property = track.name.slice(dotIdx);
-            const targetObj = cloneMap.get(boneName);
-            const newTrack = track.clone();
-            if (targetObj) newTrack.name = `${targetObj.uuid}${property}`;
-            retargetedTracks.push(newTrack);
-          }
-          const retargetedClip = new THREE.AnimationClip(idleClip.name, idleClip.duration, retargetedTracks);
-          const action = mixerRef.current.clipAction(retargetedClip);
+          // Clone the clip — do NOT remap to UUIDs.
+          // THREE.AnimationMixer resolves track names by searching the root subtree
+          // for objects with matching names. Since cloned has the same bone names
+          // as the original, name-based tracks resolve correctly without UUID remapping.
+          const clonedClip = idleClip.clone();
+          const action = mixerRef.current.clipAction(clonedClip, cloned);
           action.setLoop(THREE.LoopRepeat, Infinity);
           action.fadeIn(0.3);
           action.play();

@@ -462,5 +462,170 @@ if (report.quality === 'none') return null; // ❌ breaks combat
 
 ---
 
-*Last updated: Brutal-Fist v9 — Announcer system + Ki Charge + decoupled combat tick + juggle gravity + sidestep whiff.*
+---
+
+## ═══════════════════════════════════════════════════════════════════
+## AUTHORED SKELETON LAW — PERMANENT, INVIOLABLE
+## ═══════════════════════════════════════════════════════════════════
+
+> **The native GLB skeleton is authoritative. The runtime consumes it. The runtime does NOT reinvent it.**
+
+This law exists because AI agents repeatedly destroy working character deformation by attempting to "rig" or "skin" characters inside the game engine code. This is the umbrella law that governs the entire character deformation pipeline.
+
+### The Pipeline (Read-Only for Runtime)
+
+```
+CHARACTER ASSET (GLB)
+        │
+        ▼
+┌─────────────────────┐
+│  Authored Mesh      │  ← IMMUTABLE
+│  + Skeleton         │  ← IMMUTABLE
+│  + Skin Weights     │  ← IMMUTABLE
+│  + Bind Pose        │  ← IMMUTABLE
+│  + Inv Bind Matrices│  ← IMMUTABLE
+└────────┬────────────┘
+         │
+         ▼  SkeletonUtils.clone()
+  CLONED SKELETON (independent P1/P2 instance)
+         │
+         ▼
+  AnimationMixer → cloned skeleton
+         │
+         ▼
+  BONE TRANSFORMS
+         │
+         ▼
+  SKIN DEFORMATION (SkinnedMesh)
+         │
+         ▼
+  VISIBLE MESH
+```
+
+### What the Runtime MAY Do
+
+- **Clone** the skeleton using `SkeletonUtils.clone()` for independent P1/P2 instances
+- **Animate** the cloned skeleton via `AnimationMixer`
+- **Retarget** animation clips onto the cloned skeleton when explicitly required
+- **Read** bone world positions for hitbox placement
+- **Validate** the skeleton structure and report failures
+
+### What the Runtime MUST NOT Do (Silently)
+
+- **Replace** the authored skeleton with a new one
+- **Rebind** SkinnedMesh to a different skeleton
+- **Regenerate** skin weights at runtime
+- **Repaint** vertex weights
+- **Rebuild** the bone hierarchy
+- **Modify** inverse bind matrices
+- **Attach** the mesh to a second skeleton constructed in code
+- **Use `scene.clone(true)`** for scenes containing SkinnedMesh/Skeleton — always use `SkeletonUtils.clone()`
+
+### The Repair/Import Lane (Separate from Runtime)
+
+If a GLB fails validation, the fix happens to the **asset**, not the runtime:
+
+```
+Bannon.glb
+   ↓
+Asset Validator (validate-visible-deformation.mjs)
+   ↓
+FAIL → Repair Tool (Blender / Mixamo)
+   ↓
+NEW VERSION of GLB
+   ↓
+Validator → PASS
+   ↓
+Game
+```
+
+**NEVER:**
+```
+Bannon.glb → Game → "Oops" → Game secretly rewrites skeleton
+```
+
+### Why Select Screen Works But Combat Tears
+
+If characters look correct in character select but tear apart in combat:
+
+1. The GLB geometry is **not** fundamentally broken
+2. The select screen shows the static bind pose — no animation mixer involved
+3. Combat introduces: `AnimationMixer → animation tracks → bones → skin matrices → vertex deformation`
+4. The failure is in the **runtime skeletal animation / skin deformation pipeline**, NOT the asset
+5. **Do NOT re-rig.** Diagnose what changed between the select renderer and the combat renderer.
+
+### Diagnostic Checklist (Before Any Fix Attempt)
+
+Before touching any deformation code, confirm:
+
+- [ ] `SkeletonUtils.clone()` is used (not `scene.clone(true)`)
+- [ ] `AnimationMixer` targets the **cloned** scene (not the outer group)
+- [ ] Animation tracks resolve to **cloned** bones (name-based, not UUID from original)
+- [ ] P1 and P2 use **independent** clones (no shared skeleton references)
+- [ ] `normalizeSkinWeights()` called after clone
+- [ ] `frustumCulled = false` on all SkinnedMeshes
+- [ ] No code creates replacement `Bone` or `Skeleton` objects for native characters
+- [ ] No code calls `bind()` on native character meshes
+- [ ] No code writes `skinIndex`/`skinWeight` attributes on native character geometry
+- [ ] No code modifies `bindMatrix` or `bindMatrixInverse` on native characters
+
+### Rigging vs Skinning vs Retargeting (Distinct Operations)
+
+| Term | Meaning | Where It Happens |
+|---|---|---|
+| **Rigging** | Creating the skeleton (bones inside mesh) | Blender / Mixamo — asset authoring |
+| **Skinning** | Connecting vertices to bones with weights | Blender / Mixamo — asset authoring |
+| **Retargeting** | Translating animation from one skeleton to another | Runtime — only when skeletons differ |
+| **Deformation** | Bones moving → mesh vertices moving | Runtime — driven by AnimationMixer |
+
+If Bannon.glb already has a rig and skin weights, **do not rig Bannon again in code**. Consume the existing rig.
+
+### BLOCKED — CHARACTER DEFORMATION INTEGRITY FAILURE
+
+If the native skeleton cannot be validated, the correct response is:
+
+```
+BLOCKED — CHARACTER DEFORMATION INTEGRITY FAILURE
+Mesh: [mesh name]
+Skeleton: [skeleton description]
+Bone: [failing bone name]
+Track: [failing animation track]
+Matrix: [failing matrix description]
+Weight: [failing weight description]
+```
+
+Do NOT invent a new skeleton. Do NOT generate replacement weights. Do NOT claim PASS.
+
+---
+
+*Last updated: Brutal-Fist v10 — Authored Skeleton Law + deformation regression recovery protocol.*
 *These laws are derived from real recurring failures observed across multiple AI agent sessions.*
+
+---
+
+## Authored Skeleton Law
+
+**The mistake**: AI agents repeatedly make the same mistakes when working with skeletons and bone-less models.
+
+**The law**:
+- When `AutoRigDetector.analyze()` returns `quality === 'none'` or `totalBones === 0`, call `AutoRigDetector.buildSyntheticRig(clonedScene)` to generate a procedural Mixamo-compatible skeleton from the mesh AABB.
+- The synthetic rig uses standard humanoid proportions (hips at 52% height, head at 90%, etc.) and Mixamo bone names so animation clips can be retargeted.
+- After building the synthetic rig, register the new bones in the clone map so UUID-based mixer binding works.
+- The synthetic rig provides AABB-level hitboxes and basic animation support. For full bone-parented hitboxes, the model should be re-rigged with Mixamo.
+- NEVER skip normalization or mixer creation for bone-less models — always run the full pipeline.
+
+```typescript
+// CORRECT
+if (report.quality === 'none' || report.totalBones === 0) {
+  const syntheticResult = AutoRigDetector.buildSyntheticRig(cloned);
+  // Register synthetic bones in clone map for UUID binding
+  cloned.traverse(obj => {
+    if ((obj as THREE.Bone).isBone && obj.name.startsWith('mixamorig')) {
+      cloneMap.set(obj.name, obj);
+    }
+  });
+}
+
+// WRONG — skipping bone-less models
+if (report.quality === 'none') return null; // ❌ breaks combat
+```

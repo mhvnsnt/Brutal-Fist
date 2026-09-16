@@ -232,31 +232,60 @@ function detectForwardCorrection(scene: THREE.Object3D): number {
     if ((child as THREE.Bone).isBone) allBones.push(child as THREE.Bone);
   });
 
-  if (allBones.length === 0) return 0;
+  if (allBones.length > 0) {
+    // Find head bone
+    const headBone = allBones.find(b => {
+      const n = b.name.toLowerCase();
+      return n.includes('head') && !n.includes('headtop') && !n.includes('headend');
+    });
+    // Find hips bone
+    const hipsBone = allBones.find(b => {
+      const n = b.name.toLowerCase();
+      return n.includes('hip') || n.includes('pelvis') || n.includes('root') || n === 'hips';
+    });
 
-  // Find head bone
-  const headBone = allBones.find(b => {
-    const n = b.name.toLowerCase();
-    return n.includes('head') && !n.includes('headtop') && !n.includes('headend');
+    if (headBone && hipsBone) {
+      const headPos = new THREE.Vector3();
+      const hipsPos = new THREE.Vector3();
+      headBone.getWorldPosition(headPos);
+      hipsBone.getWorldPosition(hipsPos);
+
+      // If head is in front of hips in +Z direction, model faces +Z → needs 180° flip
+      // glTF standard: character should face -Z (toward camera at Z+)
+      // Threshold: only correct if difference is significant (> 0.05 units)
+      if (headPos.z - hipsPos.z > 0.05) {
+        console.log(`[FighterMesh] 🔄 Forward correction (bone): head.z=${headPos.z.toFixed(3)} > hips.z=${hipsPos.z.toFixed(3)} → applying 180° Y rotation`);
+        return Math.PI;
+      }
+      // Bones found and no correction needed
+      return 0;
+    }
+  }
+
+  // FALLBACK: No usable head/hips bones found.
+  // Use bounding-box geometry centroid Z to infer facing direction.
+  // Most Blender-exported models face +Z by default. If the mesh centroid
+  // is at positive Z relative to the scene origin, the model faces +Z.
+  // We measure the centroid of all mesh geometry in the scene.
+  const meshPositions: THREE.Vector3[] = [];
+  scene.traverse((child) => {
+    if (!(child as THREE.Mesh).isMesh) return;
+    const mesh = child as THREE.Mesh;
+    if (!mesh.geometry || !mesh.geometry.attributes.position) return;
+    const box = new THREE.Box3().setFromObject(mesh);
+    const center = box.getCenter(new THREE.Vector3());
+    meshPositions.push(center);
   });
-  // Find hips bone
-  const hipsBone = allBones.find(b => {
-    const n = b.name.toLowerCase();
-    return n.includes('hip') || n.includes('pelvis') || n.includes('root') || n === 'hips';
-  });
 
-  if (!headBone || !hipsBone) return 0;
+  if (meshPositions.length === 0) return 0;
 
-  const headPos = new THREE.Vector3();
-  const hipsPos = new THREE.Vector3();
-  headBone.getWorldPosition(headPos);
-  hipsBone.getWorldPosition(hipsPos);
+  // Average centroid Z across all meshes
+  const avgZ = meshPositions.reduce((sum, p) => sum + p.z, 0) / meshPositions.length;
 
-  // If head is in front of hips in +Z direction, model faces +Z → needs 180° flip
-  // glTF standard: character should face -Z (toward camera at Z+)
-  // Threshold: only correct if difference is significant (> 0.05 units)
-  if (headPos.z - hipsPos.z > 0.05) {
-    console.log(`[FighterMesh] 🔄 Forward correction: head.z=${headPos.z.toFixed(3)} > hips.z=${hipsPos.z.toFixed(3)} → applying 180° Y rotation`);
+  // If the average mesh centroid is at positive Z, the model faces +Z
+  // Threshold: 0.05 units to avoid false positives on symmetric models
+  if (avgZ > 0.05) {
+    console.log(`[FighterMesh] 🔄 Forward correction (bbox fallback): avgMeshZ=${avgZ.toFixed(3)} > 0.05 → applying 180° Y rotation`);
     return Math.PI;
   }
 
@@ -401,11 +430,11 @@ function normalizeGLB(
       // stretched/displaced geometry during animation.
       skinnedMesh.normalizeSkinWeights();
 
-      // RUNTIME INVARIANT (PR #14/#15): Validate SkinnedMesh ↔ Skeleton binding.
+      // RUNTIME INVARIANT: Validate SkinnedMesh ↔ Skeleton binding.
       // After SkeletonUtils.clone(), every SkinnedMesh must reference a skeleton
       // whose bones are all present in the cloned scene hierarchy.
       // If the skeleton is missing or has zero bones, log a warning so the
-      // validate-visible-deformation gate can catch it.
+      // deformation gate can catch it.
       if (!skinnedMesh.skeleton || skinnedMesh.skeleton.bones.length === 0) {
         console.warn(
           `[FighterMesh] ⚠️ SkinnedMesh "${skinnedMesh.name}" has no bound skeleton after clone — ` +
@@ -445,6 +474,8 @@ function normalizeGLB(
   });
 
   // Step 1: Normalize root bone to floor BEFORE Box3 (fixes skeleton-offset models)
+  // IMPORTANT: This modifies cloned.position.y. The subsequent Box3 measurement
+  // is taken AFTER this offset, so the Box3 correctly reflects the adjusted position.
   if (!report.hasRootAtFloor) {
     AutoRigDetector.normalizeRootToFloor(cloned);
   }
@@ -462,7 +493,9 @@ function normalizeGLB(
     );
   }
 
-  // Step 2: Compute bounding box on raw clone
+  // Step 2: Compute bounding box on clone AFTER root normalization
+  // The root normalization may have shifted cloned.position.y — we must
+  // recompute the Box3 here so the floor placement is correct.
   cloned.updateMatrixWorld(true);
   const rawBox = new THREE.Box3().setFromObject(cloned);
   const rawSize = rawBox.getSize(new THREE.Vector3());
@@ -590,11 +623,18 @@ function normalizeGLB(
     skeletonHelper.visible = false; // Hidden by default; toggled by showHitbox prop
   }
 
-  // VISIBLE DEFORMATION GATE (PR #14/#15 — validate-visible-deformation.mjs runtime equivalent):
-  // A moving root bone or successful animation-name lookup is NOT sufficient evidence
-  // that animation works. The visible mesh must deform. We sample SkinnedMesh vertex
-  // positions before and after a test mixer tick to confirm actual deformation occurs.
-  // This runs once at load time and logs a warning if no deformation is detected.
+  // DEFORMATION INTEGRITY CHECK (replaces the broken test-tick gate):
+  // AGENT LAW: Do NOT advance the mixer at load time to test deformation.
+  // mixer.update(0.016) followed by mixer.setTime(0) does NOT cleanly reset
+  // the mixer — it leaves actions in a partially-played state, causing the
+  // first real animation frame to be wrong (visible as a single-frame glitch
+  // or incorrect bind pose on combat entry).
+  //
+  // Instead, validate deformation readiness by checking skeleton binding:
+  //   1. Every SkinnedMesh must have a skeleton with > 0 bones
+  //   2. The skeleton must be reachable from the cloned scene root
+  //   3. Skin weight attributes must exist on the geometry
+  // This is a pure structural check — no mixer state is modified.
   let deformationConfirmed = false;
   const skinnedMeshes: THREE.SkinnedMesh[] = [];
   cloned.traverse((child) => {
@@ -603,21 +643,16 @@ function normalizeGLB(
     }
   });
 
-  if (skinnedMeshes.length > 0 && animations.length > 0) {
-    // Sample a vertex from the first SkinnedMesh before any animation tick
-    const testMesh = skinnedMeshes[0];
-    const posAttr = testMesh.geometry.attributes.position;
-    if (posAttr && posAttr.count > 0) {
-      const beforePos = new THREE.Vector3().fromBufferAttribute(posAttr, 0);
-      // Tick the mixer a small amount to drive bone transforms
-      mixer.update(0.016);
-      testMesh.updateMatrixWorld(true);
-      const afterPos = new THREE.Vector3().fromBufferAttribute(posAttr, 0);
-      // Reset mixer to avoid advancing animation state at load time
-      mixer.setTime(0);
-      deformationConfirmed = beforePos.distanceTo(afterPos) > 1e-6 ||
-        (testMesh.skeleton && testMesh.skeleton.bones.length > 0);
-    }
+  if (skinnedMeshes.length > 0) {
+    // Check that at least one SkinnedMesh has a valid skeleton with bones
+    // AND has skinWeight attributes on its geometry (required for deformation)
+    const validMesh = skinnedMeshes.find(sm => {
+      const hasSkeleton = sm.skeleton && sm.skeleton.bones.length > 0;
+      const hasSkinWeights = sm.geometry.attributes.skinWeight != null;
+      const hasSkinIndices = sm.geometry.attributes.skinIndex != null;
+      return hasSkeleton && hasSkinWeights && hasSkinIndices;
+    });
+    deformationConfirmed = validMesh != null;
   } else if (skinnedMeshes.length === 0) {
     // No SkinnedMesh at all — synthetic rig path, deformation will be confirmed after rig build
     deformationConfirmed = true;
@@ -626,14 +661,14 @@ function normalizeGLB(
   if (!deformationConfirmed && animations.length > 0) {
     console.warn(
       `[FighterMesh] ⚠️ DEFORMATION GATE: "${gltfUrl.split('/').pop()}" — ` +
-      `SkinnedMesh vertices did not move after animation tick. ` +
+      `SkinnedMesh has no valid skeleton binding or missing skinWeight/skinIndex attributes. ` +
       `Check: skeleton binding, inverse bind matrices, skin weights. ` +
       `This fighter will not animate correctly in combat.`
     );
   } else if (deformationConfirmed) {
     console.log(
       `[FighterMesh] ✅ DEFORMATION GATE PASS: "${gltfUrl.split('/').pop()}" — ` +
-      `visible mesh deformation confirmed.`
+      `skeleton binding and skin weight attributes confirmed.`
     );
   }
 
