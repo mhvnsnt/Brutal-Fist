@@ -362,18 +362,89 @@ export class AutoRigDetector {
     let attached = false;
     scene.add(hips);
     hips.updateMatrixWorld(true);
+    skeleton.calculateInverses();
 
-    // Try to bind the skeleton to any existing meshes
+    // Try to convert static Meshes to SkinnedMeshes with proper skin weights
+    // so the synthetic skeleton actually deforms the visible geometry.
+    //
+    // AGENT LAW: For each vertex in the mesh, we assign it to the nearest bone
+    // using a simple distance-based weight assignment. This gives basic but
+    // visually correct deformation for humanoid models without a rig.
     scene.traverse((child) => {
-      if ((child as THREE.Mesh).isMesh && !(child as THREE.SkinnedMesh).isSkinnedMesh) {
-        const mesh = child as THREE.Mesh;
-        // Convert to SkinnedMesh by attaching skeleton
-        // We can't truly convert a Mesh to SkinnedMesh at runtime without geometry changes,
-        // but we can attach the skeleton for hitbox/animation purposes
-        (mesh as any).__syntheticSkeleton = skeleton;
-        (mesh as any).__syntheticRootBone = hips;
-        attached = true;
+      if (!(child as THREE.Mesh).isMesh) return;
+      if ((child as THREE.SkinnedMesh).isSkinnedMesh) return; // Already skinned
+
+      const mesh = child as THREE.Mesh;
+      const geometry = mesh.geometry;
+      if (!geometry || !geometry.attributes.position) return;
+
+      const posAttr = geometry.attributes.position;
+      const vertexCount = posAttr.count;
+
+      // Build skin indices and weights arrays (4 bones per vertex)
+      const skinIndices = new Float32Array(vertexCount * 4);
+      const skinWeights = new Float32Array(vertexCount * 4);
+
+      // Get world positions of all bones for distance calculation
+      const boneWorldPositions = allBones.map(bone => {
+        const wp = new THREE.Vector3();
+        bone.getWorldPosition(wp);
+        return wp;
+      });
+
+      const vPos = new THREE.Vector3();
+      const meshWorldMatrix = mesh.matrixWorld;
+
+      for (let i = 0; i < vertexCount; i++) {
+        vPos.fromBufferAttribute(posAttr, i);
+        vPos.applyMatrix4(meshWorldMatrix);
+
+        // Find the 2 nearest bones by distance
+        const distances = boneWorldPositions.map((bp, bIdx) => ({
+          idx: bIdx,
+          dist: vPos.distanceTo(bp),
+        }));
+        distances.sort((a, b) => a.dist - b.dist);
+
+        const nearest = distances.slice(0, 2);
+        const totalInvDist = nearest.reduce((sum, d) => sum + (d.dist > 0 ? 1 / d.dist : 1e6), 0);
+
+        for (let j = 0; j < 2; j++) {
+          skinIndices[i * 4 + j] = nearest[j].idx;
+          skinWeights[i * 4 + j] = nearest[j].dist > 0
+            ? (1 / nearest[j].dist) / totalInvDist
+            : 1.0;
+        }
+        // Remaining 2 slots: zero weight
+        skinIndices[i * 4 + 2] = 0;
+        skinIndices[i * 4 + 3] = 0;
+        skinWeights[i * 4 + 2] = 0;
+        skinWeights[i * 4 + 3] = 0;
       }
+
+      geometry.setAttribute('skinIndex', new THREE.BufferAttribute(skinIndices, 4));
+      geometry.setAttribute('skinWeight', new THREE.BufferAttribute(skinWeights, 4));
+
+      // Convert Mesh to SkinnedMesh in-place
+      const skinnedMesh = new THREE.SkinnedMesh(geometry, mesh.material);
+      skinnedMesh.name = mesh.name;
+      skinnedMesh.position.copy(mesh.position);
+      skinnedMesh.rotation.copy(mesh.rotation);
+      skinnedMesh.scale.copy(mesh.scale);
+      skinnedMesh.matrix.copy(mesh.matrix);
+      skinnedMesh.matrixWorld.copy(mesh.matrixWorld);
+
+      // Bind the skeleton to the skinned mesh
+      skinnedMesh.bind(skeleton, skinnedMesh.matrixWorld);
+
+      // Replace the original mesh in the parent
+      if (mesh.parent) {
+        mesh.parent.add(skinnedMesh);
+        mesh.parent.remove(mesh);
+      }
+
+      attached = true;
+      console.log(`[AutoRig] 🔗 Converted "${mesh.name || 'mesh'}" to SkinnedMesh with ${vertexCount} vertices`);
     });
 
     // Build bone map

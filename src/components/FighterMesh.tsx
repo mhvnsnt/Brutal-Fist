@@ -339,6 +339,8 @@ interface NormalizedResult {
   mixer: THREE.AnimationMixer;
   /** Actions map: clip name → AnimationAction */
   actions: Record<string, THREE.AnimationAction>;
+  /** SkeletonHelper for visual bone display (null if no bones) */
+  skeletonHelper: THREE.SkeletonHelper | null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -354,8 +356,10 @@ interface NormalizedResult {
 //   7. Create AnimationMixer on the CLONED scene (not the outer group)
 //      so clips drive the actual visible mesh bones
 //   8. Retarget animation clips from original scene to cloned scene
+//      using NAME-BASED binding (not UUID) for maximum compatibility
 //   9. If model has NO bones (quality='none'), build a synthetic rig from AABB
 //      so hitboxes and basic animation still work
+//  10. Build SkeletonHelper for visual bone display
 //
 // NEVER use per-character manual Y offsets.
 // NEVER hardcode rotation corrections per character.
@@ -456,52 +460,43 @@ function normalizeGLB(
   // apply to the original (invisible) scene's skeleton, not the visible clone.
   const mixer = new THREE.AnimationMixer(cloned);
 
-  // Step 11: Retarget animation clips from original scene to cloned scene.
-  // Build a name→uuid map for the cloned scene's objects.
-  const cloneMap = new Map<string, THREE.Object3D>();
-  cloned.traverse((obj) => {
-    if (obj.name) cloneMap.set(obj.name, obj);
-  });
-
+  // Step 11: NAME-BASED clip retargeting from original scene to cloned scene.
+  //
+  // AGENT LAW: Use name-based binding, NOT UUID-based binding.
+  // UUID changes every time a scene is cloned. Name-based binding is stable
+  // and works correctly with THREE.AnimationMixer's internal bone resolver.
+  //
+  // The mixer resolves track names by searching the root object's subtree
+  // for an object with a matching name. Since the cloned scene has the same
+  // bone names as the original, name-based tracks resolve correctly.
+  //
+  // We do NOT remap track names to UUIDs — that approach breaks when bones
+  // are not found in the clone map (e.g. synthetic rig bones added after clone).
   const actions: Record<string, THREE.AnimationAction> = {};
 
   for (const clip of animations) {
-    // Retarget: remap track names to cloned scene objects
-    const retargetedTracks: THREE.KeyframeTrack[] = [];
-    for (const track of clip.tracks) {
-      const dotIdx = track.name.indexOf('.');
-      if (dotIdx === -1) {
-        retargetedTracks.push(track.clone());
-        continue;
-      }
-      const boneName = track.name.slice(0, dotIdx);
-      const property = track.name.slice(dotIdx);
-      const targetObj = cloneMap.get(boneName);
-      if (targetObj) {
-        const newTrack = track.clone();
-        // Use UUID-based binding so mixer targets the cloned bone directly
-        newTrack.name = `${targetObj.uuid}${property}`;
-        retargetedTracks.push(newTrack);
-      } else {
-        // Bone not found in clone — keep original name (mixer will try to resolve)
-        retargetedTracks.push(track.clone());
-      }
-    }
+    // Clone the clip so we don't mutate the cached original
+    const clonedClip = clip.clone();
 
-    const retargetedClip = new THREE.AnimationClip(clip.name, clip.duration, retargetedTracks);
-    const action = mixer.clipAction(retargetedClip);
+    // Bind the clip action to the cloned scene root.
+    // THREE.AnimationMixer will traverse cloned scene to find bones by name.
+    const action = mixer.clipAction(clonedClip, cloned);
     actions[clip.name] = action;
   }
 
-  // Step 12: For synthetic-rigged models, also try to bind synthetic bone actions
-  // so the procedural skeleton can be driven by retargeted Mixamo clips
-  if (report.quality === 'none' || report.totalBones === 0) {
-    cloned.traverse((obj) => {
-      if ((obj as THREE.Bone).isBone && obj.name.startsWith('mixamorig')) {
-        // Register synthetic bones in the clone map so future clip retargeting works
-        cloneMap.set(obj.name, obj);
-      }
-    });
+  // Step 12: Build SkeletonHelper for visual bone display
+  // This makes bones/joints visible as a wireframe skeleton overlay.
+  let skeletonHelper: THREE.SkeletonHelper | null = null;
+  let hasAnyBones = false;
+  cloned.traverse((child) => {
+    if ((child as THREE.Bone).isBone) hasAnyBones = true;
+  });
+  if (hasAnyBones) {
+    skeletonHelper = new THREE.SkeletonHelper(cloned);
+    // Make skeleton lines visible but subtle — not distracting during fights
+    (skeletonHelper.material as THREE.LineBasicMaterial).linewidth = 2;
+    (skeletonHelper.material as THREE.LineBasicMaterial).color.set(0x00ff88);
+    skeletonHelper.visible = false; // Hidden by default; toggled by showHitbox prop
   }
 
   console.log(
@@ -512,7 +507,7 @@ function normalizeGLB(
     `clips=[${animations.map(a => a.name).join(', ')}]`
   );
 
-  return { scene: cloned, forwardCorrectionY, mixer, actions };
+  return { scene: cloned, forwardCorrectionY, mixer, actions, skeletonHelper };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -590,6 +585,10 @@ function FighterMeshInner({
     // Cleanup: stop all actions when model changes
     return () => {
       result.mixer.stopAllAction();
+      // Dispose skeleton helper
+      if (result.skeletonHelper) {
+        result.skeletonHelper.geometry.dispose();
+      }
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scene, gltfUrl]);
@@ -743,12 +742,21 @@ function FighterMeshInner({
   useEffect(() => {
     if (!normalized) return;
     const { mixer } = normalized;
+    // AGENT LAW: Use timeScale=0 to freeze animation during hit-stop.
+    // We still call mixer.update() every frame — timeScale=0 means no time advances.
+    // This is correct Three.js hit-stop pattern: freeze in place, not skip updates.
     if (hitStopActive) {
       mixer.timeScale = 0;
     } else {
       mixer.timeScale = 1;
     }
   }, [hitStopActive, normalized]);
+
+  // ── Toggle skeleton helper visibility with showHitbox ────────────────────
+  useEffect(() => {
+    if (!normalized?.skeletonHelper) return;
+    normalized.skeletonHelper.visible = showHitbox;
+  }, [showHitbox, normalized]);
 
   // ── useFrame: position + rotation + mixer update + bone hitbox ───────────
   useFrame((_, delta) => {
@@ -769,16 +777,21 @@ function FighterMeshInner({
     const attackScale = attacking ? 1.03 : 1.0;
     groupRef.current.scale.set(attackScale, attackScale, attackScale);
 
-    // AGENT LAW: Advance the mixer manually since we no longer use useAnimations.
-    // The mixer is bound to the cloned scene, so this drives the actual visible mesh.
-    if (!hitStopActive && normalized) {
+    // AGENT LAW: ALWAYS call mixer.update() every frame.
+    // Hit-stop is handled by mixer.timeScale = 0 (set in useEffect above).
+    // Skipping mixer.update() entirely causes animation state to desync —
+    // the mixer's internal clock stops tracking and crossfades break on resume.
+    if (normalized) {
       normalized.mixer.update(delta);
+      // Update skeleton helper world matrices so bone lines track correctly
+      if (normalized.skeletonHelper && showHitbox) {
+        normalized.skeletonHelper.update();
+      }
     }
 
     // Update bone hitbox system (tracks bone world positions)
-    if (!hitStopActive) {
-      boneHitboxRef.current.update(delta);
-    }
+    // Always update so hitbox positions stay in sync with skeleton
+    boneHitboxRef.current.update(delta);
   });
 
   if (!normalized) return null;
@@ -796,6 +809,10 @@ function FighterMeshInner({
       */}
       <group rotation={[0, normalized.forwardCorrectionY, 0]}>
         <primitive object={normalized.scene} />
+        {/* Skeleton helper — shows bones/joints as green wireframe lines when showHitbox=true */}
+        {normalized.skeletonHelper && showHitbox && (
+          <primitive object={normalized.skeletonHelper} />
+        )}
       </group>
 
       {/* Legacy AABB hitbox (shown when bone hitboxes are unavailable) */}
