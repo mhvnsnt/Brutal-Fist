@@ -1,14 +1,13 @@
 import { useEffect, useState } from 'react';
-
-const DEFAULT_PUBLIC_DRIVE_URL = 'https://drive.google.com/file/d/19k_jmuiUYsAubZyx_bUL0m8svyYmevM5/view';
+import { resolveGlbUrl } from '../data/bannonGlbUrl';
 
 function getConfiguredUrl(modelFile?: string) {
   const queryUrl = new URLSearchParams(window.location.search).get('model');
   const envUrl = process.env.NEXT_PUBLIC_MODEL_URL;
   if (queryUrl && queryUrl !== 'undefined') return queryUrl;
-  if (modelFile) return `/BannonSource/assets/models/${encodeURIComponent(modelFile)}`;
+  if (modelFile) return resolveGlbUrl(modelFile);
   if (envUrl && envUrl !== 'undefined') return envUrl;
-  return DEFAULT_PUBLIC_DRIVE_URL;
+  return resolveGlbUrl('BANNON_rigged.glb');
 }
 
 /** Loads the exact manifest-selected Bannon GLB; Drive is only an unbound development override.

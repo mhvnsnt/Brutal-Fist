@@ -449,8 +449,9 @@ function FighterMeshInner({
    */
   const deformationPassedRef = useRef<boolean>(true);
 
-  // useGLTF caches the result — safe to call per-fighter
-  const { scene, animations } = useGLTF(gltfUrl);
+  // useGLTF caches the result — Meshopt + Draco MUST be on (Bannon GLBs are Meshopt).
+  // drei only enables them when the flags are passed; defaults on the helper are unused.
+  const { scene, animations } = useGLTF(gltfUrl, true, true);
 
   // ── Universal normalization + mixer creation ──────────────────────────────
   useEffect(() => {

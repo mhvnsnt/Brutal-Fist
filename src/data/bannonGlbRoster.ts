@@ -1,142 +1,125 @@
+import { resolveGlbUrl } from './bannonGlbUrl';
+
 export type BannonGlbRosterEntry = {
   id: string; name: string; model: string; attire?: string;
   rigStatus: "named-part" | "skinned" | "single-mesh-needs-rigready" | "qa-weak" | "qa-fail";
   playableGate: "PASS" | "BLOCKED_QA" | "BLOCKED_RIG";
-  source: "CANON_MODELS" | "MODEL_QA" | "BATCH_RERIG" | "DRIVE";
-  /** Override URL — used when the GLB is not in the Bannon repo (e.g. Google Drive) */
+  source: "CANON_MODELS" | "MODEL_QA" | "BATCH_RERIG" | "DRIVE" | "OFFLINE_NAMEDPART_SKIN";
+  /** Override URL — local generated files or Drive-only assets */
   overrideUrl?: string;
+  /** Measured Mixamo joint count from GLB inspection (0 if unskinned). */
+  measuredJoints?: number;
+  /** Measured JOINTS_0 primitive count. */
+  measuredJoints0?: number;
 };
 
-/** HARD BOUNDARY: only actual Bannon character GLBs are catalogued here.
- * Procedural-only/metadata-only records are intentionally absent.
- * A GLB is necessary but not sufficient: rig and measured skin-QA gates apply.
- * There is no attire-count cap.
+/**
+ * HARD BOUNDARY: only actual Bannon character GLBs are catalogued here.
+ * Rig status below is from measured inspection of mhvnsnt/Bannon assets/models
+ * (2026-09-16): skins + JOINTS_0 + mixamorig:* joints. Named-part/static files
+ * are not playable unless a skinned sibling exists.
  *
- * NAMING NOTE:
- *   BANNON.glb          = Bannon default / muscular body (canonical)
- *   BANNON_fat.glb      = Bannon fat alt (previously mislabeled BANNON_muscular.glb)
+ * Preference: *_skinned / *_rigged / *_rig28 over named-part or static previews.
+ * BANNON.glb is named-part; BANNON_rigged.glb is the Mixamo-skinned default.
+ * BANNON_fat.glb does not exist — the muscular alt is BANNON_muscular_skinned.glb.
  */
 export const BANNON_GLB_MODELS: readonly BannonGlbRosterEntry[] = [
-  // ── BANNON ──────────────────────────────────────────────────────────────────
-  {id:"bannon",name:"Bannon",model:"BANNON.glb",attire:"Default",rigStatus:"named-part",playableGate:"PASS",source:"CANON_MODELS"},
-  // RENAMED: was BANNON_muscular.glb — the muscular label was wrong; this is the fat alt
-  {id:"bannon",name:"Bannon",model:"BANNON_fat.glb",attire:"Fat alt",rigStatus:"single-mesh-needs-rigready",playableGate:"PASS",source:"CANON_MODELS"},
+  {id:"bannon",name:"Bannon",model:"BANNON_rigged.glb",attire:"Default",rigStatus:"skinned",playableGate:"PASS",source:"CANON_MODELS",measuredJoints:58,measuredJoints0:1},
+  {id:"bannon",name:"Bannon",model:"BANNON_muscular_skinned.glb",attire:"Muscular alt",rigStatus:"skinned",playableGate:"PASS",source:"CANON_MODELS",measuredJoints:58,measuredJoints0:1},
 
-  // ── MAIME ────────────────────────────────────────────────────────────────────
-  {id:"maime",name:"Maime",model:"MAIME.glb",attire:"Default",rigStatus:"named-part",playableGate:"PASS",source:"CANON_MODELS"},
-  {id:"maime",name:"Maime",model:"MAIME_tattered.glb",attire:"Tattered",rigStatus:"named-part",playableGate:"PASS",source:"CANON_MODELS"},
+  {id:"maime",name:"Maime",model:"MAIME_skinned.glb",attire:"Default",rigStatus:"skinned",playableGate:"PASS",source:"OFFLINE_NAMEDPART_SKIN",overrideUrl:"/models/MAIME_skinned.glb",measuredJoints:22,measuredJoints0:15},
+  {id:"maime",name:"Maime",model:"MAIME_tattered_skinned.glb",attire:"Tattered",rigStatus:"skinned",playableGate:"PASS",source:"OFFLINE_NAMEDPART_SKIN",overrideUrl:"/models/MAIME_tattered_skinned.glb",measuredJoints:22,measuredJoints0:14},
 
-  // ── ONYX ─────────────────────────────────────────────────────────────────────
-  {id:"onyx",name:"Onyx",model:"ONYX_street.glb",attire:"Street",rigStatus:"skinned",playableGate:"PASS",source:"CANON_MODELS"},
-  {id:"onyx",name:"Onyx",model:"ONYX_straightjacket.glb",attire:"Straightjacket",rigStatus:"skinned",playableGate:"PASS",source:"CANON_MODELS"},
-  {id:"onyx",name:"Onyx",model:"ONYX.glb",attire:"Chola/Spiked",rigStatus:"single-mesh-needs-rigready",playableGate:"PASS",source:"CANON_MODELS"},
-  {id:"onyx",name:"Onyx",model:"ONYX_corset.glb",attire:"Corset/Vamp",rigStatus:"single-mesh-needs-rigready",playableGate:"PASS",source:"CANON_MODELS"},
+  {id:"onyx",name:"Onyx",model:"ONYX_street.glb",attire:"Street",rigStatus:"skinned",playableGate:"PASS",source:"CANON_MODELS",measuredJoints:58,measuredJoints0:1},
+  {id:"onyx",name:"Onyx",model:"ONYX_straightjacket.glb",attire:"Straightjacket",rigStatus:"skinned",playableGate:"PASS",source:"CANON_MODELS",measuredJoints:58,measuredJoints0:1},
+  {id:"onyx",name:"Onyx",model:"ONYX_skinned.glb",attire:"Chola/Spiked",rigStatus:"skinned",playableGate:"PASS",source:"CANON_MODELS",measuredJoints:58,measuredJoints0:1},
+  {id:"onyx",name:"Onyx",model:"ONYX_corset_skinned.glb",attire:"Corset/Vamp",rigStatus:"skinned",playableGate:"PASS",source:"CANON_MODELS",measuredJoints:58,measuredJoints0:1},
 
-  // ── CAIN ELIAS ───────────────────────────────────────────────────────────────
-  {id:"cain_elias",name:"Cain Elias",model:"CAIN_ELIAS_ring.glb",attire:"Ring",rigStatus:"skinned",playableGate:"PASS",source:"MODEL_QA"},
-  {id:"cain_elias",name:"Cain Elias",model:"CAIN_ELIAS_snakeskin.glb",attire:"Snakeskin",rigStatus:"skinned",playableGate:"PASS",source:"CANON_MODELS"},
-  {id:"cain_elias",name:"Cain Elias",model:"CAIN_ELIAS_gear.glb",attire:"Wrestling Gear",rigStatus:"skinned",playableGate:"PASS",source:"CANON_MODELS"},
-  {id:"cain_elias",name:"Cain Elias",model:"CAIN_ELIAS_godwithin.glb",attire:"God Within",rigStatus:"skinned",playableGate:"PASS",source:"BATCH_RERIG"},
+  {id:"cain_elias",name:"Cain Elias",model:"CAIN_ELIAS_ring.glb",attire:"Ring",rigStatus:"skinned",playableGate:"PASS",source:"MODEL_QA",measuredJoints:58,measuredJoints0:1},
+  {id:"cain_elias",name:"Cain Elias",model:"CAIN_ELIAS_snakeskin.glb",attire:"Snakeskin",rigStatus:"skinned",playableGate:"PASS",source:"CANON_MODELS",measuredJoints:58,measuredJoints0:1},
+  {id:"cain_elias",name:"Cain Elias",model:"CAIN_ELIAS_gear.glb",attire:"Wrestling Gear",rigStatus:"skinned",playableGate:"PASS",source:"CANON_MODELS",measuredJoints:58,measuredJoints0:1},
+  {id:"cain_elias",name:"Cain Elias",model:"CAIN_ELIAS_godwithin.glb",attire:"God Within",rigStatus:"skinned",playableGate:"PASS",source:"BATCH_RERIG",measuredJoints:58,measuredJoints0:1},
 
-  // ── CIPHER ───────────────────────────────────────────────────────────────────
-  {id:"cipher",name:"Cipher",model:"CIPHER.glb",attire:"Default",rigStatus:"skinned",playableGate:"PASS",source:"MODEL_QA"},
-  {id:"cipher",name:"Cipher",model:"CIPHER_minion.glb",attire:"Minion",rigStatus:"skinned",playableGate:"PASS",source:"CANON_MODELS"},
-  {id:"cipher",name:"Cipher",model:"CIPHER_feral.glb",attire:"Feral",rigStatus:"skinned",playableGate:"PASS",source:"CANON_MODELS"},
+  {id:"cipher",name:"Cipher",model:"CIPHER.glb",attire:"Default",rigStatus:"skinned",playableGate:"PASS",source:"MODEL_QA",measuredJoints:58,measuredJoints0:1},
+  {id:"cipher",name:"Cipher",model:"CIPHER_minion.glb",attire:"Minion",rigStatus:"skinned",playableGate:"PASS",source:"CANON_MODELS",measuredJoints:58,measuredJoints0:1},
+  {id:"cipher",name:"Cipher",model:"CIPHER_feral.glb",attire:"Feral",rigStatus:"skinned",playableGate:"PASS",source:"CANON_MODELS",measuredJoints:58,measuredJoints0:1},
 
-  // ── STICK-UP ─────────────────────────────────────────────────────────────────
-  {id:"stick_up",name:"Stick-Up",model:"STICKUP.glb",attire:"Default",rigStatus:"skinned",playableGate:"PASS",source:"MODEL_QA"},
+  {id:"stick_up",name:"Stick-Up",model:"STICKUP.glb",attire:"Default",rigStatus:"skinned",playableGate:"PASS",source:"MODEL_QA",measuredJoints:58,measuredJoints0:1},
 
-  // ── ECHO ─────────────────────────────────────────────────────────────────────
-  {id:"echo",name:"Echo",model:"ECHO.glb",attire:"Default",rigStatus:"skinned",playableGate:"PASS",source:"MODEL_QA"},
+  {id:"echo",name:"Echo",model:"ECHO.glb",attire:"Default",rigStatus:"skinned",playableGate:"PASS",source:"MODEL_QA",measuredJoints:58,measuredJoints0:1},
 
-  // ── CODY ─────────────────────────────────────────────────────────────────────
-  {id:"cody",name:"Cody",model:"CODY_sober.glb",attire:"Sober",rigStatus:"skinned",playableGate:"PASS",source:"CANON_MODELS"},
-  {id:"cody",name:"Cody",model:"CODY_stressed.glb",attire:"Stressed",rigStatus:"skinned",playableGate:"PASS",source:"CANON_MODELS"},
+  {id:"cody",name:"Cody",model:"CODY_sober.glb",attire:"Sober",rigStatus:"skinned",playableGate:"PASS",source:"CANON_MODELS",measuredJoints:58,measuredJoints0:1},
+  {id:"cody",name:"Cody",model:"CODY_stressed.glb",attire:"Stressed",rigStatus:"skinned",playableGate:"PASS",source:"CANON_MODELS",measuredJoints:58,measuredJoints0:1},
+  {id:"cody",name:"Cody",model:"CODY_gear_skinned.glb",attire:"Wrestling Gear",rigStatus:"skinned",playableGate:"PASS",source:"CANON_MODELS",measuredJoints:58,measuredJoints0:1},
 
-  // ── HALL NIGHTER ─────────────────────────────────────────────────────────────
-  {id:"hall_nighter",name:"Hall Nighter",model:"HALL_NIGHTER.glb",attire:"Default",rigStatus:"qa-weak",playableGate:"PASS",source:"MODEL_QA"},
+  {id:"hall_nighter",name:"Hall Nighter",model:"HALL_NIGHTER.glb",attire:"Default",rigStatus:"skinned",playableGate:"PASS",source:"MODEL_QA",measuredJoints:58,measuredJoints0:1},
 
-  // ── STATIC ───────────────────────────────────────────────────────────────────
-  {id:"static",name:"Static",model:"STATIC.glb",attire:"Default",rigStatus:"skinned",playableGate:"PASS",source:"MODEL_QA"},
-  {id:"static",name:"Static",model:"STATIC_alt.glb",attire:"Alt",rigStatus:"skinned",playableGate:"PASS",source:"CANON_MODELS"},
+  {id:"static",name:"Static",model:"STATIC.glb",attire:"Default",rigStatus:"skinned",playableGate:"PASS",source:"MODEL_QA",measuredJoints:58,measuredJoints0:1},
+  {id:"static",name:"Static",model:"STATIC_alt.glb",attire:"Alt",rigStatus:"skinned",playableGate:"PASS",source:"CANON_MODELS",measuredJoints:58,measuredJoints0:1},
 
-  // ── VIPER ────────────────────────────────────────────────────────────────────
-  {id:"viper",name:"Viper",model:"VIPER.glb",attire:"Default",rigStatus:"skinned",playableGate:"PASS",source:"MODEL_QA"},
+  {id:"viper",name:"Viper",model:"VIPER.glb",attire:"Default",rigStatus:"skinned",playableGate:"PASS",source:"MODEL_QA",measuredJoints:58,measuredJoints0:1},
 
-  // ── KOBRA ────────────────────────────────────────────────────────────────────
-  {id:"kobra",name:"Kobra",model:"KOBRA.glb",attire:"Default",rigStatus:"skinned",playableGate:"PASS",source:"MODEL_QA"},
+  {id:"kobra",name:"Kobra",model:"KOBRA.glb",attire:"Default",rigStatus:"skinned",playableGate:"PASS",source:"MODEL_QA",measuredJoints:58,measuredJoints0:1},
 
-  // ── AARON RUBEN ──────────────────────────────────────────────────────────────
-  {id:"aaron_ruben",name:"Aaron Ruben",model:"AARON_RUBEN.glb",attire:"Default",rigStatus:"skinned",playableGate:"PASS",source:"MODEL_QA"},
+  {id:"aaron_ruben",name:"Aaron Ruben",model:"AARON_RUBEN.glb",attire:"Default",rigStatus:"skinned",playableGate:"PASS",source:"MODEL_QA",measuredJoints:58,measuredJoints0:1},
 
-  // ── HOLLOW ───────────────────────────────────────────────────────────────────
-  {id:"hollow",name:"Hollow",model:"HOLLOW.glb",attire:"Default",rigStatus:"qa-weak",playableGate:"PASS",source:"MODEL_QA"},
+  {id:"hollow",name:"Hollow",model:"HOLLOW.glb",attire:"Default",rigStatus:"skinned",playableGate:"PASS",source:"MODEL_QA",measuredJoints:58,measuredJoints0:1},
 
-  // ── EDWIN KENNEDY ────────────────────────────────────────────────────────────
-  {id:"edwin_kennedy",name:"Edwin Kennedy",model:"EDWIN_KENNEDY.glb",attire:"Mustached Mogul",rigStatus:"qa-weak",playableGate:"PASS",source:"MODEL_QA"},
-  {id:"edwin_kennedy",name:"Edwin Kennedy",model:"EDWIN_KENNEDY_unchained.glb",attire:"Unchained",rigStatus:"qa-weak",playableGate:"PASS",source:"BATCH_RERIG"},
+  {id:"edwin_kennedy",name:"Edwin Kennedy",model:"EDWIN_KENNEDY.glb",attire:"Mustached Mogul",rigStatus:"skinned",playableGate:"PASS",source:"MODEL_QA",measuredJoints:58,measuredJoints0:1},
+  {id:"edwin_kennedy",name:"Edwin Kennedy",model:"EDWIN_KENNEDY_unchained_rig28.glb",attire:"Unchained",rigStatus:"skinned",playableGate:"PASS",source:"BATCH_RERIG",measuredJoints:58,measuredJoints0:1},
 
-  // ── PABLO ────────────────────────────────────────────────────────────────────
-  {id:"pablo",name:"Pablo",model:"PABLO.glb",attire:"Minotaur Painted",rigStatus:"qa-weak",playableGate:"PASS",source:"MODEL_QA"},
-  {id:"pablo",name:"Pablo",model:"PABLO_goldenbull.glb",attire:"Golden Bull",rigStatus:"qa-weak",playableGate:"PASS",source:"BATCH_RERIG"},
-  {id:"pablo",name:"Pablo",model:"PABLO_blackreign.glb",attire:"Black Reign",rigStatus:"qa-weak",playableGate:"PASS",source:"BATCH_RERIG"},
+  {id:"pablo",name:"Pablo",model:"PABLO.glb",attire:"Minotaur Painted",rigStatus:"skinned",playableGate:"PASS",source:"MODEL_QA",measuredJoints:58,measuredJoints0:1},
+  {id:"pablo",name:"Pablo",model:"PABLO_goldenbull.glb",attire:"Golden Bull",rigStatus:"skinned",playableGate:"PASS",source:"BATCH_RERIG",measuredJoints:58,measuredJoints0:1},
+  {id:"pablo",name:"Pablo",model:"PABLO_blackreign.glb",attire:"Black Reign",rigStatus:"skinned",playableGate:"PASS",source:"BATCH_RERIG",measuredJoints:58,measuredJoints0:1},
 
-  // ── TYNESHIA ─────────────────────────────────────────────────────────────────
-  {id:"tyneshia",name:"Tyneshia",model:"TYNESHIA.glb",attire:"Wrestling Gear",rigStatus:"qa-weak",playableGate:"PASS",source:"MODEL_QA"},
-  {id:"tyneshia",name:"Tyneshia",model:"TYNESHIA_street.glb",attire:"Hall Street / Casual",rigStatus:"qa-weak",playableGate:"PASS",source:"BATCH_RERIG"},
+  {id:"tyneshia",name:"Tyneshia",model:"TYNESHIA.glb",attire:"Wrestling Gear",rigStatus:"skinned",playableGate:"PASS",source:"MODEL_QA",measuredJoints:58,measuredJoints0:1},
+  {id:"tyneshia",name:"Tyneshia",model:"TYNESHIA_street.glb",attire:"Hall Street / Casual",rigStatus:"skinned",playableGate:"PASS",source:"BATCH_RERIG",measuredJoints:58,measuredJoints0:1},
 
-  // ── TRIPLE XXX ───────────────────────────────────────────────────────────────
-  {id:"triple_xxx",name:"Triple XXX",model:"TRIPLE_XXX.glb",attire:"Default",rigStatus:"qa-weak",playableGate:"PASS",source:"MODEL_QA"},
-  {id:"triple_xxx",name:"Triple XXX",model:"TRIPLE_XXX_tights.glb",attire:"Blue Tights",rigStatus:"qa-weak",playableGate:"PASS",source:"BATCH_RERIG"},
-  {id:"triple_xxx",name:"Triple XXX",model:"TRIPLE_XXX_trunks.glb",attire:"Blue Trunks",rigStatus:"qa-weak",playableGate:"PASS",source:"BATCH_RERIG"},
-  {id:"triple_xxx",name:"Triple XXX",model:"TRIPLE_XXX_suit.glb",attire:"Suit / Manager",rigStatus:"qa-weak",playableGate:"PASS",source:"BATCH_RERIG"},
+  {id:"triple_xxx",name:"Triple XXX",model:"TRIPLE_XXX.glb",attire:"Default",rigStatus:"skinned",playableGate:"PASS",source:"MODEL_QA",measuredJoints:58,measuredJoints0:1},
+  {id:"triple_xxx",name:"Triple XXX",model:"TRIPLE_XXX_tights.glb",attire:"Blue Tights",rigStatus:"skinned",playableGate:"PASS",source:"BATCH_RERIG",measuredJoints:58,measuredJoints0:1},
+  {id:"triple_xxx",name:"Triple XXX",model:"TRIPLE_XXX_trunks.glb",attire:"Blue Trunks",rigStatus:"skinned",playableGate:"PASS",source:"BATCH_RERIG",measuredJoints:58,measuredJoints0:1},
+  {id:"triple_xxx",name:"Triple XXX",model:"TRIPLE_XXX_suit.glb",attire:"Suit / Manager",rigStatus:"skinned",playableGate:"PASS",source:"BATCH_RERIG",measuredJoints:58,measuredJoints0:1},
 
-  // ── EL TORO DE ORO ───────────────────────────────────────────────────────────
-  {id:"el_toro_de_oro",name:"El Toro de Oro",model:"EL_TORO_DE_ORO.glb",attire:"Default",rigStatus:"qa-weak",playableGate:"PASS",source:"MODEL_QA"},
+  {id:"el_toro_de_oro",name:"El Toro de Oro",model:"EL_TORO_DE_ORO.glb",attire:"Default",rigStatus:"skinned",playableGate:"PASS",source:"MODEL_QA",measuredJoints:58,measuredJoints0:1},
 
-  // ── STAN COMBS ───────────────────────────────────────────────────────────────
-  {id:"stan_combs",name:"Stan Combs",model:"STAN_COMBS_gear.glb",attire:"Ring Gear",rigStatus:"qa-weak",playableGate:"PASS",source:"MODEL_QA"},
+  {id:"stan_combs",name:"Stan Combs",model:"STAN_COMBS_gear.glb",attire:"Ring Gear",rigStatus:"skinned",playableGate:"PASS",source:"MODEL_QA",measuredJoints:58,measuredJoints0:1},
 
-  // ── BRUTUS ───────────────────────────────────────────────────────────────────
-  {id:"brutus",name:"Brutus",model:"BRUTUS.glb",attire:"Default",rigStatus:"qa-weak",playableGate:"PASS",source:"MODEL_QA"},
+  {id:"brutus",name:"Brutus",model:"BRUTUS.glb",attire:"Default",rigStatus:"skinned",playableGate:"PASS",source:"MODEL_QA",measuredJoints:58,measuredJoints0:1},
 
-  // ── TITAN ────────────────────────────────────────────────────────────────────
-  {id:"titan",name:"Titan",model:"TITAN.glb",attire:"Default",rigStatus:"qa-weak",playableGate:"PASS",source:"MODEL_QA"},
+  {id:"titan",name:"Titan",model:"TITAN.glb",attire:"Default",rigStatus:"skinned",playableGate:"PASS",source:"MODEL_QA",measuredJoints:58,measuredJoints0:1},
+  {id:"titan",name:"Titan",model:"TITAN_unmasked.glb",attire:"Unmasked",rigStatus:"skinned",playableGate:"PASS",source:"CANON_MODELS",measuredJoints:58,measuredJoints0:1},
+  {id:"titan",name:"Titan",model:"TITAN_white.glb",attire:"White",rigStatus:"skinned",playableGate:"PASS",source:"CANON_MODELS",measuredJoints:58,measuredJoints0:1},
 
-  // ── MASTER SENSEI ────────────────────────────────────────────────────────────
-  {id:"master_sensei",name:"Master Sensei",model:"MASTER_SENSEI.glb",attire:"Default",rigStatus:"qa-weak",playableGate:"PASS",source:"MODEL_QA"},
+  {id:"master_sensei",name:"Master Sensei",model:"MASTER_SENSEI.glb",attire:"Default",rigStatus:"skinned",playableGate:"PASS",source:"MODEL_QA",measuredJoints:58,measuredJoints0:1},
+  {id:"master_sensei",name:"Master Sensei",model:"MASTER_SENSEI_rose.glb",attire:"Rose",rigStatus:"skinned",playableGate:"PASS",source:"CANON_MODELS",measuredJoints:58,measuredJoints0:1},
 
-  // ── WRECK PATTERSON ──────────────────────────────────────────────────────────
-  {id:"wreck_patterson",name:"Wreck Patterson",model:"WRECK_PATTERSON.glb",attire:"Default",rigStatus:"qa-weak",playableGate:"PASS",source:"MODEL_QA"},
+  {id:"wreck_patterson",name:"Wreck Patterson",model:"WRECK_PATTERSON.glb",attire:"Default",rigStatus:"skinned",playableGate:"PASS",source:"MODEL_QA",measuredJoints:58,measuredJoints0:1},
+  {id:"wreck_patterson",name:"Wreck Patterson",model:"WRECK_PATTERSON_attire2.glb",attire:"Attire 2",rigStatus:"skinned",playableGate:"PASS",source:"CANON_MODELS",measuredJoints:58,measuredJoints0:1},
+  {id:"wreck_patterson",name:"Wreck Patterson",model:"WRECK_PATTERSON_attire3.glb",attire:"Attire 3",rigStatus:"skinned",playableGate:"PASS",source:"CANON_MODELS",measuredJoints:58,measuredJoints0:1},
+  {id:"wreck_patterson",name:"Wreck Patterson",model:"WRECK_PATTERSON_godwithin.glb",attire:"God Within",rigStatus:"skinned",playableGate:"PASS",source:"CANON_MODELS",measuredJoints:58,measuredJoints0:1},
 
-  // ── JAGER ────────────────────────────────────────────────────────────────────
-  // Both attires sourced from Google Drive public links.
-  // Attire 1: https://drive.google.com/file/d/1RKxHGkgoKe0hZf7a2kObqzKpgqKfkrhl/view
-  // Attire 2: second Drive GLB — registered as Alt attire.
-  {
-    id:"jager",
-    name:"Jager",
-    model:"JAGER.glb",
-    attire:"Default",
-    rigStatus:"skinned",
-    playableGate:"PASS",
-    source:"DRIVE",
-    overrideUrl:"https://drive.google.com/uc?export=download&id=1RKxHGkgoKe0hZf7a2kObqzKpgqKfkrhl",
-  },
-  {
-    id:"jager",
-    name:"Jager",
-    model:"JAGER_alt.glb",
-    attire:"Alt",
-    rigStatus:"skinned",
-    playableGate:"PASS",
-    source:"DRIVE",
-    // Second attire uses the same Drive file until the second link is provided.
-    // Replace this overrideUrl with the second Drive file's direct download URL.
-    overrideUrl:"https://drive.google.com/uc?export=download&id=1RKxHGkgoKe0hZf7a2kObqzKpgqKfkrhl",
-  },
+  {id:"jager",name:"Jager",model:"JAGER.glb",attire:"Default",rigStatus:"skinned",playableGate:"PASS",source:"CANON_MODELS",measuredJoints:58,measuredJoints0:1},
+  {id:"jager",name:"Jager",model:"JAGER_beard.glb",attire:"Beard",rigStatus:"skinned",playableGate:"PASS",source:"CANON_MODELS",measuredJoints:58,measuredJoints0:1},
 ];
 
 export const BANNON_GLB_PLAYABLE_MODELS = BANNON_GLB_MODELS.filter(e => e.playableGate === "PASS");
 export const BANNON_GLB_BLOCKED_MODELS = BANNON_GLB_MODELS.filter(e => e.playableGate !== "PASS");
 export const BANNON_GLB_FIGHTERS = [...new Set(BANNON_GLB_MODELS.map(e => e.id))];
+
+export function getGlbEntryForFighter(fighterId: string, model?: string): BannonGlbRosterEntry | undefined {
+  if (model) {
+    const exact = BANNON_GLB_MODELS.find(e => e.id === fighterId && e.model === model);
+    if (exact) return exact;
+  }
+  return BANNON_GLB_MODELS.find(e => e.id === fighterId);
+}
+
+export function getFighterGlbUrl(fighterId: string, model?: string): string | null {
+  const entry = getGlbEntryForFighter(fighterId, model);
+  if (!entry) return null;
+  return resolveGlbUrl(entry.model, entry.overrideUrl);
+}
+
+export function getPlayableAttires(fighterId: string): readonly BannonGlbRosterEntry[] {
+  return BANNON_GLB_MODELS.filter(e => e.id === fighterId && e.playableGate === 'PASS');
+}

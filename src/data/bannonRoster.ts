@@ -11,6 +11,9 @@
  *   - BrutalfistbaseofTekken3Recompiled animation namespace
  */
 
+import { getGlbEntryForFighter } from './bannonGlbRoster';
+import { BANNON_MODELS_RAW, resolveGlbUrl } from './bannonGlbUrl';
+
 export interface BannonFighterProfile {
   id: string;
   name: string;
@@ -71,7 +74,7 @@ export interface CharacterMoveSet {
 
 // ─── ROSTER ──────────────────────────────────────────────────────────────────
 
-const BANNON_RAW = 'https://raw.githubusercontent.com/mhvnsnt/Bannon/main/assets/models';
+const BANNON_RAW = BANNON_MODELS_RAW;
 
 export const BANNON_ROSTER: readonly BannonFighterProfile[] = [
 
@@ -874,8 +877,7 @@ export const BANNON_ROSTER: readonly BannonFighterProfile[] = [
     }
   },
 
-  // ── JAGER ────────────────────────────────────────────────────────────────────
-  // GLB sourced from Google Drive (public). Attire 2 pending second Drive link.
+  // GLB sourced from mhvnsnt/Bannon assets/models (JAGER.glb / JAGER_beard.glb).
   {
     id: 'jager',
     name: 'Jager',
@@ -891,7 +893,7 @@ export const BANNON_ROSTER: readonly BannonFighterProfile[] = [
     fightingStyle: 'Predator / Hunter. Patient stalking, explosive bursts, and devastating finishing sequences. The Jager Hunt is an unstoppable pursuit combo.',
     model: 'JAGER.glb',
     attire: 'Default',
-    portraitUrl: 'https://drive.google.com/uc?export=download&id=1RKxHGkgoKe0hZf7a2kObqzKpgqKfkrhl',
+    portraitUrl: `${BANNON_RAW}/JAGER.glb`,
     defaultMoveSet: {
       idle: 'bf_idle', walkForward: 'bf_walk_fwd', walkBackward: 'bf_walk_back',
       crouch: 'bf_crouch', guard: 'bf_guard',
@@ -910,10 +912,24 @@ export const BANNON_ROSTER: readonly BannonFighterProfile[] = [
   },
 ];
 
-export const getBannonFighter = (id: string): BannonFighterProfile | null =>
-  BANNON_ROSTER.find(f => f.id === id) ?? null;
+export const getBannonFighter = (id: string): BannonFighterProfile | null => {
+  const f = BANNON_ROSTER.find(x => x.id === id);
+  return f ? hydrateFighterGlb(f) : null;
+};
 
 export const getBannonFightersByFaction = (alignment: BannonFighterProfile['factionAlignment']): BannonFighterProfile[] =>
-  BANNON_ROSTER.filter(f => f.factionAlignment === alignment);
+  BANNON_ROSTER.filter(f => f.factionAlignment === alignment).map(hydrateFighterGlb);
 
-export const getAllBannonFighters = (): readonly BannonFighterProfile[] => BANNON_ROSTER;
+export const getAllBannonFighters = (): BannonFighterProfile[] => BANNON_ROSTER.map(hydrateFighterGlb);
+
+/** Overlay the measured skinned GLB (and attire URL) onto a roster profile. */
+export function hydrateFighterGlb(fighter: BannonFighterProfile): BannonFighterProfile {
+  const entry = getGlbEntryForFighter(fighter.id, fighter.model);
+  if (!entry) return fighter;
+  return {
+    ...fighter,
+    model: entry.model,
+    attire: fighter.attire ?? entry.attire,
+    portraitUrl: resolveGlbUrl(entry.model, entry.overrideUrl),
+  };
+}

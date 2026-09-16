@@ -31,6 +31,7 @@
 
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -93,21 +94,11 @@ export interface GLBLoadError {
 const CHARACTER_RIGGED_URLS: Record<string, string[]> = {
   BANNON: [
     '/models/BANNON_rigged.glb',
-    '/models/BANNON_v1_rigready.glb',
-    '/models/bannon_rigged.glb',
-    '/models/bannon_v1_rigready.glb',
-    // Bannon repo paths (if served as static assets)
-    '/assets/models/BANNON_rigged.glb',
-    '/assets/models/incoming/BANNON_rigged.glb',
-    '/assets/models/incoming/BANNON_v1_rigready.glb',
+    '/models/BANNON_muscular_skinned.glb',
   ],
   MAIME: [
-    '/models/MAIME_rigged.glb',
-    '/models/MAIME_v1_rigready.glb',
-    '/models/maime_rigged.glb',
-    '/models/maime_v1_rigready.glb',
-    '/assets/models/MAIME_rigged.glb',
-    '/assets/models/incoming/MAIME_rigged.glb',
+    '/models/MAIME_skinned.glb',
+    '/models/MAIME_tattered_skinned.glb',
   ],
 };
 
@@ -168,7 +159,11 @@ function classifyGLB(scene: THREE.Group, animations: THREE.AnimationClip[]): {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export class RiggedGLBLoader {
-  private static readonly loader = new GLTFLoader();
+  private static readonly loader = (() => {
+    const loader = new GLTFLoader();
+    loader.setMeshoptDecoder(MeshoptDecoder);
+    return loader;
+  })();
 
   /**
    * Load the best available rigged GLB for a character.

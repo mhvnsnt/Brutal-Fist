@@ -2,7 +2,8 @@
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { getAllBannonFighters, getBannonFighter, type BannonFighterProfile } from '../data/bannonRoster';
-import { BANNON_GLB_MODELS } from '../data/bannonGlbRoster';
+import { getPlayableAttires } from '../data/bannonGlbRoster';
+import { resolveGlbUrl } from '../data/bannonGlbUrl';
 import { getCharacterMoveSet } from '../engine/CharacterMoveSetSystem';
 import dynamic from 'next/dynamic';
 
@@ -44,13 +45,12 @@ function getUniqueCharacters(fighters: readonly BannonFighterProfile[]): BannonF
 
 /** Get all attires for a character from the GLB roster */
 function getCharacterAttires(characterId: string): Array<{ attire: string; model: string; portraitUrl: string }> {
-  const BANNON_RAW = 'https://raw.githubusercontent.com/mhvnsnt/Bannon/main/assets/models';
-  const entries = BANNON_GLB_MODELS.filter(e => e.id === characterId && e.playableGate === 'PASS');
+  const entries = getPlayableAttires(characterId);
   if (entries.length === 0) return [];
   return entries.map(e => ({
     attire: e.attire ?? 'Default',
     model: e.model,
-    portraitUrl: e.overrideUrl ?? `${BANNON_RAW}/${e.model}`,
+    portraitUrl: resolveGlbUrl(e.model, e.overrideUrl),
   }));
 }
 
@@ -290,8 +290,9 @@ export default function CharacterSelect({ onSelectP1, onSelectP2, onStartMatch }
 
   const handleFighterSelect = (fighter: BannonFighterProfile) => {
     const attires = getCharacterAttires(fighter.id);
-    const defaultAttire = attires[0]?.attire ?? 'Default';
-    const defaultPortrait = attires[0]?.portraitUrl ?? fighter.portraitUrl;
+    const matched = attires.find(a => a.model === fighter.model) ?? attires[0];
+    const defaultAttire = matched?.attire ?? fighter.attire ?? 'Default';
+    const defaultPortrait = matched?.portraitUrl ?? fighter.portraitUrl;
 
     if (activeSlot === 'p1') {
       setP1Id(fighter.id);
@@ -310,7 +311,14 @@ export default function CharacterSelect({ onSelectP1, onSelectP2, onStartMatch }
   const handleStartMatch = () => {
     const f1 = p1Id ? getBannonFighter(p1Id) : null;
     const f2 = p2Id ? getBannonFighter(p2Id) : null;
-    if (f1 && f2 && onStartMatch) onStartMatch(f1, f2);
+    if (f1 && f2 && onStartMatch) {
+      const a1 = getCharacterAttires(f1.id).find(a => a.attire === p1Attire);
+      const a2 = getCharacterAttires(f2.id).find(a => a.attire === p2Attire);
+      onStartMatch(
+        { ...f1, attire: p1Attire, model: a1?.model ?? f1.model, portraitUrl: p1PortraitUrl || f1.portraitUrl },
+        { ...f2, attire: p2Attire, model: a2?.model ?? f2.model, portraitUrl: p2PortraitUrl || f2.portraitUrl },
+      );
+    }
   };
 
   const canStart = !!(p1Id && p2Id);

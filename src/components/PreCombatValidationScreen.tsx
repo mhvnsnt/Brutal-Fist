@@ -19,7 +19,7 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
 import { type BannonFighterProfile } from '../data/bannonRoster';
-import { BANNON_GLB_PLAYABLE_MODELS } from '../data/bannonGlbRoster';
+import { BANNON_GLB_PLAYABLE_MODELS, getGlbEntryForFighter } from '../data/bannonGlbRoster';
 import { REQUIRED_SEMANTIC_STATES } from '../engine/retarget/AnimationSourceRegistry';
 import {
   loadBannonClipsFromPublic,
@@ -60,7 +60,7 @@ function validateFighterRoster(fighter: BannonFighterProfile): FighterValidation
   const remediationSteps: string[] = [];
 
   // Find the fighter's GLB entry
-  const glbEntry = BANNON_GLB_PLAYABLE_MODELS.find(e => e.id === fighter.id);
+  const glbEntry = getGlbEntryForFighter(fighter.id, fighter.model) ?? BANNON_GLB_PLAYABLE_MODELS.find(e => e.id === fighter.id);
   const glbFile = glbEntry?.model ?? 'UNKNOWN.glb';
   const rigStatus = glbEntry?.rigStatus ?? 'unknown';
   const playableGate = glbEntry?.playableGate ?? 'BLOCKED_RIG';

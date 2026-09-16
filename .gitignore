@@ -7,3 +7,10 @@ coverage/
 *.log
 .env*
 !.env.example
+tsconfig.tsbuildinfo
+
+# Downloaded Bannon character GLBs (source of truth is mhvnsnt/Bannon).
+# Generated named-part conversions are tracked.
+public/models/*.glb
+!public/models/MAIME_skinned.glb
+!public/models/MAIME_tattered_skinned.glb

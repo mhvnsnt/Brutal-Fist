@@ -42,6 +42,10 @@ export const BANNON_GLB_SOURCE_INVENTORY: readonly BannonGlbSourceEvidence[] = [
   { owner: "cody", filename: "Cody stressedandcoked.glb", sourcePath: "assets/models/incoming/Cody stressedandcoked.glb", status: "INCOMING_VERIFIED", variant: "Stressed" },
   { owner: "pablo", filename: "Pablo (the Golden Bull attire, not to be confused with El Toro de oro, those are two different characters) attire 2 gold.glb", sourcePath: "assets/models/incoming/Pablo (the Golden Bull attire, not to be confused with El Toro de oro, those are two different characters) attire 2 gold.glb", status: "BANKED", variant: "Golden Bull / attire 2", notes: "bank_map -> PABLO_goldenbull.glb; explicitly distinct from El Toro de Oro" },
 
+  // GitHub assets/models — measured Mixamo-skinned but no BANNON_ROSTER identity.
+  { owner: "tarzanian_devil", filename: "TARZANIAN_DEVIL_skinned.glb", sourcePath: "assets/models/TARZANIAN_DEVIL_skinned.glb", status: "BANKED", variant: "skinned Mixamo", notes: "58 Mixamo joints / JOINTS_0=1. No authored fighter profile — not promoted." },
+  { owner: "npc", filename: "NPC_FINXSSE.glb", sourcePath: "assets/models/NPC_FINXSSE.glb", status: "INCOMING_VERIFIED", notes: "Measured Mixamo-skinned (58 joints / JOINTS_0=1). NPC mesh, not a roster fighter." },
+
   // Props are intentionally tracked separately and can never promote to fighters.
   { owner: "prop", filename: "Barbwire_baseball_bat.glb", sourcePath: "assets/models/incoming/Barbwire_baseball_bat.glb", status: "PROP", notes: "bank_map -> props/weapons/barbwire_bat.glb" },
 ];

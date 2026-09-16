@@ -5,6 +5,7 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { FighterMesh } from './FighterMesh';
 import { type BannonFighterProfile } from '../data/bannonRoster';
+import { getFighterGlbUrl } from '../data/bannonGlbRoster';
 import { TrainingStage } from './TrainingStage';
 import { UrbanNightStage } from './UrbanNightStage';
 import { CHARACTER_BLOOM } from './PostMatchScreen';
@@ -808,7 +809,7 @@ export default function CombatArena3D({
         <FighterMesh
           state={p1State}
           animation={p1Animation}
-          modelUrl={p1Fighter.portraitUrl}
+          modelUrl={getFighterGlbUrl(p1Fighter.id, p1Fighter.model) ?? p1Fighter.portraitUrl}
           position={[p1FinalX, 0, p1FinalZ]}
           facing={1}
           rotationY={0}
@@ -831,7 +832,7 @@ export default function CombatArena3D({
         <FighterMesh
           state={p2State}
           animation={p2Animation}
-          modelUrl={p2Fighter.portraitUrl}
+          modelUrl={getFighterGlbUrl(p2Fighter.id, p2Fighter.model) ?? p2Fighter.portraitUrl}
           position={[p2FinalX, 0, p2FinalZ]}
           facing={-1}
           rotationY={p2RotationY}

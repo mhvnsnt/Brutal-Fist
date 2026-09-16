@@ -5,7 +5,8 @@ import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, useGLTF, Grid } from '@react-three/drei';
 import * as THREE from 'three';
 import { getAllBannonFighters, type BannonFighterProfile } from '../data/bannonRoster';
-import { BANNON_GLB_PLAYABLE_MODELS } from '../data/bannonGlbRoster';
+import { BANNON_GLB_PLAYABLE_MODELS, getGlbEntryForFighter, getPlayableAttires } from '../data/bannonGlbRoster';
+import { resolveGlbUrl } from '../data/bannonGlbUrl';
 import { runCharacterPipeline } from '../engine/pipeline/CharacterPipeline';
 import { AutoRigDetector } from '../engine/locomotion/AutoRigDetector';
 import {
@@ -101,7 +102,7 @@ function CharacterViewerInner({
   onReady,
   onClipChange,
 }: CharacterViewerProps) {
-  const { scene, animations } = useGLTF(modelUrl);
+  const { scene, animations } = useGLTF(modelUrl, true, true);
   const normalizedRef = useRef<NormalizedResult | null>(null);
   const groupRef = useRef<THREE.Group>(null);
   const readyFiredRef = useRef(false);
@@ -249,12 +250,24 @@ export default function AnimationTestArena({ onBack }: AnimationTestArenaProps) 
     setCurrentClipSource('MISSING_CLIP');
     setCurrentStateIndex(0);
 
-    // Find the best GLB URL for this fighter
-    const glbEntry = BANNON_GLB_PLAYABLE_MODELS.find(e => e.id === fighter.id);
-    const BANNON_RAW = 'https://raw.githubusercontent.com/mhvnsnt/Bannon/main/assets/models';
-    const url = glbEntry?.overrideUrl ?? (glbEntry ? `${BANNON_RAW}/${glbEntry.model}` : fighter.portraitUrl);
+    const glbEntry = getGlbEntryForFighter(fighter.id, fighter.model)
+      ?? BANNON_GLB_PLAYABLE_MODELS.find(e => e.id === fighter.id);
+    const url = glbEntry ? resolveGlbUrl(glbEntry.model, glbEntry.overrideUrl) : fighter.portraitUrl;
     setModelUrl(url);
     console.log(`[AnimTestArena] 🎭 Selected fighter: ${fighter.name} → ${url}`);
+  }, []);
+
+  const handleSelectAttire = useCallback((fighter: BannonFighterProfile, model: string) => {
+    const entry = getGlbEntryForFighter(fighter.id, model);
+    if (!entry) return;
+    setSelectedFighter({ ...fighter, model: entry.model, attire: entry.attire, portraitUrl: resolveGlbUrl(entry.model, entry.overrideUrl) });
+    setIntegrityReport(null);
+    setCurrentClipName(null);
+    setCurrentClipSource('MISSING_CLIP');
+    setCurrentStateIndex(0);
+    const url = resolveGlbUrl(entry.model, entry.overrideUrl);
+    setModelUrl(url);
+    console.log(`[AnimTestArena] 👕 Attire: ${entry.attire} → ${url}`);
   }, []);
 
   // ── State navigation ──────────────────────────────────────────────────────
@@ -344,6 +357,23 @@ export default function AnimationTestArena({ onBack }: AnimationTestArenaProps) 
               <div className="text-[9px] text-zinc-600 truncate">{fighter.fightingStyle.split('/')[0]}</div>
             </button>
           ))}
+          {selectedFighter && getPlayableAttires(selectedFighter.id).length > 1 && (
+            <div className="px-3 py-2 border-t border-zinc-800">
+              <div className="text-[9px] tracking-widest text-zinc-500 mb-1">ATTIRE</div>
+              {getPlayableAttires(selectedFighter.id).map(entry => (
+                <button
+                  key={entry.model}
+                  onClick={() => handleSelectAttire(selectedFighter, entry.model)}
+                  className={`w-full text-left px-2 py-1 text-[10px] truncate mb-0.5 border ${
+                    selectedFighter.model === entry.model
+                      ? 'border-yellow-400 text-yellow-300 bg-yellow-400/10' :'border-zinc-800 text-zinc-500 hover:text-zinc-300'
+                  }`}
+                >
+                  {(entry.attire ?? 'Default').toUpperCase()}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* ── Center: 3D viewport ── */}

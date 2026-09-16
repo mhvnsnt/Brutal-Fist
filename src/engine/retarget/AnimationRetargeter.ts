@@ -698,21 +698,29 @@ export function resolveToCanonicalBone(boneName: string): CanonicalBone | null {
   return null;
 }
 
+/** Mixamo FBX (`mixamorigHips`) and Bannon skinned GLBs (`mixamorig:Hips`) are the same bone. */
+export function mixamoBindKey(boneName: string): string {
+  return boneName.toLowerCase().replace(/^mixamorig[:._-]*/, 'mixamorig');
+}
+
 /**
  * Bind a clip's tracks to an actual target skeleton's bone names.
  *
  * Policy:
- *   1. Exact target bone name match (Mixamo→Mixamo) wins.
- *   2. Else canonical alias match (mixamorigHips → Hips, etc.).
- *   3. Else the track is UNRESOLVED — never rewritten onto a fake bone.
+ *   1. Exact target bone name match wins.
+ *   2. Mixamo colon-insensitive match (`mixamorigHips` ↔ `mixamorig:Hips`).
+ *   3. Else canonical alias match (mixamorigHips → Hips, etc.).
+ *   4. Else the track is UNRESOLVED — never rewritten onto a fake bone.
  */
 export function bindClipTracksToTargetBones(
   clip: THREE.AnimationClip,
   targetBoneNames: readonly string[],
 ): RetargetedClipResult {
   const exact = new Set(targetBoneNames);
+  const mixamoExact = new Map<string, string>();
   const canonicalToTarget = new Map<CanonicalBone, string>();
   for (const name of targetBoneNames) {
+    mixamoExact.set(mixamoBindKey(name), name);
     const canonical = resolveToCanonicalBone(name);
     if (canonical && !canonicalToTarget.has(canonical)) {
       canonicalToTarget.set(canonical, name);
@@ -735,6 +743,9 @@ export function bindClipTracksToTargetBones(
     let targetBoneName: string | null = null;
     if (exact.has(sourceBoneName)) {
       targetBoneName = sourceBoneName;
+    } else if (mixamoExact.has(mixamoBindKey(sourceBoneName))) {
+      // mixamorigHips ↔ mixamorig:Hips (Bannon bank vs Bannon skinned GLBs)
+      targetBoneName = mixamoExact.get(mixamoBindKey(sourceBoneName)) ?? null;
     } else {
       const canonical = resolveToCanonicalBone(sourceBoneName);
       targetBoneName = canonical ? (canonicalToTarget.get(canonical) ?? null) : null;
