@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { type BannonFighterProfile, BANNON_ROSTER } from '../data/bannonRoster';
 import { useAuth } from '../contexts/AuthContext';
 import { statsService, getRankTier } from '../lib/statsService';
+import { createClient } from '../lib/supabase/client';
 
 interface PlayerProfileScreenProps {
   onBack: () => void;
@@ -66,6 +67,61 @@ const RARITY_GLOW: Record<Rarity, string> = {
   RARE:      'rgba(59,130,246,0.15)',
   EPIC:      'rgba(168,85,247,0.15)',
   LEGENDARY: 'rgba(250,204,21,0.15)',
+};
+
+// ── ELO / Matchmaking types ───────────────────────────────────────────────────
+interface PlayerEloRow {
+  fighterId: string;
+  fighterName: string;
+  eloRating: number;
+  tier: string;
+  wins: number;
+  losses: number;
+  draws: number;
+  winStreak: number;
+}
+
+interface TierClimbEntry {
+  id: string;
+  fighterId: string;
+  fighterName: string;
+  fromTier: string;
+  toTier: string;
+  eloAtChange: number;
+  direction: string;
+  recordedAt: string;
+}
+
+interface H2HRecord {
+  id: string;
+  opponentId: string;
+  opponentName: string;
+  userFighterId: string;
+  opponentFighterId: string;
+  wins: number;
+  losses: number;
+  draws: number;
+  lastPlayedAt: string;
+}
+
+interface CosmeticUnlockEntry {
+  id: string;
+  cosmeticId: string;
+  cosmeticName: string;
+  cosmeticType: string;
+  rarity: string;
+  unlockSource: string;
+  unlockContext: string | null;
+  unlockedAt: string;
+}
+
+const TIER_COLORS: Record<string, string> = {
+  bronze: '#cd7f32',
+  silver: '#94a3b8',
+  gold: '#facc15',
+  platinum: '#67e8f9',
+  diamond: '#a78bfa',
+  legend: '#f97316',
 };
 
 function buildMarketplace(totalWins: number, isChampion: boolean, masteryMap: Record<string, number>): CosmeticItem[] {
@@ -308,7 +364,7 @@ type MarketFilter = 'ALL' | 'OUTFIT' | 'EFFECT' | 'BUNDLE' | 'SEASONAL' | 'UNLOC
 
 export default function PlayerProfileScreen({ onBack }: PlayerProfileScreenProps) {
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<'career' | 'mastery' | 'cosmetics' | 'season'>('career');
+  const [activeTab, setActiveTab] = useState<'career' | 'mastery' | 'cosmetics' | 'season' | 'elo' | 'h2h'>('career');
   const [fighterStats, setFighterStats] = useState<FighterStatRow[]>([]);
   const [rankPoints, setRankPoints] = useState(0);
   const [rankTier, setRankTier] = useState('BRONZE');
@@ -316,7 +372,14 @@ export default function PlayerProfileScreen({ onBack }: PlayerProfileScreenProps
   const [marketFilter, setMarketFilter] = useState<MarketFilter>('ALL');
   const [selectedItem, setSelectedItem] = useState<CosmeticItem | null>(null);
   const [purchasedIds, setPurchasedIds] = useState<Set<string>>(new Set());
-  const [brutalCoins] = useState(1250); // simulated wallet
+  const [brutalCoins] = useState(1250);
+
+  // New ELO / extended profile state
+  const [playerEloRows, setPlayerEloRows] = useState<PlayerEloRow[]>([]);
+  const [tierHistory, setTierHistory] = useState<TierClimbEntry[]>([]);
+  const [h2hRecords, setH2HRecords] = useState<H2HRecord[]>([]);
+  const [cosmeticTimeline, setCosmeticTimeline] = useState<CosmeticUnlockEntry[]>([]);
+  const [eloLoading, setEloLoading] = useState(false);
 
   useEffect(() => {
     if (!user?.id) { setLoading(false); return; }
@@ -341,6 +404,70 @@ export default function PlayerProfileScreen({ onBack }: PlayerProfileScreenProps
       setLoading(false);
     }).catch(() => setLoading(false));
   }, [user?.id]);
+
+  // Load ELO / extended data when those tabs are opened
+  useEffect(() => {
+    if (!user?.id || (activeTab !== 'elo' && activeTab !== 'h2h')) return;
+    setEloLoading(true);
+    const supabase = createClient();
+    Promise.all([
+      supabase.from('player_elo').select('*').eq('user_id', user.id).order('elo_rating', { ascending: false }),
+      supabase.from('tier_climb_history').select('*').eq('user_id', user.id).order('recorded_at', { ascending: false }).limit(30),
+      supabase.from('head_to_head_records').select('*').eq('user_id', user.id).order('last_played_at', { ascending: false }).limit(20),
+      supabase.from('cosmetic_unlocks').select('*').eq('user_id', user.id).order('unlocked_at', { ascending: false }),
+    ]).then(([eloRes, tierRes, h2hRes, cosRes]) => {
+      if (eloRes.data) {
+        setPlayerEloRows(eloRes.data.map(r => ({
+          fighterId: r.fighter_id,
+          fighterName: r.fighter_name,
+          eloRating: r.elo_rating,
+          tier: r.tier,
+          wins: r.wins,
+          losses: r.losses,
+          draws: r.draws,
+          winStreak: r.win_streak,
+        })));
+      }
+      if (tierRes.data) {
+        setTierHistory(tierRes.data.map(r => ({
+          id: r.id,
+          fighterId: r.fighter_id,
+          fighterName: r.fighter_name,
+          fromTier: r.from_tier,
+          toTier: r.to_tier,
+          eloAtChange: r.elo_at_change,
+          direction: r.direction,
+          recordedAt: r.recorded_at,
+        })));
+      }
+      if (h2hRes.data) {
+        setH2HRecords(h2hRes.data.map(r => ({
+          id: r.id,
+          opponentId: r.opponent_id,
+          opponentName: r.opponent_name,
+          userFighterId: r.user_fighter_id,
+          opponentFighterId: r.opponent_fighter_id,
+          wins: r.wins,
+          losses: r.losses,
+          draws: r.draws,
+          lastPlayedAt: r.last_played_at,
+        })));
+      }
+      if (cosRes.data) {
+        setCosmeticTimeline(cosRes.data.map(r => ({
+          id: r.id,
+          cosmeticId: r.cosmetic_id,
+          cosmeticName: r.cosmetic_name,
+          cosmeticType: r.cosmetic_type,
+          rarity: r.rarity,
+          unlockSource: r.unlock_source,
+          unlockContext: r.unlock_context,
+          unlockedAt: r.unlocked_at,
+        })));
+      }
+      setEloLoading(false);
+    }).catch(() => setEloLoading(false));
+  }, [user?.id, activeTab]);
 
   const totalWins = fighterStats.reduce((s, f) => s + (f.wins ?? 0), 0);
   const totalLosses = fighterStats.reduce((s, f) => s + (f.losses ?? 0), 0);
@@ -382,6 +509,12 @@ export default function PlayerProfileScreen({ onBack }: PlayerProfileScreenProps
     setSelectedItem(null);
   }
 
+  // Best ELO across all fighters
+  const bestElo = playerEloRows.length > 0 ? Math.max(...playerEloRows.map(r => r.eloRating)) : rankPoints;
+  const bestEloTier = playerEloRows.length > 0
+    ? (playerEloRows.sort((a, b) => b.eloRating - a.eloRating)[0]?.tier ?? 'bronze')
+    : 'bronze';
+
   if (loading) {
     return (
       <div className="fixed inset-0 bg-black text-white flex items-center justify-center font-mono">
@@ -416,6 +549,11 @@ export default function PlayerProfileScreen({ onBack }: PlayerProfileScreenProps
             <div className="text-[7px] tracking-widest text-zinc-600">RANK</div>
             <div className="text-xl font-black mt-0.5" style={{ color: rankColor }}>{rankTier}</div>
             <div className="text-[8px] text-zinc-600 mt-0.5">{rankPoints} RP</div>
+            {playerEloRows.length > 0 && (
+              <div className="text-[7px] mt-0.5" style={{ color: TIER_COLORS[bestEloTier] ?? '#94a3b8' }}>
+                ELO {bestElo}
+              </div>
+            )}
           </div>
         </div>
 
@@ -440,19 +578,19 @@ export default function PlayerProfileScreen({ onBack }: PlayerProfileScreenProps
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="relative z-10 flex-shrink-0 flex border-b border-zinc-900">
-        {(['career', 'mastery', 'cosmetics', 'season'] as const).map(tab => (
+      {/* Tabs — now 6 tabs */}
+      <div className="relative z-10 flex-shrink-0 flex border-b border-zinc-900 overflow-x-auto">
+        {(['career', 'elo', 'h2h', 'mastery', 'cosmetics', 'season'] as const).map(tab => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
-            className="flex-1 py-3 text-[8px] tracking-[0.2em] font-black transition-all"
+            className="flex-shrink-0 px-3 py-3 text-[7px] tracking-[0.2em] font-black transition-all"
             style={{
               color: activeTab === tab ? '#fff' : '#52525b',
               borderBottom: activeTab === tab ? `2px solid ${rankColor}` : '2px solid transparent',
             }}
           >
-            {tab.toUpperCase()}
+            {tab === 'elo' ? 'ELO' : tab === 'h2h' ? 'H2H' : tab.toUpperCase()}
           </button>
         ))}
       </div>
@@ -519,6 +657,248 @@ export default function PlayerProfileScreen({ onBack }: PlayerProfileScreenProps
                 <span className="text-zinc-800">ENTER A TOURNAMENT TO BEGIN</span>
               </div>
             )}
+          </div>
+        )}
+
+        {/* ELO TAB */}
+        {activeTab === 'elo' && (
+          <div className="space-y-4">
+            <div className="text-[8px] tracking-[0.3em] text-zinc-600 mb-3">ELO RATINGS & RANK PROGRESS</div>
+
+            {eloLoading ? (
+              <div className="text-center py-8 text-zinc-700 text-[9px] animate-pulse">LOADING ELO DATA...</div>
+            ) : (
+              <>
+                {/* ELO per fighter */}
+                {playerEloRows.length > 0 ? (
+                  <div className="space-y-2">
+                    {playerEloRows.map((row, i) => {
+                      const tierColor = TIER_COLORS[row.tier] ?? '#94a3b8';
+                      const total = row.wins + row.losses + row.draws;
+                      const wr = total > 0 ? Math.round((row.wins / total) * 100) : 0;
+                      return (
+                        <div key={i} className="border p-3" style={{ borderColor: `${tierColor}40`, background: `${tierColor}06` }}>
+                          <div className="flex items-center justify-between mb-2">
+                            <div>
+                              <div className="text-[10px] font-black" style={{ color: tierColor }}>{row.fighterName.toUpperCase()}</div>
+                              <div className="text-[7px] text-zinc-600 mt-0.5">{row.tier.toUpperCase()} TIER</div>
+                            </div>
+                            <div className="text-right">
+                              <div className="text-2xl font-black" style={{ color: tierColor }}>{row.eloRating}</div>
+                              <div className="text-[7px] text-zinc-600">ELO</div>
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-4 gap-1 text-center mb-2">
+                            <div className="border border-zinc-900 py-1">
+                              <div className="text-[10px] font-black text-green-400">{row.wins}</div>
+                              <div className="text-[6px] text-zinc-700">W</div>
+                            </div>
+                            <div className="border border-zinc-900 py-1">
+                              <div className="text-[10px] font-black text-red-400">{row.losses}</div>
+                              <div className="text-[6px] text-zinc-700">L</div>
+                            </div>
+                            <div className="border border-zinc-900 py-1">
+                              <div className="text-[10px] font-black text-zinc-500">{row.draws}</div>
+                              <div className="text-[6px] text-zinc-700">D</div>
+                            </div>
+                            <div className="border border-zinc-900 py-1">
+                              <div className="text-[10px] font-black text-yellow-400">{wr}%</div>
+                              <div className="text-[6px] text-zinc-700">WR</div>
+                            </div>
+                          </div>
+                          {row.winStreak > 0 && (
+                            <div className="text-[7px] font-black" style={{ color: tierColor }}>
+                              🔥 {row.winStreak}× WIN STREAK
+                            </div>
+                          )}
+                          {/* ELO progress bar within tier */}
+                          <div className="mt-2">
+                            <div className="flex justify-between text-[6px] text-zinc-700 mb-1">
+                              <span>TIER PROGRESS</span>
+                              <span>{row.eloRating} ELO</span>
+                            </div>
+                            <div className="h-1 bg-zinc-900">
+                              <div className="h-full transition-all duration-700"
+                                style={{
+                                  width: `${Math.min(100, ((row.eloRating - (TIER_COLORS[row.tier] ? 0 : 0)) / 400) * 100)}%`,
+                                  background: tierColor,
+                                }} />
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="text-center py-6 text-zinc-700 text-[9px] tracking-widest border border-zinc-900">
+                    NO ELO DATA YET<br />
+                    <span className="text-zinc-800">JOIN RANKED QUEUE TO BEGIN</span>
+                  </div>
+                )}
+
+                {/* Tier Climb History */}
+                {tierHistory.length > 0 && (
+                  <div>
+                    <div className="text-[8px] tracking-[0.3em] text-zinc-600 mb-2 mt-4">TIER CLIMB HISTORY</div>
+                    <div className="space-y-1.5">
+                      {tierHistory.slice(0, 10).map((entry, i) => {
+                        const isUp = entry.direction === 'up';
+                        const toColor = TIER_COLORS[entry.toTier] ?? '#94a3b8';
+                        const fromColor = TIER_COLORS[entry.fromTier] ?? '#52525b';
+                        return (
+                          <div key={i} className="flex items-center justify-between border border-zinc-900 px-3 py-2">
+                            <div className="flex items-center gap-2">
+                              <div className="text-[10px] font-black" style={{ color: isUp ? '#22c55e' : '#ef4444' }}>
+                                {isUp ? '▲' : '▼'}
+                              </div>
+                              <div>
+                                <div className="flex items-center gap-1">
+                                  <span className="text-[8px] font-black" style={{ color: fromColor }}>{entry.fromTier.toUpperCase()}</span>
+                                  <span className="text-[7px] text-zinc-700">→</span>
+                                  <span className="text-[8px] font-black" style={{ color: toColor }}>{entry.toTier.toUpperCase()}</span>
+                                </div>
+                                <div className="text-[7px] text-zinc-600">{entry.fighterName}</div>
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <div className="text-[8px] font-black" style={{ color: toColor }}>{entry.eloAtChange} ELO</div>
+                              <div className="text-[6px] text-zinc-700">
+                                {new Date(entry.recordedAt).toLocaleDateString()}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Seasonal Rank Progress */}
+                <div className="border border-zinc-900 p-4 mt-2" style={{ background: `${rankColor}08` }}>
+                  <div className="text-[8px] tracking-widest text-zinc-600 mb-2">SEASONAL RANK PROGRESS</div>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="text-2xl font-black" style={{ color: rankColor }}>{rankTier}</div>
+                    <div className="text-[9px] text-zinc-500">{rankPoints} RP</div>
+                  </div>
+                  <div className="flex justify-between text-[7px] text-zinc-700 mb-1">
+                    {RANK_TIERS.map(r => (
+                      <span key={r.tier} style={{ color: r.tier === rankTier.toUpperCase() ? rankColor : '#3f3f46' }}>
+                        {r.tier.slice(0, 3)}
+                      </span>
+                    ))}
+                  </div>
+                  <div className="h-1.5 bg-zinc-900">
+                    <div className="h-full transition-all duration-700"
+                      style={{
+                        width: `${Math.min(100, (rankPoints / 1200) * 100)}%`,
+                        background: `linear-gradient(90deg, #facc15, ${rankColor})`,
+                      }}
+                    />
+                  </div>
+                  <div className="mt-2 text-[7px] text-zinc-700">
+                    Next tier: <span className="text-zinc-400 font-black">
+                      {RANK_TIERS.find(r => r.min > rankPoints)?.tier ?? 'MAX RANK'}
+                    </span>
+                    {RANK_TIERS.find(r => r.min > rankPoints) && (
+                      <span className="ml-1">({RANK_TIERS.find(r => r.min > rankPoints)!.min - rankPoints} RP needed)</span>
+                    )}
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* H2H TAB */}
+        {activeTab === 'h2h' && (
+          <div className="space-y-4">
+            <div className="text-[8px] tracking-[0.3em] text-zinc-600 mb-3">HEAD-TO-HEAD RECORDS</div>
+
+            {eloLoading ? (
+              <div className="text-center py-8 text-zinc-700 text-[9px] animate-pulse">LOADING H2H DATA...</div>
+            ) : h2hRecords.length > 0 ? (
+              <div className="space-y-2">
+                {h2hRecords.map((record, i) => {
+                  const total = record.wins + record.losses + record.draws;
+                  const wr = total > 0 ? Math.round((record.wins / total) * 100) : 0;
+                  const isWinning = record.wins > record.losses;
+                  const isTied = record.wins === record.losses;
+                  return (
+                    <div key={i} className="border border-zinc-900 p-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <div>
+                          <div className="text-[9px] font-black text-white">{record.opponentName || 'UNKNOWN OPPONENT'}</div>
+                          <div className="text-[7px] text-zinc-600 mt-0.5">
+                            {record.userFighterId.toUpperCase()} vs {record.opponentFighterId.toUpperCase()}
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-[9px] font-black"
+                            style={{ color: isWinning ? '#22c55e' : isTied ? '#facc15' : '#ef4444' }}>
+                            {isWinning ? 'WINNING' : isTied ? 'TIED' : 'LOSING'}
+                          </div>
+                          <div className="text-[7px] text-zinc-600 mt-0.5">
+                            {new Date(record.lastPlayedAt).toLocaleDateString()}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className="text-2xl font-black text-green-400">{record.wins}</div>
+                        <div className="text-zinc-700">-</div>
+                        <div className="text-2xl font-black text-red-400">{record.losses}</div>
+                        <div className="text-zinc-700">-</div>
+                        <div className="text-2xl font-black text-zinc-500">{record.draws}</div>
+                        <div className="text-[7px] text-zinc-600 ml-1">W-L-D</div>
+                      </div>
+                      <div className="h-1.5 bg-zinc-900 flex overflow-hidden">
+                        <div className="h-full bg-green-500 transition-all" style={{ width: `${wr}%` }} />
+                        <div className="h-full bg-red-500 transition-all" style={{ width: `${total > 0 ? Math.round((record.losses / total) * 100) : 0}%` }} />
+                      </div>
+                      <div className="text-[7px] text-zinc-700 mt-1">{wr}% WIN RATE · {total} MATCHES</div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="text-center py-8 text-zinc-700 text-[9px] tracking-widest border border-zinc-900">
+                NO HEAD-TO-HEAD DATA YET<br />
+                <span className="text-zinc-800">PLAY RANKED MATCHES TO BUILD RECORDS</span>
+              </div>
+            )}
+
+            {/* Cosmetic Unlock Timeline */}
+            <div className="mt-4">
+              <div className="text-[8px] tracking-[0.3em] text-zinc-600 mb-2">COSMETIC UNLOCK TIMELINE</div>
+              {cosmeticTimeline.length > 0 ? (
+                <div className="space-y-1.5">
+                  {cosmeticTimeline.map((entry, i) => {
+                    const rarityColor = RARITY_COLOR[entry.rarity as Rarity] ?? '#94a3b8';
+                    return (
+                      <div key={i} className="flex items-center gap-3 border px-3 py-2"
+                        style={{ borderColor: `${rarityColor}30`, background: `${rarityColor}06` }}>
+                        <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: rarityColor }} />
+                        <div className="flex-1 min-w-0">
+                          <div className="text-[9px] font-black truncate" style={{ color: rarityColor }}>
+                            {entry.cosmeticName}
+                          </div>
+                          <div className="text-[7px] text-zinc-600 mt-0.5">
+                            {entry.cosmeticType} · {entry.unlockSource.toUpperCase()}
+                            {entry.unlockContext && ` · ${entry.unlockContext}`}
+                          </div>
+                        </div>
+                        <div className="text-[6px] text-zinc-700 flex-shrink-0">
+                          {new Date(entry.unlockedAt).toLocaleDateString()}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="text-center py-4 text-zinc-700 text-[9px] tracking-widest border border-zinc-900">
+                  NO COSMETICS UNLOCKED YET
+                </div>
+              )}
+            </div>
           </div>
         )}
 

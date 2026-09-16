@@ -22,6 +22,7 @@ const PracticeArenaScreen = dynamic(() => import('./components/PracticeArenaScre
 const StoryModeScreen = dynamic(() => import('./components/StoryModeScreen'), { ssr: false });
 const StageSelectScreen = dynamic(() => import('./components/StageSelectScreen'), { ssr: false });
 const SeasonalTournamentScreen = dynamic(() => import('./components/SeasonalTournamentScreen'), { ssr: false });
+const MatchmakingQueueScreen = dynamic(() => import('./components/MatchmakingQueueScreen'), { ssr: false });
 
 export default function App() {
   const { user, loading: authLoading, signOut } = useAuth();
@@ -134,6 +135,16 @@ export default function App() {
             >
               SEASONAL
               <span className="ml-3 text-[10px] text-orange-400 tracking-widest">ELO BRACKET</span>
+            </button>
+            <button
+              onClick={() => {
+                if (!user) { setScreen('auth' as any); }
+                else { setScreen('matchmaking_queue' as any); }
+              }}
+              className="block w-full border border-slate-600 px-6 py-4 text-left text-xl font-black tracking-widest hover:bg-white hover:text-black transition-all"
+            >
+              RANKED QUEUE
+              <span className="ml-3 text-[10px] text-cyan-400 tracking-widest">LIVE MATCHMAKING</span>
             </button>
             <button
               onClick={() => setScreen('practice' as any)}
@@ -385,6 +396,21 @@ export default function App() {
           <div className="text-right text-3xl md:text-7xl font-black italic text-slate-500">{p2?.name ?? 'P2'}</div>
         </div>
       </div>
+    );
+  }
+
+  // ── Matchmaking Queue ──
+  if ((screen as any) === 'matchmaking_queue') {
+    if (!user) return <AuthScreen onSuccess={() => setScreen('matchmaking_queue' as any)} />;
+    return (
+      <MatchmakingQueueScreen
+        onBack={() => setScreen(AppScreen?.MainMenu)}
+        onMatchFound={(opponentFighterId, _opponentFighterName) => {
+          const fighter = getBannonFighter(opponentFighterId);
+          if (fighter) setP2BannonFighter(fighter);
+          setScreen('stage_select' as any);
+        }}
+      />
     );
   }
 
