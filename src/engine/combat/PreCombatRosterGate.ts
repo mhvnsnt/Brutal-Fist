@@ -115,8 +115,9 @@ async function resolveGlbUrlWithFallback(
   }
   if (fighter.id === 'maime') {
     candidates.push(
-      { file: 'MAIME_rigged.glb', url: '/models/MAIME_rigged.glb' },
-      { file: 'MAIME_rigged.glb', url: `${BANNON_MODELS_CDN}/MAIME_rigged.glb` },
+      { file: 'MAIME_skinned.glb', url: '/models/MAIME_skinned.glb' },
+      { file: 'MAIME.glb', url: '/models/MAIME.glb' },
+      { file: 'MAIME.glb', url: `${BANNON_MODELS_CDN}/MAIME.glb` },
     );
   }
 
@@ -347,7 +348,7 @@ export async function runPreCombatRosterGate(
     });
     if (!glbReachable) {
       fighterRemediation.push(
-        `Fetch ${file} from Bannon assets/models/ (submodule BannonSource empty on this clone).`,
+        `Fetch ${file} from Bannon assets/models/ (init BannonSource submodule) or mirror under public/models/.`,
       );
     }
 

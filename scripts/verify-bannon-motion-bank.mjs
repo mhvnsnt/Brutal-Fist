@@ -261,7 +261,7 @@ async function main() {
     console.log(`Local GLB present: ${glbPath}`);
     console.log('Run `npm run bannon:measure-bind` for mixer bone-travel / bind counts.');
     console.log('Offline measure (prior): 116 bones, 1 SkinnedMesh, 571/571 tracks bound, deformationPass=true.');
-    console.log('FIGHT for full roster still BLOCKED if P2 GLB missing (only BANNON_rigged.glb mirrored).');
+    console.log('Grapple semantic stays MISSING_CLIP (no Mixamo attacker clinch in bank). Roster GLBs mirrored under public/models/ for Bannon+Maime+others; FIGHT still requires both selected fighters PASS PreCombatRosterGate.');
   } else {
     console.log('FIGHT remains BLOCKED until live GLB SkinnedMesh deformation is measured.');
   }

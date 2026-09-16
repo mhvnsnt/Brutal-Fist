@@ -18,18 +18,22 @@ export type BannonGlbRosterEntry = {
  */
 export const BANNON_GLB_MODELS: readonly BannonGlbRosterEntry[] = [
   // ── BANNON ──────────────────────────────────────────────────────────────────
-  // rigged_ready.glb is the primary combat entry — output of scripts/rig-static-glbs-cli.mjs
-  // BANNON.glb (named-part) remains as fallback for character select portrait only
-  {id:"bannon",name:"Bannon",model:"BANNON_rigged_ready.glb",attire:"Default (Rigged)",rigStatus:"skinned",playableGate:"PASS",source:"CANON_MODELS"},
+  // BANNON_rigged.glb is the primary combat entry (real Mixamo-skinned meshopt GLB).
+  // BANNON_rigged_ready.glb does NOT exist in Bannon CDN / versioneight / history — do not invent.
+  // BANNON.glb (named-part) remains as fallback for character select portrait only.
+  {id:"bannon",name:"Bannon",model:"BANNON_rigged.glb",attire:"Default (Rigged)",rigStatus:"skinned",playableGate:"PASS",source:"CANON_MODELS"},
   {id:"bannon",name:"Bannon",model:"BANNON.glb",attire:"Default (Static fallback)",rigStatus:"named-part",playableGate:"PASS",source:"CANON_MODELS"},
-  // RENAMED: was BANNON_muscular.glb — the muscular label was wrong; this is the fat alt
+  // Fat alt: roster name BANNON_fat.glb mirrors real BANNON_muscular.glb bytes (label historically wrong).
   {id:"bannon",name:"Bannon",model:"BANNON_fat.glb",attire:"Fat alt",rigStatus:"single-mesh-needs-rigready",playableGate:"PASS",source:"CANON_MODELS"},
+  {id:"bannon",name:"Bannon",model:"BANNON_muscular_rigready.glb",attire:"Muscular rigready",rigStatus:"skinned",playableGate:"PASS",source:"CANON_MODELS"},
 
   // ── MAIME ────────────────────────────────────────────────────────────────────
-  // rigged_ready.glb is the primary combat entry — output of scripts/rig-static-glbs-cli.mjs
-  {id:"maime",name:"Maime",model:"MAIME_rigged_ready.glb",attire:"Default (Rigged)",rigStatus:"skinned",playableGate:"PASS",source:"CANON_MODELS"},
+  // MAIME_skinned.glb is the best real skinned combat entry (versioneight + local mirror).
+  // MAIME_rigged_ready.glb does NOT exist anywhere — do not invent / synthesize.
+  {id:"maime",name:"Maime",model:"MAIME_skinned.glb",attire:"Default (Skinned)",rigStatus:"skinned",playableGate:"PASS",source:"CANON_MODELS"},
   {id:"maime",name:"Maime",model:"MAIME.glb",attire:"Default (Static fallback)",rigStatus:"named-part",playableGate:"PASS",source:"CANON_MODELS"},
   {id:"maime",name:"Maime",model:"MAIME_tattered.glb",attire:"Tattered",rigStatus:"named-part",playableGate:"PASS",source:"CANON_MODELS"},
+  {id:"maime",name:"Maime",model:"MAIME_tattered_skinned.glb",attire:"Tattered (Skinned)",rigStatus:"skinned",playableGate:"PASS",source:"CANON_MODELS"},
 
   // ── ONYX ─────────────────────────────────────────────────────────────────────
   {id:"onyx",name:"Onyx",model:"ONYX_street.glb",attire:"Street",rigStatus:"skinned",playableGate:"PASS",source:"CANON_MODELS"},
