@@ -11,8 +11,10 @@ export type BannonGlbRosterEntry = {
  * There is no attire-count cap.
  */
 export const BANNON_GLB_MODELS: readonly BannonGlbRosterEntry[] = [
-  {id:"bannon",name:"Bannon",model:"BANNON.glb",rigStatus:"named-part",playableGate:"PASS",source:"CANON_MODELS"},
-  {id:"bannon",name:"Bannon",model:"BANNON_muscular.glb",attire:"Muscular alt",rigStatus:"single-mesh-needs-rigready",playableGate:"BLOCKED_RIG",source:"CANON_MODELS"},
+  {id:"bannon",name:"Bannon",model:"BANNON.glb",attire:"Default / Muscular",rigStatus:"named-part",playableGate:"PASS",source:"CANON_MODELS"},
+  // The legacy filename says "muscular", but the asset is the FAT Bannon body.
+  // Keep the filename stable until the binary is physically renamed; do not lie about its identity.
+  {id:"bannon",name:"Bannon",model:"BANNON_muscular.glb",attire:"Fat",rigStatus:"single-mesh-needs-rigready",playableGate:"BLOCKED_RIG",source:"CANON_MODELS"},
   {id:"maime",name:"Maime",model:"MAIME.glb",rigStatus:"named-part",playableGate:"PASS",source:"CANON_MODELS"},
   {id:"maime",name:"Maime",model:"MAIME_tattered.glb",attire:"Tattered",rigStatus:"named-part",playableGate:"PASS",source:"CANON_MODELS"},
   {id:"onyx",name:"Onyx",model:"ONYX.glb",attire:"Chola/Spiked",rigStatus:"single-mesh-needs-rigready",playableGate:"BLOCKED_RIG",source:"CANON_MODELS"},
@@ -60,3 +62,30 @@ export const BANNON_GLB_MODELS: readonly BannonGlbRosterEntry[] = [
 export const BANNON_GLB_PLAYABLE_MODELS = BANNON_GLB_MODELS.filter(e => e.playableGate === "PASS");
 export const BANNON_GLB_BLOCKED_MODELS = BANNON_GLB_MODELS.filter(e => e.playableGate !== "PASS");
 export const BANNON_GLB_FIGHTERS = [...new Set(BANNON_GLB_MODELS.map(e => e.id))];
+
+/**
+ * Character-select identity law: one roster slot per fighter ID.
+ * Attires remain model records underneath that identity and must never create
+ * duplicate character-select boxes. The first PASS model is the default
+ * playable presentation; additional PASS models are secondary attires.
+ */
+export type BannonCharacterSelectEntry = {
+  id: string;
+  name: string;
+  defaultModel: BannonGlbRosterEntry;
+  attires: readonly BannonGlbRosterEntry[];
+};
+
+export const BANNON_CHARACTER_SELECT_ROSTER: readonly BannonCharacterSelectEntry[] = BANNON_GLB_FIGHTERS.flatMap((id) => {
+  const models = BANNON_GLB_MODELS.filter((entry) => entry.id === id);
+  const playable = models.filter((entry) => entry.playableGate === "PASS");
+  if (playable.length === 0) return [];
+  return [{
+    id,
+    name: models[0].name,
+    defaultModel: playable[0],
+    attires: playable.slice(1),
+  }];
+});
+
+export const BANNON_DEFAULT_CHARACTER = BANNON_CHARACTER_SELECT_ROSTER.find((entry) => entry.id === "bannon");
