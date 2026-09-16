@@ -6,8 +6,10 @@
  * known Bannon source assets into a temporary directory, then invokes the
  * real live-deformation harness against them.
  *
- * Source identities are pinned by GitHub blob SHA in the report below.
- * The harness remains the authority for PASS/UNKNOWN/BLOCKED.
+ * The Bannon GLB Git blob SHA is pinned below. The clip URL is pinned to the
+ * main branch because its contents are already independently verified by the
+ * motion-bank verifier. The live harness remains the authority for
+ * PASS/UNKNOWN/BLOCKED.
  */
 
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
@@ -20,7 +22,6 @@ const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const GLB_URL = 'https://raw.githubusercontent.com/mhvnsnt/Bannon/main/assets/models/BANNON_rigged.glb';
 const CLIP_URL = 'https://raw.githubusercontent.com/mhvnsnt/Bannon/main/assets/moves/clips/DWARF_WALK.json';
 const GLB_GIT_BLOB_SHA = '1842af42f6777c6f04b79c8c5a877dcc27b3f3e9';
-const CLIP_GIT_BLOB_SHA = '3c0d2f7a7c1f6e2f3e8f6f2b5d0f2a0f3d0f0a0a';
 
 async function download(url, output) {
   const response = await fetch(url, { redirect: 'follow' });
@@ -44,7 +45,6 @@ try {
       glbGitBlobSha: GLB_GIT_BLOB_SHA,
       glbBytes,
       clip: CLIP_URL,
-      clipGitBlobSha: CLIP_GIT_BLOB_SHA,
       clipBytes,
     },
   }, null, 2));
