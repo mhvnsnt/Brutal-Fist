@@ -2,7 +2,7 @@
 
 Date: 2026-09-16 (America/Chicago)
 
-Branch under test: `grok/anim-euler-gate-wire` (from `rocket-update` @ `c217b443e1660acc53215eaa3a89b26dd2342bd9`)
+Branch under test: `grok/anim-euler-gate-authoritative` (from `rocket-update` @ `92b656894bd7c6e75ac693fc24ab60cc8f02d62f`)
 
 ## Honest status
 
