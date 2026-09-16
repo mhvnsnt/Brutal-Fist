@@ -1,27 +1,109 @@
-# Brutal-Fist Agent Operating Rules
+# AGENTS.md — Brutal-Fist Agent Coordination Law
 
 ## Rocket Alignment Law
 
-This repository is developed collaboratively with Rocket and other agents. The repository is one synchronized game codebase, not competing implementations.
+> **Before every change, inspect and align with Rocket's latest repository state. Preserve Rocket's existing functionality and advanced implementations. Make changes additively and non-destructively. Never replace working Rocket code with a simpler alternative merely to resolve a conflict. When capabilities differ, integrate the strongest compatible implementation from each side.**
 
-1. **Inspect first, every turn.** Before making substantive changes, check the current `main`, `rocket-update`, recent commits, open PRs, and the relevant existing implementation.
-2. **Align with Rocket's latest work.** Treat Rocket's latest committed implementation as part of the current baseline. Do not assume an older snapshot is authoritative.
-3. **Preserve advanced work.** Never replace Rocket's working or more advanced implementation with a simpler version merely to resolve a conflict.
-4. **Add non-destructively.** Extend, integrate, repair, or wrap existing systems. Prefer additive changes over rewrites.
-5. **Integrate capability differences.** If Rocket provides functionality this agent cannot reproduce, preserve it. If this agent can provide a capability Rocket cannot, add it around/on top of Rocket's implementation without removing existing behavior.
-6. **No wholesale conflict selection.** Do not resolve conflicts by blindly choosing `ours` or `theirs` for whole files. Compare the implementations and retain useful behavior from both sides.
-7. **No destructive rollback.** Do not reset, force-replace, or discard another agent's work unless the user explicitly requests it.
-8. **Synchronize before continuing.** When Rocket has committed to `main`, synchronize the Rocket working copy from GitHub before making new changes there. When this agent changes the repository, keep the shared branch/PR workflow synchronized as well.
-9. **Keep one game.** The objective is one progressively stronger, playable Brutal-Fist build. Branches and PRs are integration mechanisms, not separate competing versions of the game.
-10. **Verify before claiming.** Inspect diffs, refs, relevant files, and CI/status results when available. Distinguish verified repository state from assumptions.
+---
 
-## Combat/Animation Priority
+## Operating Rules (Binding on All Agents)
 
-Combat and animation work should make the game genuinely playable. Preserve and build upon Rocket's existing locomotion, state-machine, hitbox, hit-stop, animation blending, rig inspection, character normalization, practice-mode, replay, and combat-flow systems rather than replacing them with diagnostic-only scaffolding.
+1. **Every turn/work session**: Check the current GitHub state and what Rocket has done.
+2. **Always align with Rocket's latest work** before changing anything.
+3. **Never overwrite Rocket's advanced implementation** just because another version is easier or conflicts.
+4. **Build non-destructively on top of it** — extend, integrate, repair, or add missing capabilities.
+5. **If Rocket can do something you can't**, preserve Rocket's implementation.
+6. **If you can do something Rocket can't**, add that capability around/on top of Rocket's work, without replacing working pieces.
+7. **Resolve conflicts by integration**, not "pick ours/pick theirs" wholesale.
+8. **Keep main, rocket-update, and the working state synchronized** so both agents are operating from the same reality.
+9. **Before any substantial change**, inspect the relevant existing implementation, tests, commits, and dependencies.
+10. **No destructive rollback/replacement** unless the user explicitly instructs it.
+11. **When Rocket pushes new work**, that work becomes part of the baseline you must account for on the next turn.
+12. **The goal is one progressively stronger Brutal-Fist**, not two competing implementations.
 
-## Git Safety
+---
 
-- Use targeted commits.
-- Compare before merging.
-- Preserve working behavior on both sides.
-- After integration, ensure the shared branches point to a known synchronized state before the next agent session.
+## Sync Workflow (Every Cycle)
+
+```
+1. Pull from GitHub (Rocket panel) — get latest main
+2. Confirm Rocket is working from current main
+3. Make new changes (combat, animation, VFX, etc.)
+4. Push from Rocket
+5. Merge resulting changes back into main without replacing unrelated work
+6. Next cycle starts with Pull from GitHub again
+```
+
+This gives us a **single continuously advancing codebase** instead of Rocket and main drifting into competing versions.
+
+---
+
+## Conflict Resolution Protocol
+
+When a merge conflict arises between Rocket's work and another agent's work:
+
+- **DO NOT** pick one side wholesale.
+- **DO** read both sides, identify what each adds, and write a merged version that preserves both.
+- If Rocket has a more advanced implementation of a system (e.g., locomotion, animation blending, hitbox), keep Rocket's version as the base and layer the other agent's additions on top.
+- If the other agent has capabilities Rocket lacks (e.g., GitHub API calls, complex data transforms), add those capabilities without removing Rocket's existing code.
+
+---
+
+## Architecture Ownership
+
+| System | Owner / Source of Truth |
+|---|---|
+| 3D Combat Arena (CombatArena3D) | Rocket |
+| Fighter Mesh & Animation (FighterMesh) | Rocket |
+| Locomotion System | Rocket |
+| Bone Hitbox System | Rocket |
+| State Machine (FighterStateMachine) | Rocket |
+| Frame Data & Hitbox (FrameDataHitbox) | Rocket |
+| Combo System | Rocket |
+| Post-Match Screen | Rocket |
+| VFX / Bloom / Particles | Rocket |
+| GitHub API / CI / Submodule repair | Other agents |
+| Bannon asset pipeline | Shared |
+| Supabase / matchmaking / stats | Shared |
+
+---
+
+## File Modification Rules
+
+- **Never regenerate** a file from scratch if it already exists with working logic.
+- **Always read** the current file before modifying it.
+- **Use preservation comments** (`// ... existing code ...`) when editing existing files.
+- **Never remove** imports, exports, or hooks that are used elsewhere.
+- **Never downgrade** a system (e.g., replacing a velocity-gated animation blender with a simple state switch).
+
+---
+
+## GLB Runtime Integrity Law — Binding
+
+Before modifying fighter rendering, animation, locomotion, combat timing, transforms, rigs, or model ingestion, read `docs/GLB_RUNTIME_INTEGRITY_LAW.md`.
+
+The following are hard regressions:
+
+- No plain `Object3D.clone(true)` for animated SkinnedMesh fighters; use `SkeletonUtils.clone`.
+- Do not call animation PASS because a clip name resolved or a hidden skeleton moved; prove the rendered SkinnedMesh deforms.
+- Do not use bind-pose-only floor validation; inspect animated rendered bounds.
+- Do not hard-code P1/P2 facing as universally correct for every source asset.
+- Facing corrections belong in an explicit asset/model transform calibration layer, never random bone rotations.
+- `UNKNOWN` is never PASS.
+- Gameplay root movement and animation root motion must have one explicit owner.
+- Frame timing must remain tied to authoritative move/frame data; crossfade duration is not move timing.
+- Every discovered AI failure becomes a durable rule, diagnostic, or regression test.
+
+---
+
+## Communication Between Agents
+
+- Rocket commits to `rocket-update` branch → opens PR to `main`.
+- Other agents commit directly to `main` or feature branches.
+- **Before merging any PR**, check that it does not overwrite Rocket's advanced implementations.
+- Use `docs/ROCKET_HANDOFF.md` and `docs/AI_AGENT_HANDOFF.md` for cross-agent context passing.
+- This file (`AGENTS.md`) is the **authoritative law** — it supersedes any conflicting instruction in conversation history.
+
+---
+
+*Last updated by Brutal Fist agent — GLB runtime integrity cycle.*

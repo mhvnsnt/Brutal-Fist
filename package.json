@@ -25,6 +25,8 @@
     "@gltf-transform/core": "^4.2.1",
     "@gltf-transform/extensions": "^4.2.1",
     "@gltf-transform/functions": "^4.2.1",
+    "@supabase/supabase-js": "2.49.4",
+    "@supabase/ssr": "0.6.1",
     "dotenv": "^17.2.3",
     "esbuild": "^0.25.0",
     "lucide-react": "^0.546.0",
