@@ -171,6 +171,27 @@ export class FighterStateMachine {
     return this.actionState === 'Stunned' || this.actionState === 'Crumple';
   }
 
+  /** Returns the currently queued follow-up action (buffered during recovery), or null */
+  getQueuedAction(): { type: string; label: string } | null {
+    if (!this.queuedAction) return null;
+    const labels: Record<string, string> = {
+      light: 'L',
+      heavy: 'H',
+      guard: 'G',
+      grapple: 'GR',
+    };
+    return { type: this.queuedAction.type, label: labels[this.queuedAction.type] ?? this.queuedAction.type.toUpperCase() };
+  }
+
+  /** Returns recovery progress 0-1 (0 = not in recovery, 1 = recovery complete) */
+  getRecoveryProgress(): number {
+    if (!this.currentMove || !this.isRecovering) return 0;
+    const recoveryStart = this.currentMove.startup + this.currentMove.active;
+    const recoveryDuration = this.currentMove.recovery;
+    if (recoveryDuration <= 0) return 1;
+    return Math.min(1, (this.moveElapsed - recoveryStart) / recoveryDuration);
+  }
+
   // ── Register custom special moves ──────────────────────────────────────────
   registerSpecialMoves(moves: SpecialMoveDefinition[]) {
     this.specialMoves = [...moves, ...DEFAULT_SPECIAL_MOVES];

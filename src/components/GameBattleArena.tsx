@@ -57,6 +57,8 @@ interface GameBattleArenaProps {
   stageId?: import('./StageSelectScreen').StageId;
   /** Debug overlay settings — only passed from practice mode */
   debugSettings?: DebugOverlaySettings;
+  /** When true, shows practice-mode label and enables debug settings panel */
+  isPracticeMode?: boolean;
 }
 
 const EMPTY_INPUT: InputBitmask = {
@@ -87,6 +89,7 @@ export default function GameBattleArena({
   settings = DEFAULT_TOURNAMENT_SETTINGS,
   stageId = 'urban_night',
   debugSettings = DEFAULT_DEBUG_SETTINGS,
+  isPracticeMode = false,
 }: GameBattleArenaProps) {
   const engineRef = useRef<GameEngine | null>(null);
   const inputRef = useRef<InputBitmask>({ ...EMPTY_INPUT });
@@ -141,6 +144,10 @@ export default function GameBattleArena({
     name: string; player: 'p1' | 'p2'; id: number;
   } | null>(null);
   const specialNoticeIdRef = useRef(0);
+
+  // ── Queued action display state (read from SM each frame) ─────────────────
+  const [p1QueuedAction, setP1QueuedAction] = useState<{ type: string; label: string } | null>(null);
+  const [p1RecoveryProgress, setP1RecoveryProgress] = useState(0);
 
   // ── Fighter world positions (for hitbox collision) ────────────────────────
   const P1_X = -1.8;
@@ -569,6 +576,10 @@ export default function GameBattleArena({
       prevP1AnimRef.current = p1NextMotion;
       prevP2AnimRef.current = p2NextMotion;
 
+      // ── Update queued action HUD display ──────────────────────────────────
+      setP1QueuedAction(p1SM.getQueuedAction());
+      setP1RecoveryProgress(p1SM.getRecoveryProgress());
+
       if (engine.isMatchOver() && !koHandledRef.current) {
         koHandledRef.current = true;
         setKo(true);
@@ -836,12 +847,41 @@ export default function GameBattleArena({
             </div>
           )}
 
-          {/* ── Input Queue Indicator ── */}
-          {p1SMRef.current.isRecovering && (
-            <div className="absolute bottom-32 left-4 z-40 pointer-events-none">
-              <div className="text-[7px] text-yellow-400/70 tracking-widest animate-pulse">QUEUED</div>
-            </div>
-          )}
+          {/* ── Input Queue / Recovery HUD ── */}
+          <div className="absolute bottom-32 left-4 z-40 pointer-events-none flex flex-col gap-1">
+            {/* Recovery progress bar */}
+            {p1RecoveryProgress > 0 && p1RecoveryProgress < 1 && (
+              <div className="flex items-center gap-1.5">
+                <div className="text-[7px] text-orange-400/80 tracking-widest font-black">REC</div>
+                <div className="w-16 h-1.5 bg-zinc-800/80 border border-zinc-700/60 overflow-hidden">
+                  <div
+                    className="h-full transition-all duration-75"
+                    style={{ width: `${p1RecoveryProgress * 100}%`, background: '#f97316' }}
+                  />
+                </div>
+              </div>
+            )}
+            {/* Queued action badge */}
+            {p1QueuedAction && (
+              <div className="flex items-center gap-1.5 animate-pulse">
+                <div className="text-[7px] text-yellow-400/80 tracking-widest">QUEUED</div>
+                <div
+                  className="px-2 py-0.5 text-[9px] font-black tracking-widest border"
+                  style={{
+                    color: p1QueuedAction.type === 'light' ? '#60a5fa'
+                         : p1QueuedAction.type === 'heavy' ? '#f87171'
+                         : p1QueuedAction.type === 'guard'? '#a1a1aa' :'#c084fc',
+                    borderColor: p1QueuedAction.type === 'light' ? '#3b82f680'
+                               : p1QueuedAction.type === 'heavy' ? '#ef444480'
+                               : p1QueuedAction.type === 'guard'? '#52525b80' :'#a855f780',
+                    background: 'rgba(0,0,0,0.75)',
+                  }}
+                >
+                  {p1QueuedAction.label}
+                </div>
+              </div>
+            )}
+          </div>
 
           {/* Move Execution Feedback */}
           <MoveExecutionFeedback

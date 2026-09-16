@@ -31,17 +31,15 @@ interface CharacterPortrait3DProps {
 }
 
 /**
- * NORMALIZATION CONTRACT (v8 — Universal Root Bone Offset + Adaptive Camera):
+ * NORMALIZATION CONTRACT (v9 — Universal Box3 + No Manual Nudge):
  *
- * Global Y-offset strategy:
- *   Bannon and Maime are the reference baseline (root bones at pelvis/waist) → 0 extra offset.
- *   ALL other characters have floor-level root bones → receive a universal +1.15 Y offset.
- *   Detection is by explicit allowlist: only "bannon" and "maime" substrings get 0.
- *   Every other character — known or unknown — gets +1.15 automatically.
+ * All characters use the same Box3 normalization as FighterMesh:
+ *   - Scale to 2.0 units tall
+ *   - Offset so bottom of bounding box sits at Y=0
+ *   - No character-specific manual offsets
+ *   - No child rotation resets (preserves model's original bone orientations)
  *
- * Camera positions adapt to nudgeY so all characters are correctly framed:
- *   - Bust mode:  lookAt Y target = 1.4 + nudgeY (tracks character's head regardless of offset)
- *   - Full mode:  lookAt Y target = 1.0 + nudgeY * 0.5
+ * Camera positions are fixed — no nudgeY needed since all models are normalized to Y=0 baseline.
  *
  * PORTRAIT ORIENTATION IS COMPLETELY DECOUPLED FROM IN-FIGHT ORIENTATION:
  *   - Portrait rotationY prop only affects the portrait Canvas rotation
@@ -51,13 +49,11 @@ interface CharacterPortrait3DProps {
 
 /**
  * Returns the Y nudge for a character.
- * ONLY Bannon and Maime (the reference baseline) get 0.
- * Every other character — including all floor-rooted fighters — gets +1.15.
+ * v9: All characters use Box3 normalization — nudgeY is always 0.
+ * Kept for API compatibility but always returns 0.
  */
-function getYNudge(modelUrl: string): number {
-  const lower = modelUrl.toLowerCase();
-  if (lower.includes('bannon') || lower.includes('maime')) return 0;
-  return 1.15;
+function getYNudge(_modelUrl: string): number {
+  return 0;
 }
 
 /**
@@ -96,19 +92,19 @@ function selectIdleClip(clips: THREE.AnimationClip[]): THREE.AnimationClip {
   return clips[0];
 }
 
-/** Fixed camera that adapts lookAt to the character's Y nudge so all fighters are correctly framed */
+/** Fixed camera — all models normalized to Y=0 baseline, so camera targets are fixed */
 function FixedCamera({ mode, nudgeY }: { mode: 'bust' | 'full'; nudgeY: number }) {
   const { camera } = useThree();
   useEffect(() => {
     const cam = camera as THREE.PerspectiveCamera;
     if (mode === 'bust') {
       cam.fov = 28;
-      cam.position.set(0, 1.6 + nudgeY * 0.5, 3.2);
-      cam.lookAt(0, 1.4 + nudgeY, 0);
+      cam.position.set(0, 1.6, 3.2);
+      cam.lookAt(0, 1.4, 0);
     } else {
       cam.fov = 40;
-      cam.position.set(0, 1.0 + nudgeY * 0.4, 4.5);
-      cam.lookAt(0, 1.0 + nudgeY * 0.5, 0);
+      cam.position.set(0, 1.0, 4.5);
+      cam.lookAt(0, 1.0, 0);
     }
     cam.updateProjectionMatrix();
   }, [mode, nudgeY, camera]);
@@ -167,14 +163,16 @@ function PortraitModel({
         const scaledBox = new THREE.Box3().setFromObject(cloned);
         const scaledCenter = scaledBox.getCenter(new THREE.Vector3());
 
-        // ── Step 5: Center the mesh horizontally and at Y=0 ───────────────────
-        cloned.position.set(-scaledCenter.x, 1.0 - scaledCenter.y, -scaledCenter.z);
+        // ── Step 5: Center horizontally; floor bottom of bounding box at Y=0 ──
+        // CRITICAL: use scaledBox.min.y (not scaledCenter.y) so ALL characters
+        // stand on the floor regardless of where their root bone is.
+        // Do NOT reset child rotations — that breaks models whose root bone
+        // is oriented away from the camera.
+        cloned.position.set(-scaledCenter.x, -scaledBox.min.y, -scaledCenter.z);
 
-        // ── Step 6: Reset source rotation on root AND all top-level children ──
+        // ── Step 6: Reset ONLY the root scene rotation (not children) ─────────
+        // Resetting children breaks models with non-zero root bone orientations.
         cloned.rotation.set(0, 0, 0);
-        cloned.children.forEach((child) => {
-          child.rotation.set(0, 0, 0);
-        });
 
         // ── Step 7: Apply faction color tint ──────────────────────────────────
         const color = new THREE.Color(factionColor);
@@ -203,11 +201,8 @@ function PortraitModel({
           action.play();
         }
 
-        // ── Step 9: Compute the Y nudge for the PARENT group ──────────────────
-        // getYNudge returns 0 ONLY for Bannon and Maime (reference baseline).
-        // ALL other characters get +1.15 universally.
-        // The camera FixedCamera component adapts its lookAt to this nudge.
-        const nudgeY = getYNudge(modelUrl);
+        // nudgeY is always 0 in v9 — Box3 normalization handles all characters uniformly
+        const nudgeY = 0;
 
         setModel({ scene: cloned, nudgeY });
       },

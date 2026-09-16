@@ -203,13 +203,16 @@ function FighterMeshInner({
     const scaledBox = new THREE.Box3().setFromObject(cloned);
 
     // Offset so bottom of bounding box sits exactly at Y=0
+    // Use scaledBox.min.y (not center.y) so ALL characters stand on the floor
+    // regardless of where their root bone is located.
     cloned.position.set(
       -center.x * scale,
       -scaledBox.min.y,
       -center.z * scale,
     );
 
-    // Clear any rotation baked into the model — parent group controls rotation
+    // Clear ONLY the root scene rotation — do NOT reset children.
+    // Resetting children breaks models whose root bone is oriented away from camera.
     cloned.rotation.set(0, 0, 0);
 
     // Apply PSX vertex snapping to all meshes
