@@ -8,7 +8,7 @@ export const AppScreen = {
   Combat: 'Combat',
   PostMatch: 'PostMatch'
 } as const;
-export type AppScreen = typeof AppScreen[keyof typeof AppScreen];
+
 
 export const FighterState = {
   Neutral: 'Neutral',
@@ -21,7 +21,7 @@ export const FighterState = {
   Pinned: 'Pinned',
   KO: 'KO'
 } as const;
-export type FighterState = typeof FighterState[keyof typeof FighterState];
+
 
 export type FighterAnimation =
   | 'idle' | 'walk' | 'light' | 'heavy' | 'guard' | 'hit' | 'block' |'grapple' | 'throw' | 'pin' | 'ko';
