@@ -406,20 +406,26 @@ export class AutoRigDetector {
         }));
         distances.sort((a, b) => a.dist - b.dist);
 
-        const nearest = distances.slice(0, 2);
+        // RUNTIME INVARIANT (PR #14/#15): Use up to 4 influences per vertex.
+        // Three.js SkinnedMesh enforces a maximum of 4 bone influences per vertex
+        // on the WebGL path. Using 4 (not 2) produces smoother deformation and
+        // matches the Khronos glTF spec for JOINTS_0/WEIGHTS_0 attributes.
+        // Weights are inverse-distance weighted and normalized to sum to 1.0.
+        const influenceCount = Math.min(4, distances.length);
+        const nearest = distances.slice(0, influenceCount);
         const totalInvDist = nearest.reduce((sum, d) => sum + (d.dist > 0 ? 1 / d.dist : 1e6), 0);
 
-        for (let j = 0; j < 2; j++) {
+        for (let j = 0; j < influenceCount; j++) {
           skinIndices[i * 4 + j] = nearest[j].idx;
           skinWeights[i * 4 + j] = nearest[j].dist > 0
             ? (1 / nearest[j].dist) / totalInvDist
             : 1.0;
         }
-        // Remaining 2 slots: zero weight
-        skinIndices[i * 4 + 2] = 0;
-        skinIndices[i * 4 + 3] = 0;
-        skinWeights[i * 4 + 2] = 0;
-        skinWeights[i * 4 + 3] = 0;
+        // Zero-fill remaining slots beyond influenceCount
+        for (let j = influenceCount; j < 4; j++) {
+          skinIndices[i * 4 + j] = 0;
+          skinWeights[i * 4 + j] = 0;
+        }
       }
 
       geometry.setAttribute('skinIndex', new THREE.BufferAttribute(skinIndices, 4));
@@ -436,6 +442,12 @@ export class AutoRigDetector {
 
       // Bind the skeleton to the skinned mesh
       skinnedMesh.bind(skeleton, skinnedMesh.matrixWorld);
+
+      // RUNTIME INVARIANT (PR #14/#15): Normalize skin weights after binding.
+      // Ensures all per-vertex weights sum to 1.0 per the Khronos glTF spec.
+      // Without this, inverse-distance weights that don't sum exactly to 1
+      // produce stretched/displaced geometry during animation.
+      skinnedMesh.normalizeSkinWeights();
 
       // Replace the original mesh in the parent
       if (mesh.parent) {
