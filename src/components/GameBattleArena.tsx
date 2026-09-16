@@ -285,6 +285,10 @@ export default function GameBattleArena({
   // ── Cinematic phase state ─────────────────────────────────────────────────
   const [cinematicPhase, setCinematicPhase] = useState<CinematicPhase>('sweep');
 
+  // ── Pause menu state ──────────────────────────────────────────────────────
+  const [isPaused, setIsPaused] = useState(false);
+  const [pauseTab, setPauseTab] = useState<'menu' | 'replay'>('menu');
+
   // ESC key toggles pause (only during fight phase, not during KO)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -350,10 +354,6 @@ export default function GameBattleArena({
 
   // ── Global Audio Manager ──────────────────────────────────────────────────
   const audioManagerRef = useRef(getGlobalAudioManager());
-
-  // ── Pause menu state ──────────────────────────────────────────────────────
-  const [isPaused, setIsPaused] = useState(false);
-  const [pauseTab, setPauseTab] = useState<'menu' | 'replay'>('menu');
 
   // Build engine
   useEffect(() => {
