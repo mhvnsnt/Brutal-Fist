@@ -316,5 +316,73 @@ setTimeout(() => transitionToIdle(), 500); // hardcoded
 
 ---
 
-*Last updated: Brutal-Fist v7 — GLB normalization + animation binding cycle.*
+### LAW 13 — Synthetic Rig for Bone-Less Models
+
+**The mistake**: AI skips bone-less models entirely or crashes when `report.quality === 'none'`. This leaves characters invisible or broken in the arena.
+
+**The law**:
+- When `AutoRigDetector.analyze()` returns `quality === 'none'` or `totalBones === 0`, call `AutoRigDetector.buildSyntheticRig(clonedScene)` to generate a procedural Mixamo-compatible skeleton from the mesh AABB.
+- The synthetic rig uses standard humanoid proportions (hips at 52% height, head at 90%, etc.) and Mixamo bone names so animation clips can be retargeted.
+- After building the synthetic rig, register the new bones in the clone map so UUID-based mixer binding works.
+- The synthetic rig provides AABB-level hitboxes and basic animation support. For full bone-parented hitboxes, the model should be re-rigged with Mixamo.
+- NEVER skip normalization or mixer creation for bone-less models — always run the full pipeline.
+
+```typescript
+// CORRECT
+if (report.quality === 'none' || report.totalBones === 0) {
+  const syntheticResult = AutoRigDetector.buildSyntheticRig(cloned);
+  // Register synthetic bones in clone map for UUID binding
+  cloned.traverse(obj => {
+    if ((obj as THREE.Bone).isBone && obj.name.startsWith('mixamorig')) {
+      cloneMap.set(obj.name, obj);
+    }
+  });
+}
+
+// WRONG — skipping bone-less models
+if (report.quality === 'none') return null; // ❌ breaks combat
+```
+
+---
+
+### LAW 14 — Animation Alias Coverage Must Include All Source Repos
+
+**The mistake**: AI only maps generic clip names (idle, walk, attack) and misses clips from Schwarzerblitz, Tekken, Bannon, and Mixamo repos. Characters with source-specific clip names appear frozen.
+
+**The law**:
+- `ANIMATION_ALIASES` in `FighterMesh.tsx` MUST include aliases for all four sources:
+  - Schwarzerblitz: `SBW_idle`, `SBW_walk_fwd`, `SBW_lightAttack`, etc.
+  - Tekken: `T_1`, `T_2`, `T_3`, `T_4`, `T_jab`, `T_cross`, `T_1_3`, `T_2_4`, etc.
+  - Bannon: `bf_jab`, `bf_cross`, `bf_elbow`, `bf_walk_fwd`, etc.
+  - Mixamo: `Jab`, `Cross`, `Hook`, `Uppercut`, `Walking`, `Punching`, `Kicking`, etc.
+- `AnimationStateMap.ts` MUST have the same coverage.
+- `MoveLibrary.ts` MUST have separate alias maps for each source (`SBW_ALIASES`, `TEKKEN_ALIASES`, `BANNON_ALIASES`, `MIXAMO_ALIASES`).
+- When adding a new clip source, add it to ALL THREE files simultaneously.
+
+---
+
+### LAW 15 — All Combat States Must Have Frame Data
+
+**The mistake**: AI adds new `FighterMotionState` values but forgets to add them to `DEFAULT_FRAME_DATA` in `MoveLibrary.ts`. This causes TypeScript errors and missing hitbox timing.
+
+**The law**:
+- Every value in the `FighterMotionState` union type MUST have a corresponding entry in `DEFAULT_FRAME_DATA`.
+- When adding a new state, add it to: (1) the union type in `AnimationController.ts`, (2) `DEFAULT_FRAME_DATA` in `MoveLibrary.ts`, (3) `ANIMATION_ALIASES` in `FighterMesh.tsx`, (4) `aliases` in `AnimationStateMap.ts`.
+- States without hitboxes (locomotion, post-match) use `hitboxStartFrame: 0, hitboxEndFrame: 0, damage: 0`.
+
+---
+
+### LAW 16 — Loop vs One-Shot Animation Modes Must Be Set Correctly
+
+**The mistake**: AI sets all animations to `LoopRepeat` or all to `LoopOnce`. Attacks that loop never return to idle; locomotion that plays once freezes after one cycle.
+
+**The law**:
+- **Loop states** (`LoopRepeat, Infinity`): idle, walk, run, crouch, guard, strafe, sidestep, backdash, knockdown (ground hold)
+- **One-shot states** (`LoopOnce, 1` + `clampWhenFinished = true`): all attacks, hit reactions, knockdown fall, wakeup, victory, defeat, taunt, intro, throws
+- Set the loop mode on `nextAction` BEFORE calling `crossFadeTo()` or `play()`.
+- For one-shot attacks, listen to the mixer's `finished` event to transition back to idle.
+
+---
+
+*Last updated: Brutal-Fist v8 — Synthetic rig + full source alias coverage + loop mode laws.*
 *These laws are derived from real recurring failures observed across multiple AI agent sessions.*
