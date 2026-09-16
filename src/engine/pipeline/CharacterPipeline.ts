@@ -73,12 +73,13 @@ import {
   generateProceduralClipSet,
   loadBannonClipsFromPublic,
 } from '../retarget/BannonClipJsonAdapter';
-import { bindClipTracksToTargetBones,  } from '../retarget/BannonEulerMotionAdapter';
+import { bindClipTracksToTargetBones } from '../retarget/BannonEulerMotionAdapter';
 import {
   AnimationSourceRegistry,
   validateRegistryCompleteness,
 } from '../retarget/AnimationSourceRegistry';
 import { SEMANTIC_STATE_ALIASES } from '../retarget/SemanticStateAliases';
+import { PREFERRED_REQUIRED_SEMANTIC_STATES } from '../retarget/BannonMotionBankPreferred';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constants
@@ -625,82 +626,107 @@ export async function extractAndRetargetAnimations(
     bridgeClipCount = processedClips.length;
   }
 
-  // If GLB has no clips, try loading from Bannon motion bank (assets/moves/clips/)
-  // before falling back to procedural placeholders.
-  if (processedClips.length === 0) {
-    console.warn(
-      `[CharacterPipeline] ⚠️ "${modelName}" — no animation clips in GLB. ` +
-      `Attempting to load AUTHORED_CLIP data from Bannon motion bank...`
+  // Prefer Bannon Euler motion bank for missing preferred semantic states.
+  // Runs when GLB has zero clips OR when GLB clips leave preferred states uncovered.
+  // Does NOT replace existing GLB clips for a state that already resolves.
+  // PLACEHOLDER_TEST_CLIP only when the preferred bank itself cannot load.
+  {
+    const covered = new Set<string>();
+    for (const clip of processedClips) {
+      const semantic = resolveClipSemanticState(clip.name) ?? clip.name;
+      covered.add(semantic);
+      covered.add(clip.name);
+    }
+    const missingPreferred = PREFERRED_REQUIRED_SEMANTIC_STATES.filter(
+      (s) => !covered.has(s),
     );
 
-    // Attempt to load authored clips from public/assets/moves/clips/
-    let authoredClips: Map<string, THREE.AnimationClip> | null = null;
-    try {
-      authoredClips = await loadBannonClipsFromPublic();
-    } catch (e: any) {
-      console.warn(`[CharacterPipeline] ⚠️ loadBannonClipsFromPublic failed: ${e.message}`);
-    }
+    if (missingPreferred.length > 0 || processedClips.length === 0) {
+      console.warn(
+        `[CharacterPipeline] ⚠️ "${modelName}" — preferred gaps: [${missingPreferred.join(', ') || 'ALL'}]. ` +
+        `Loading Bannon Euler motion bank via existing public path...`
+      );
 
-    if (authoredClips && authoredClips.size > 0) {
-      // Bind authored clips onto the live target skeleton.
-      // Euler-format clips (RETARGETED_AUTHORED_CLIP) need track names resolved
-      // to the actual bones present in the cloned skeleton.
-      const clipsToRegister: THREE.AnimationClip[] = [];
-      const boundAuthored = new Map<string, THREE.AnimationClip>();
-      for (const [semanticState, clip] of authoredClips) {
-        // Name clip by semantic state so AnimationBridge / FighterMesh resolveClipName works
-        clip.name = semanticState;
-        const userData = (clip as unknown as Record<string, unknown>).userData as Record<string, unknown> | undefined;
-        const isEuler = userData?.format === 'BANNON_EULER_RX_RY_RZ';
-        if (isEuler) {
-          // Bind Euler-converted tracks onto the live clone skeleton
-          const bindResult = bindClipTracksToTargetBones(clip, targetScene);
-          if (bindResult.boundTracks > 0) {
-            bindResult.clip.name = semanticState;
-            clipsToRegister.push(bindResult.clip);
-            boundAuthored.set(semanticState, bindResult.clip);
-            console.log(
-              `[CharacterPipeline] 🔗 Bound Euler clip "${clip.name}" → ${bindResult.boundTracks} tracks ` +
-              `(${bindResult.unboundTracks} unbound, travel=${bindResult.totalAngularTravel.toFixed(2)} rad)`
-            );
-          } else {
-            console.warn(
-              `[CharacterPipeline] ⚠️ Euler clip "${clip.name}" bound 0 tracks — skeleton mismatch. ` +
-              `Unbound: [${bindResult.unboundTargets.slice(0, 5).join(', ')}]`
-            );
-          }
-        } else {
-          clipsToRegister.push(clip);
-          boundAuthored.set(semanticState, clip);
-        }
+      let authoredClips: Map<string, THREE.AnimationClip> | null = null;
+      try {
+        authoredClips = await loadBannonClipsFromPublic();
+      } catch (e: any) {
+        console.warn(`[CharacterPipeline] ⚠️ loadBannonClipsFromPublic failed: ${e.message}`);
       }
 
-      // Register BOUND authored clips (mixer-ready names) — highest priority
-      registry.registerAuthoredClips(boundAuthored, 'assets/moves/clips/');
-      processedClips = clipsToRegister;
-      bridgeClipCount = processedClips.length;
-      // Typed verdict lane: authored+bound preferred bank counts as PASS (not a new architecture)
-      retargetVerdict = boundAuthored.size > 0 ? 'PASS' : 'FAIL';
-      console.log(
-        `[CharacterPipeline] ✅ "${modelName}" — loaded ${authoredClips.size} clips from motion bank, ` +
-        `${clipsToRegister.length} bound to live skeleton`
-      );
-    } else {
-      // Fall back to procedural placeholders
-      console.warn(
-        `[CharacterPipeline] ⚠️ "${modelName}" — no authored clips found. ` +
-        `Generating PROCEDURAL_PLACEHOLDER clips for pipeline verification.\n` +
-        `  → Source: check ${characterId ? characterId + '_rigged.glb' : 'rigged GLB'} from Bannon repo\n` +
-        `  → Bridge: check animation_bridge/SOURCE_REGISTRY.json\n` +
-        `  → Required: idle, walk, attack, hit, knockdown clips`
-      );
+      if (authoredClips && authoredClips.size > 0) {
+        const clipsToRegister: THREE.AnimationClip[] = [...processedClips];
+        const boundAuthored = new Map<string, THREE.AnimationClip>();
+        const statesToFill =
+          processedClips.length === 0
+            ? [...authoredClips.keys()]
+            : missingPreferred.filter((s) => authoredClips!.has(s));
 
-      if (targetBoneNames.length > 0) {
-        const proceduralClips = generateProceduralClipSet(targetBoneNames);
-        registry.registerBannonMotionBank(proceduralClips, 'PROCEDURAL_PLACEHOLDER');
-        processedClips = [...proceduralClips.values()];
-        bridgeClipCount = processedClips.length;
-        retargetVerdict = 'SKIPPED';
+        for (const semanticState of statesToFill) {
+          if (covered.has(semanticState)) continue;
+          const clip = authoredClips.get(semanticState);
+          if (!clip) continue;
+          clip.name = semanticState;
+          const userData = (clip as unknown as Record<string, unknown>).userData as
+            | Record<string, unknown>
+            | undefined;
+          const isEuler = userData?.format === 'BANNON_EULER_RX_RY_RZ';
+          if (isEuler) {
+            const bindResult = bindClipTracksToTargetBones(clip, targetScene);
+            if (bindResult.boundTracks > 0) {
+              bindResult.clip.name = semanticState;
+              clipsToRegister.push(bindResult.clip);
+              boundAuthored.set(semanticState, bindResult.clip);
+              covered.add(semanticState);
+              console.log(
+                `[CharacterPipeline] 🔗 Bound Euler clip "${semanticState}" → ${bindResult.boundTracks} tracks ` +
+                `(${bindResult.unboundTracks} unbound, travel=${bindResult.totalAngularTravel.toFixed(2)} rad)`
+              );
+            } else {
+              console.warn(
+                `[CharacterPipeline] ⚠️ Euler clip "${semanticState}" bound 0 tracks — skeleton mismatch. ` +
+                `Unbound: [${bindResult.unboundTargets.slice(0, 5).join(', ')}]`
+              );
+            }
+          } else {
+            clipsToRegister.push(clip);
+            boundAuthored.set(semanticState, clip);
+            covered.add(semanticState);
+          }
+        }
+
+        if (boundAuthored.size > 0) {
+          registry.registerAuthoredClips(boundAuthored, 'assets/moves/clips/');
+          processedClips = clipsToRegister;
+          bridgeClipCount = processedClips.length;
+          retargetVerdict = 'PASS';
+          console.log(
+            `[CharacterPipeline] ✅ "${modelName}" — filled ${boundAuthored.size} preferred states from motion bank ` +
+            `(total clips=${processedClips.length})`
+          );
+        }
+      } else if (processedClips.length === 0) {
+        // TEST_ONLY procedural — never unlocks FIGHT via PreCombatRosterGate
+        console.warn(
+          `[CharacterPipeline] ⚠️ "${modelName}" — no authored clips found. ` +
+          `Generating PROCEDURAL_PLACEHOLDER clips for pipeline verification (TEST_ONLY).\n` +
+          `  → Source: check ${characterId ? characterId + '_rigged.glb' : 'authored BANNON_rigged.glb'} from BannonSource\n` +
+          `  → Bridge: check animation_bridge/SOURCE_REGISTRY.json\n` +
+          `  → Required: idle, walk, attack, hit, knockdown clips`
+        );
+
+        if (targetBoneNames.length > 0) {
+          const proceduralClips = generateProceduralClipSet(targetBoneNames);
+          registry.registerBannonMotionBank(proceduralClips, 'PROCEDURAL_PLACEHOLDER');
+          processedClips = [...proceduralClips.values()];
+          bridgeClipCount = processedClips.length;
+          retargetVerdict = 'SKIPPED';
+        }
+      } else {
+        console.warn(
+          `[CharacterPipeline] ⚠️ "${modelName}" — preferred states still MISSING_CLIP: ` +
+          `[${missingPreferred.filter((s) => !covered.has(s)).join(', ')}]. No silent idle substitute.`
+        );
       }
     }
   }

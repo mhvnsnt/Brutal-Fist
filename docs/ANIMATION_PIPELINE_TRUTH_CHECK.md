@@ -21,6 +21,7 @@ Branch under test: `grok/anim-euler-gate-wire` (from `rocket-update` @ `c217b443
 | Other roster GLBs | NOT mirrored under `public/models/` (only BANNON_rigged.glb) |
 | Pre-combat gate | AUTHORITATIVE via `PreCombatRosterGate` (MeshoptDecoder enabled for measure) |
 | Silent idle/first-clip fallback | Removed for unmatched combat states in `FighterMesh.resolveClipName` |
+| CharacterPipeline preferred fill | Fills **missing** preferred semantic states from Bannon bank even when GLB has partial clips (does not replace existing GLB state clips) |
 | FIGHT unlocked | **NO for full roster** — second fighter GLB missing locally → gate FAIL-CLOSE. Bannon-only path can measure PASS offline. |
 
 ## Acceptance chain
@@ -33,7 +34,9 @@ Only `AUTHORED_CLIP` / `RETARGETED_AUTHORED_CLIP` can PASS. `MISSING_CLIP` stays
 
 Resolves (RETARGETED_AUTHORED_CLIP): idle, walk_forward, walk_back, strafe_left, strafe_right, attack_1, attack_2, block, hit_reaction, knockdown, getup.
 
-MISSING_CLIP: none in preferred set (offline + local mirror).
+MISSING_CLIP (preferred set): none offline + local mirror.
+
+Still MISSING_CLIP outside preferred set (honest): grapple (and any non-preferred combat verbs without bank mapping).
 
 ## How to re-measure
 
