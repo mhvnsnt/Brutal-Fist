@@ -425,6 +425,14 @@ function normalizeGLB(
   // SkinnedMesh to the correct skeleton instance in the cloned scene.
   const cloned = SkeletonUtils.clone(scene) as THREE.Group;
 
+  // ── STEP 0: Zero internal GLB rotation IMMEDIATELY on clone ──────────────
+  // AGENT LAW: The cloned scene's internal rotation must be [0,0,0] so that
+  // the parent component (CharacterSelect / CombatArena3D) holds FULL authority
+  // over facing/orientation via the rotationY prop.
+  // This must happen BEFORE any Box3 measurement so the bounding box is
+  // computed in the canonical axis-aligned orientation.
+  cloned.rotation.set(0, 0, 0);
+
   // CRITICAL FIX: Disable frustum culling on every SkinnedMesh.
   // In fighting games, a character's fist or foot can stretch far beyond the
   // root bone's bounding box during heavy attacks. The default Three.js
@@ -486,14 +494,7 @@ function normalizeGLB(
     }
   });
 
-  // Step 1: Normalize root bone to floor BEFORE Box3 (fixes skeleton-offset models)
-  // IMPORTANT: This modifies cloned.position.y. The subsequent Box3 measurement
-  // is taken AFTER this offset, so the Box3 correctly reflects the adjusted position.
-  if (!report.hasRootAtFloor) {
-    AutoRigDetector.normalizeRootToFloor(cloned);
-  }
-
-  // Step 1b: If no rig at all, build a synthetic skeleton from the mesh AABB
+  // ── STEP 1: If no rig at all, build a synthetic skeleton from the mesh AABB ──
   // AGENT LAW: Bone-less models get a procedural Mixamo-compatible skeleton
   // so animation clips can be retargeted and hitboxes still work.
   let syntheticBones: Map<string, THREE.Bone> | null = null;
@@ -506,44 +507,50 @@ function normalizeGLB(
     );
   }
 
-  // Step 2: Compute bounding box on clone AFTER root normalization
-  // The root normalization may have shifted cloned.position.y — we must
-  // recompute the Box3 here so the floor placement is correct.
+  // ── STEP 2: Compute bounding box AFTER zeroing rotation ──────────────────
+  // Rotation is already [0,0,0] from Step 0, so Box3 is axis-aligned and
+  // correctly reflects the character's canonical geometry extents.
+  // NOTE: normalizeRootToFloor is intentionally NOT called here — the Box3
+  // Y-offset below is the sole floor-snapping authority for ALL characters,
+  // replacing any per-character hardcoded offsets.
   cloned.updateMatrixWorld(true);
   const rawBox = new THREE.Box3().setFromObject(cloned);
   const rawSize = rawBox.getSize(new THREE.Vector3());
 
-  // Step 3: Scale uniformly so total Y height = 1.85 units
+  // ── STEP 3: Apply uniform scale so total height = 1.85 units ─────────────
+  // AGENT LAW: Every character is scaled uniformly to TARGET_HEIGHT so the
+  // roster has consistent physical proportions regardless of GLB export scale.
   const TARGET_HEIGHT = 1.85;
   const scale = rawSize.y > 0.01 ? TARGET_HEIGHT / rawSize.y : 1;
   cloned.scale.setScalar(scale);
 
-  // Step 4: Recompute box AFTER scaling
+  // ── STEP 4: Recompute Box3 AFTER scaling ─────────────────────────────────
   cloned.updateMatrixWorld(true);
   const scaledBox = new THREE.Box3().setFromObject(cloned);
   const scaledCenter = scaledBox.getCenter(new THREE.Vector3());
 
-  // Step 5: Offset so bottom of bounding box sits exactly at Y=0
-  // CRITICAL: use scaledBox.min.y so ALL characters stand on the floor
-  // regardless of where their geometry origin is.
+  // ── STEP 5: Dynamic Y-offset — snap lowest vertex to Y=0 ─────────────────
+  // AGENT LAW: Use THREE.Box3 to find the absolute lowest vertex of the
+  // character's geometry (scaledBox.min.y) and offset the clone's Y position
+  // by the exact inverse so every character's feet sit at Y=0.
+  // This works universally for every GLB regardless of origin placement —
+  // no per-character hardcoded offsets are needed or permitted.
   cloned.position.set(
     -scaledCenter.x,
     -scaledBox.min.y,
     -scaledCenter.z,
   );
 
-  // Step 6: Reset ONLY the root scene rotation (not children)
-  // Resetting children breaks models with non-zero root bone orientations.
-  cloned.rotation.set(0, 0, 0);
-
-  // Step 7: Force matrix world update so bone world positions are accurate
+  // ── STEP 6: Force matrix world update so bone world positions are accurate ─
   cloned.updateMatrixWorld(true);
 
-  // Step 8: Detect forward direction AFTER normalization
+  // ── STEP 7: Detect forward direction AFTER normalization ──────────────────
   // This must happen after position/scale are set so world positions are correct.
+  // All facing/rotation authority is delegated to the parent via rotationY prop.
+  // forwardCorrectionY is applied to the INNER group only (never the outer group).
   const forwardCorrectionY = detectForwardCorrection(cloned);
 
-  // Step 9: Apply PSX vertex snapping to visible meshes
+  // Step 8: Apply PSX vertex snapping to visible meshes
   cloned.traverse((child) => {
     if (!(child as THREE.Mesh).isMesh) return;
     const mesh = child as THREE.Mesh;
@@ -571,7 +578,7 @@ function normalizeGLB(
     });
   });
 
-  // Step 10: AGENT LAW — Create AnimationMixer on the CLONED scene.
+  // Step 9: AGENT LAW — Create AnimationMixer on the CLONED scene.
   // This is the critical fix for "animations play on invisible skeleton":
   // The mixer MUST target the same object that is rendered (the cloned scene),
   // not the outer Three.js group. When the mixer targets the outer group but
@@ -579,7 +586,7 @@ function normalizeGLB(
   // apply to the original (invisible) scene's skeleton, not the visible clone.
   const mixer = new THREE.AnimationMixer(cloned);
 
-  // Step 11: NAME-BASED clip retargeting from original scene to cloned scene.
+  // Step 10: NAME-BASED clip retargeting from original scene to cloned scene.
   //
   // AGENT LAW: Use name-based binding, NOT UUID-based binding.
   // UUID changes every time a scene is cloned. Name-based binding is stable
@@ -621,7 +628,7 @@ function normalizeGLB(
     actions[clip.name] = action;
   }
 
-  // Step 12: Build SkeletonHelper for visual bone display
+  // Step 11: Build SkeletonHelper for visual bone display
   // This makes bones/joints visible as a wireframe skeleton overlay.
   let skeletonHelper: THREE.SkeletonHelper | null = null;
   let hasAnyBones = false;
