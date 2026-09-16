@@ -18,6 +18,7 @@ import {
   FighterStateMachine,
   type FighterInput as SMInput,
   DEFAULT_SPECIAL_MOVES,
+  COMMAND_THROW_MOVE,
 } from '../engine/combat/FighterStateMachine';
 import { FrameDataHitboxSystem } from '../engine/combat/FrameDataHitbox';
 import {
@@ -267,6 +268,11 @@ export default function GameBattleArena({
   const p1Color = FACTION_COLOR[p1Fighter.factionAlignment] ?? '#facc15';
   const p2Color = FACTION_COLOR[p2Fighter.factionAlignment] ?? '#facc15';
 
+  // ── Grab range visualization state ───────────────────────────────────────
+  const [p1GrabRangeVisible, setP1GrabRangeVisible] = useState(false);
+  const [p1GrabRangeRadius, setP1GrabRangeRadius] = useState(1.4);
+  const [p1GrabRangeHit, setP1GrabRangeHit] = useState(false);
+
   // Game loop — only runs during 'fight' phase
   useEffect(() => {
     if (cinematicPhase !== 'fight') return;
@@ -307,6 +313,44 @@ export default function GameBattleArena({
       const p1NextMotion = p1SM.update(smInput, dt);
       const p1HbWindow = p1SM.getHitboxWindow();
       p1Hb.update(p1HbWindow);
+
+      // ── Command throw grab range detection ────────────────────────────
+      if (p1SM.action === 'CommandThrow' && prevP1Action !== 'CommandThrow') {
+        // Just entered command throw — check grab range
+        const grabResult = p1SM.checkGrabRange(P1_X, P2_X, p2SMRef.current.action);
+        setP1GrabRangeVisible(true);
+        setP1GrabRangeRadius(grabResult.grabRange);
+        setP1GrabRangeHit(grabResult.throwSucceeded);
+        p1SM.resolveCommandThrow(grabResult.throwSucceeded);
+        if (grabResult.throwSucceeded) {
+          // Apply throw to P2 — unblockable, full damage
+          const throwDmg = COMMAND_THROW_MOVE.damage ?? 220;
+          p2SMRef.current.applyKnockdown();
+          p2HitboxRef.current.reset();
+          console.log('[Arena] ✅ Command throw connected — damage:', throwDmg);
+          if (settings.soundEnabled) sfx.playHeavyHit();
+          setDamageEvent({
+            count: ++damageEventCountRef.current,
+            player: 'p2',
+            damage: throwDmg,
+            isCounter: false,
+            factionColor: p2Color,
+          });
+          setFeedbackEvents(prev => [...prev.slice(-6), {
+            id: ++feedbackIdRef.current,
+            moveId: 'commandThrow',
+            moveName: 'Command Throw',
+            damage: throwDmg,
+            isBlocked: false,
+            isCounter: false,
+            player: 'p1',
+            x: 60 + Math.random() * 10,
+            y: 20 + Math.random() * 20,
+          }]);
+        }
+        // Hide grab range visualization after 400ms
+        setTimeout(() => setP1GrabRangeVisible(false), 400);
+      }
 
       // Detect special move activation for notification
       if (p1SM.action === 'Attacking' && prevP1Action !== 'Attacking') {
@@ -961,8 +1005,46 @@ export default function GameBattleArena({
           {/* Controls legend */}
           <div className="absolute bottom-2 left-3 z-30 text-[7px] text-zinc-500 space-y-0.5 pointer-events-none">
             <div>ARROWS: MOVE · Z: LIGHT · X: HEAVY · C: GUARD · V: GRAPPLE · Q/E: SIDESTEP</div>
-            <div className="text-zinc-600">SPECIAL: L+L+H or H+H+L</div>
+            <div className="text-zinc-600">SPECIAL: L+L+H or H+H+L · CMD THROW: →+C (Forward+Guard)</div>
           </div>
+
+          {/* ── Grab Range Visualization ── */}
+          {p1GrabRangeVisible && (
+            <div
+              className="absolute z-40 pointer-events-none"
+              style={{
+                bottom: '28%',
+                left: '20%',
+                transform: 'translateX(-50%)',
+              }}
+            >
+              <div
+                className="rounded-full border-2 flex items-center justify-center transition-all duration-200"
+                style={{
+                  width: `${p1GrabRangeRadius * 60}px`,
+                  height: `${p1GrabRangeRadius * 60}px`,
+                  borderColor: p1GrabRangeHit ? '#22c55e' : '#ef4444',
+                  background: p1GrabRangeHit ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.08)',
+                  boxShadow: p1GrabRangeHit
+                    ? '0 0 20px rgba(34,197,94,0.5)'
+                    : '0 0 16px rgba(239,68,68,0.4)',
+                }}
+              >
+                <div
+                  className="text-[7px] font-black tracking-widest"
+                  style={{ color: p1GrabRangeHit ? '#22c55e' : '#ef4444' }}
+                >
+                  {p1GrabRangeHit ? 'GRAB!' : 'WHIFF'}
+                </div>
+              </div>
+              <div
+                className="text-center text-[6px] mt-1 font-black tracking-widest"
+                style={{ color: p1GrabRangeHit ? '#22c55e' : '#ef4444' }}
+              >
+                CMD THROW · {p1GrabRangeRadius.toFixed(1)}u
+              </div>
+            </div>
+          )}
         </>
       )}
 

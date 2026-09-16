@@ -6,6 +6,7 @@ import type { DebugOverlaySettings } from '../engine/debug/DebugOverlay';
 import { DEFAULT_DEBUG_SETTINGS } from '../engine/debug/DebugOverlay';
 import MoveLibraryViewer from './MoveLibraryViewer';
 import dynamic from 'next/dynamic';
+import type { StageId } from './StageSelectScreen';
 
 const GameBattleArena = dynamic(() => import('./GameBattleArena'), { ssr: false });
 
@@ -33,11 +34,37 @@ const FACTION_COLOR: Record<string, string> = {
   independent: '#d97706',
 };
 
+// ── Available stages for practice mode ───────────────────────────────────────
+interface StageOption {
+  id: StageId;
+  label: string;
+  desc: string;
+  color: string;
+  isDefault?: boolean;
+}
+
+const PRACTICE_STAGES: StageOption[] = [
+  {
+    id: 'training',
+    label: 'TRAINING ARENA',
+    desc: 'Default practice stage. Clean floor, no distractions.',
+    color: '#22c55e',
+    isDefault: true,
+  },
+  {
+    id: 'urban_night',
+    label: 'URBAN NIGHT',
+    desc: 'City rooftop at night. Same engine as ranked matches.',
+    color: '#3b82f6',
+  },
+];
+
 export default function PracticeArenaScreen({ onBack }: PracticeArenaScreenProps) {
   const [phase, setPhase] = useState<'SETUP' | 'FIGHTING'>('SETUP');
   const [selectedFighter, setSelectedFighter] = useState<BannonFighterProfile>(BANNON_ROSTER[0]);
   const [aiFighter, setAiFighter] = useState<BannonFighterProfile>(BANNON_ROSTER[1] ?? BANNON_ROSTER[0]);
   const [difficulty, setDifficulty] = useState<Difficulty>('NORMAL');
+  const [selectedStage, setSelectedStage] = useState<StageId>('training');
   const [showSettings, setShowSettings] = useState(false);
   const [debugSettings, setDebugSettings] = useState<DebugOverlaySettings>(DEFAULT_DEBUG_SETTINGS);
   const [showMoveLibrary, setShowMoveLibrary] = useState(false);
@@ -58,8 +85,8 @@ export default function PracticeArenaScreen({ onBack }: PracticeArenaScreenProps
         p2Fighter={aiFighter}
         isPracticeMode
         debugSettings={debugSettings}
-        stageId="training"
-        roundLabel={`PRACTICE · ${difficulty}`}
+        stageId={selectedStage}
+        roundLabel={`PRACTICE · ${difficulty} · ${PRACTICE_STAGES.find(s => s.id === selectedStage)?.label ?? selectedStage.toUpperCase()}`}
         onMatchEnd={(winner) => {
           if (winner === 'p1') setSessionWins(w => w + 1);
           else if (winner === 'p2') setSessionLosses(l => l + 1);
@@ -125,6 +152,38 @@ export default function PracticeArenaScreen({ onBack }: PracticeArenaScreenProps
             </div>
           </div>
         )}
+
+        {/* ── STAGE SELECT ── */}
+        <div className="mb-5">
+          <div className="text-[8px] tracking-[0.3em] text-zinc-500 mb-2">SELECT STAGE</div>
+          <div className="grid grid-cols-2 gap-1.5">
+            {PRACTICE_STAGES.map(stage => {
+              const isSelected = selectedStage === stage.id;
+              return (
+                <button
+                  key={stage.id}
+                  onClick={() => setSelectedStage(stage.id)}
+                  className="border p-3 text-left transition-all relative"
+                  style={{
+                    borderColor: isSelected ? stage.color : '#27272a',
+                    background: isSelected ? `${stage.color}12` : 'transparent',
+                  }}
+                >
+                  {stage.isDefault && (
+                    <div className="absolute top-1.5 right-1.5 text-[5px] tracking-widest px-1 py-0.5"
+                      style={{ color: stage.color, background: `${stage.color}20` }}>
+                      DEFAULT
+                    </div>
+                  )}
+                  <div className="text-[10px] font-black" style={{ color: isSelected ? stage.color : '#a1a1aa' }}>
+                    {stage.label}
+                  </div>
+                  <div className="text-[7px] text-zinc-600 mt-0.5">{stage.desc}</div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
 
         {/* ── SETTINGS PANEL ── */}
         {showSettings && (
@@ -252,9 +311,9 @@ export default function PracticeArenaScreen({ onBack }: PracticeArenaScreenProps
             </div>
           </div>
 
-          {/* AI opponent select */}
+          {/* AI Fighter select */}
           <div>
-            <div className="text-[8px] tracking-[0.3em] text-zinc-500 mb-2">AI OPPONENT</div>
+            <div className="text-[8px] tracking-[0.3em] text-zinc-500 mb-2">SELECT OPPONENT</div>
             <div className="grid grid-cols-2 gap-1.5">
               {BANNON_ROSTER.slice(0, 6).map(fighter => {
                 const fColor = FACTION_COLOR[fighter.factionAlignment];
@@ -270,11 +329,6 @@ export default function PracticeArenaScreen({ onBack }: PracticeArenaScreenProps
                       {fighter.name.toUpperCase()}
                     </div>
                     <div className="text-[7px] text-zinc-600 mt-0.5">{fighter.fightingStyle.split('.')[0]}</div>
-                    <div className="flex gap-2 mt-1.5">
-                      <span className="text-[7px] text-zinc-500">STR {fighter.strength}</span>
-                      <span className="text-[7px] text-zinc-500">SPD {fighter.speed}</span>
-                      <span className="text-[7px] text-zinc-500">HP {fighter.hp}</span>
-                    </div>
                   </button>
                 );
               })}
@@ -283,8 +337,8 @@ export default function PracticeArenaScreen({ onBack }: PracticeArenaScreenProps
 
           {/* Difficulty */}
           <div>
-            <div className="text-[8px] tracking-[0.3em] text-zinc-500 mb-2">AI DIFFICULTY</div>
-            <div className="grid grid-cols-4 gap-1">
+            <div className="text-[8px] tracking-[0.3em] text-zinc-500 mb-2">DIFFICULTY</div>
+            <div className="grid grid-cols-2 gap-1.5">
               {(Object.keys(DIFFICULTY_CONFIG) as Difficulty[]).map(d => {
                 const dc = DIFFICULTY_CONFIG[d];
                 const isSelected = difficulty === d;
@@ -292,30 +346,25 @@ export default function PracticeArenaScreen({ onBack }: PracticeArenaScreenProps
                   <button
                     key={d}
                     onClick={() => setDifficulty(d)}
-                    className="border py-3 text-center transition-all"
+                    className="border p-3 text-left transition-all"
                     style={{ borderColor: isSelected ? dc.color : '#27272a', background: isSelected ? `${dc.color}12` : 'transparent' }}
                   >
-                    <div className="text-[9px] font-black" style={{ color: isSelected ? dc.color : '#52525b' }}>
+                    <div className="text-[10px] font-black" style={{ color: isSelected ? dc.color : '#a1a1aa' }}>
                       {dc.label}
                     </div>
+                    <div className="text-[7px] text-zinc-600 mt-0.5">{dc.desc}</div>
                   </button>
                 );
               })}
             </div>
-            <div
-              className="mt-2 text-[8px] text-zinc-600 border px-3 py-2"
-              style={{ borderColor: '#27272a', borderLeftColor: cfg.color, borderLeftWidth: 2 }}
-            >
-              {cfg.desc}
-            </div>
           </div>
 
+          {/* Start button */}
           <button
             onClick={() => setPhase('FIGHTING')}
-            className="w-full border py-4 text-sm font-black tracking-widest transition-all"
-            style={{ borderColor: cfg.color, color: cfg.color, background: `${cfg.color}10` }}
+            className="w-full border border-yellow-700 py-4 text-[10px] font-black tracking-[0.4em] text-yellow-400 hover:bg-yellow-900/20 transition-all"
           >
-            ENTER COMBAT ARENA — {difficulty}
+            ▶ START PRACTICE
           </button>
         </div>
       </div>

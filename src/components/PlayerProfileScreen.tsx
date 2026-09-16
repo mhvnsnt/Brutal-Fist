@@ -5,6 +5,7 @@ import { type BannonFighterProfile, BANNON_ROSTER } from '../data/bannonRoster';
 import { useAuth } from '../contexts/AuthContext';
 import { statsService, getRankTier } from '../lib/statsService';
 import { createClient } from '../lib/supabase/client';
+import { fetchReplaysFromSupabase, ReplayScrubber, type SavedReplay } from './MatchRecorder';
 
 interface PlayerProfileScreenProps {
   onBack: () => void;
@@ -364,7 +365,7 @@ type MarketFilter = 'ALL' | 'OUTFIT' | 'EFFECT' | 'BUNDLE' | 'SEASONAL' | 'UNLOC
 
 export default function PlayerProfileScreen({ onBack }: PlayerProfileScreenProps) {
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<'career' | 'mastery' | 'cosmetics' | 'season' | 'elo' | 'h2h' | 'progression'>('career');
+  const [activeTab, setActiveTab] = useState<'career' | 'mastery' | 'cosmetics' | 'season' | 'elo' | 'h2h' | 'progression' | 'replays'>('career');
   const [fighterStats, setFighterStats] = useState<FighterStatRow[]>([]);
   const [rankPoints, setRankPoints] = useState(0);
   const [rankTier, setRankTier] = useState('BRONZE');
@@ -380,6 +381,9 @@ export default function PlayerProfileScreen({ onBack }: PlayerProfileScreenProps
   const [h2hRecords, setH2HRecords] = useState<H2HRecord[]>([]);
   const [cosmeticTimeline, setCosmeticTimeline] = useState<CosmeticUnlockEntry[]>([]);
   const [eloLoading, setEloLoading] = useState(false);
+  const [replays, setReplays] = useState<SavedReplay[]>([]);
+  const [replaysLoading, setReplaysLoading] = useState(false);
+  const [selectedReplay, setSelectedReplay] = useState<SavedReplay | null>(null);
 
   useEffect(() => {
     if (!user?.id) { setLoading(false); return; }
@@ -467,6 +471,16 @@ export default function PlayerProfileScreen({ onBack }: PlayerProfileScreenProps
       }
       setEloLoading(false);
     }).catch(() => setEloLoading(false));
+  }, [user?.id, activeTab]);
+
+  // Load replays when tab is opened
+  useEffect(() => {
+    if (!user?.id || activeTab !== 'replays') return;
+    setReplaysLoading(true);
+    fetchReplaysFromSupabase(user.id).then(data => {
+      setReplays(data);
+      setReplaysLoading(false);
+    }).catch(() => setReplaysLoading(false));
   }, [user?.id, activeTab]);
 
   const totalWins = fighterStats.reduce((s, f) => s + (f.wins ?? 0), 0);
@@ -578,9 +592,9 @@ export default function PlayerProfileScreen({ onBack }: PlayerProfileScreenProps
         </div>
       </div>
 
-      {/* Tabs — now 7 tabs */}
+      {/* Tabs — now 8 tabs */}
       <div className="relative z-10 flex-shrink-0 flex border-b border-zinc-900 overflow-x-auto">
-        {(['career', 'progression', 'elo', 'h2h', 'mastery', 'cosmetics', 'season'] as const).map(tab => (
+        {(['career', 'progression', 'elo', 'h2h', 'mastery', 'cosmetics', 'season', 'replays'] as const).map(tab => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -1262,6 +1276,66 @@ export default function PlayerProfileScreen({ onBack }: PlayerProfileScreenProps
                 </div>
               ))}
             </div>
+          </div>
+        )}
+
+        {/* REPLAYS TAB */}
+        {activeTab === 'replays' && (
+          <div className="space-y-4">
+            <div className="text-[8px] tracking-[0.3em] text-zinc-600 mb-3">MATCH REPLAYS</div>
+
+            {selectedReplay ? (
+              <ReplayScrubber
+                replay={selectedReplay}
+                onClose={() => setSelectedReplay(null)}
+              />
+            ) : replaysLoading ? (
+              <div className="text-center py-8 text-zinc-700 text-[9px] animate-pulse">LOADING REPLAYS...</div>
+            ) : replays.length > 0 ? (
+              <div className="space-y-2">
+                {replays.map((replay) => {
+                  const durationSec = (replay.durationMs / 1000).toFixed(1);
+                  const date = new Date(replay.createdAt).toLocaleDateString();
+                  return (
+                    <button
+                      key={replay.id}
+                      onClick={() => setSelectedReplay(replay)}
+                      className="w-full text-left border border-zinc-900 p-3 hover:border-yellow-900 hover:bg-yellow-900/5 transition-all"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 min-w-0">
+                          <div className="text-[9px] font-black text-white truncate">{replay.label}</div>
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className="text-[7px] text-blue-400">{replay.p1Name}</span>
+                            <span className="text-[6px] text-zinc-700">vs</span>
+                            <span className="text-[7px] text-red-400">{replay.p2Name}</span>
+                            <span className="text-[6px] text-zinc-600">· {replay.stageName}</span>
+                          </div>
+                        </div>
+                        <div className="text-right flex-shrink-0">
+                          <div className="text-[8px] font-black text-yellow-400">{durationSec}s</div>
+                          <div className="text-[6px] text-zinc-600">{replay.totalFrames}f</div>
+                          <div className="text-[6px] text-zinc-700">{date}</div>
+                        </div>
+                      </div>
+                      <div className="mt-2 flex items-center gap-2">
+                        <div className="text-[6px] text-zinc-600">
+                          Crop: F{replay.inPoint}–F{replay.outPoint} · {replay.speedMultiplier}x
+                        </div>
+                        <div className="ml-auto text-[7px] text-yellow-600 tracking-widest">▶ REVIEW</div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="text-center py-8 border border-zinc-900 space-y-2">
+                <div className="text-zinc-700 text-[9px] tracking-widest">NO REPLAYS SAVED YET</div>
+                <div className="text-zinc-800 text-[8px]">
+                  Use the ⏺ REC button in-match and click ☁ SAVE TO CLOUD
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
