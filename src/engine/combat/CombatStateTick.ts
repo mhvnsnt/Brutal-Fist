@@ -27,6 +27,32 @@
 
 import type { KiChargeState } from './KiChargeSystem';
 import { tickKiCharge, createKiChargeState } from './KiChargeSystem';
+import {
+  tickWallSplat,
+  checkWallCollision,
+  applyWallSplat,
+  createWallSplatState,
+  type WallSplatState,
+  WALL_LEFT_X,
+  WALL_RIGHT_X,
+} from './WallSystem';
+import {
+  tickHeat,
+  tickPowerCrush,
+  tickRageArt,
+  createHeatState,
+  createPowerCrushState,
+  createRageArtState,
+  updateRageArtAvailability,
+  type HeatState,
+  type PowerCrushState,
+  type RageArtState,
+} from './HeatBurstSystem';
+import {
+  tickThrow,
+  createThrowState,
+  type ThrowState,
+} from './DirectionalThrowSystem';
 
 // ── Fighter position in 3D space ──────────────────────────────────────────────
 export interface FighterPosition {
@@ -73,6 +99,18 @@ export interface FighterCombatState {
   sidestepZ: number;
   /** Whether fighter is in sidestep state (linear attacks whiff) */
   isSidestepping: boolean;
+  /** Wall-splat state */
+  wallSplat: WallSplatState;
+  /** Heat Burst stance state */
+  heat: HeatState;
+  /** Power Crush super armor state */
+  powerCrush: PowerCrushState;
+  /** Rage Art cinematic super state */
+  rageArt: RageArtState;
+  /** Directional throw state */
+  throwState: ThrowState;
+  /** X velocity for wall knockback */
+  velocityX: number;
 }
 
 // ── Full match combat state ───────────────────────────────────────────────────
@@ -126,6 +164,12 @@ export function createFighterCombatState(id: 'p1' | 'p2', maxHealth: number): Fi
     isBlocking: false,
     sidestepZ: 0,
     isSidestepping: false,
+    wallSplat: createWallSplatState(),
+    heat: createHeatState(),
+    powerCrush: createPowerCrushState(),
+    rageArt: createRageArtState(),
+    throwState: createThrowState(),
+    velocityX: 0,
   };
 }
 
@@ -294,6 +338,54 @@ export function tickCombatState(
   const p1SidestepZ = state.p1.sidestepZ * (1 - SIDESTEP_RETURN_SPEED * 60 * dt);
   const p2SidestepZ = state.p2.sidestepZ * (1 - SIDESTEP_RETURN_SPEED * 60 * dt);
 
+  // ── Tick wall-splat states ────────────────────────────────────────────────
+  const p1WallSplat = tickWallSplat(state.p1.wallSplat);
+  const p2WallSplat = tickWallSplat(state.p2.wallSplat);
+
+  // ── Tick Heat Burst states ────────────────────────────────────────────────
+  const p1Heat = tickHeat(state.p1.heat);
+  const p2Heat = tickHeat(state.p2.heat);
+
+  // ── Tick Power Crush states ───────────────────────────────────────────────
+  const p1PowerCrush = tickPowerCrush(state.p1.powerCrush);
+  const p2PowerCrush = tickPowerCrush(state.p2.powerCrush);
+
+  // ── Tick Rage Art states ──────────────────────────────────────────────────
+  const p1RageArt = tickRageArt(updateRageArtAvailability(state.p1.rageArt, state.p1.health / state.p1.maxHealth));
+  const p2RageArt = tickRageArt(updateRageArtAvailability(state.p2.rageArt, state.p2.health / state.p2.maxHealth));
+
+  // ── Tick throw states ─────────────────────────────────────────────────────
+  const p1ThrowState = tickThrow(state.p1.throwState);
+  const p2ThrowState = tickThrow(state.p2.throwState);
+
+  // ── Wall collision check for P1 ───────────────────────────────────────────
+  const p1VelX = state.p1.velocityX ?? 0;
+  const p1WallResult = checkWallCollision(p1Pos.x + p1VelX, p1VelX);
+  let p1FinalPos = { ...p1Pos };
+  let p1FinalWallSplat = p1WallSplat;
+  let p1FinalVelX = p1VelX * 0.85; // friction
+  if (p1WallResult.hitWall && state.p1.stun.isHitStun) {
+    p1FinalPos = { ...p1Pos, x: p1WallResult.clampedX };
+    p1FinalWallSplat = applyWallSplat(p1WallSplat, p1WallResult.wall!);
+    p1FinalVelX = p1WallResult.knockbackVelocityX;
+  } else if (!p1WallResult.hitWall) {
+    p1FinalPos = { ...p1Pos, x: Math.max(WALL_LEFT_X, Math.min(WALL_RIGHT_X, p1Pos.x + p1VelX)) };
+  }
+
+  // ── Wall collision check for P2 ───────────────────────────────────────────
+  const p2VelX = state.p2.velocityX ?? 0;
+  const p2WallResult = checkWallCollision(p2Pos.x + p2VelX, p2VelX);
+  let p2FinalPos = { ...p2Pos };
+  let p2FinalWallSplat = p2WallSplat;
+  let p2FinalVelX = p2VelX * 0.85;
+  if (p2WallResult.hitWall && state.p2.stun.isHitStun) {
+    p2FinalPos = { ...p2Pos, x: p2WallResult.clampedX };
+    p2FinalWallSplat = applyWallSplat(p2WallSplat, p2WallResult.wall!);
+    p2FinalVelX = p2WallResult.knockbackVelocityX;
+  } else if (!p2WallResult.hitWall) {
+    p2FinalPos = { ...p2Pos, x: Math.max(WALL_LEFT_X, Math.min(WALL_RIGHT_X, p2Pos.x + p2VelX)) };
+  }
+
   return {
     ...state,
     frame: state.frame + 1,
@@ -301,21 +393,33 @@ export function tickCombatState(
       ...state.p1,
       stun: p1Stun,
       airborne: p1Airborne,
-      position: { ...p1Pos, z: p1SidestepZ },
+      position: { ...p1FinalPos, z: p1SidestepZ },
       kiCharge: p1KiCharge,
       isBlocking: !p1KiCharge.blockingDisabled && state.p1.isBlocking,
       sidestepZ: p1SidestepZ,
       isSidestepping: Math.abs(p1SidestepZ) >= SIDESTEP_WHIFF_THRESHOLD * 0.5,
+      wallSplat: p1FinalWallSplat,
+      heat: p1Heat,
+      powerCrush: p1PowerCrush,
+      rageArt: p1RageArt,
+      throwState: p1ThrowState,
+      velocityX: p1FinalVelX,
     },
     p2: {
       ...state.p2,
       stun: p2Stun,
       airborne: p2Airborne,
-      position: { ...p2Pos, z: p2SidestepZ },
+      position: { ...p2FinalPos, z: p2SidestepZ },
       kiCharge: p2KiCharge,
       isBlocking: !p2KiCharge.blockingDisabled && state.p2.isBlocking,
       sidestepZ: p2SidestepZ,
       isSidestepping: Math.abs(p2SidestepZ) >= SIDESTEP_WHIFF_THRESHOLD * 0.5,
+      wallSplat: p2FinalWallSplat,
+      heat: p2Heat,
+      powerCrush: p2PowerCrush,
+      rageArt: p2RageArt,
+      throwState: p2ThrowState,
+      velocityX: p2FinalVelX,
     },
   };
 }

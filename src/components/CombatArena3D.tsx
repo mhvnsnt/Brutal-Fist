@@ -8,6 +8,7 @@ import { type BannonFighterProfile } from '../data/bannonRoster';
 import { TrainingStage } from './TrainingStage';
 import { UrbanNightStage } from './UrbanNightStage';
 import { CHARACTER_BLOOM } from './PostMatchScreen';
+import { createHitEffectPool, spawnHitEffect, tickHitEffectPool, getHitEffectRenderData, getActivePointLights, type HitEffectPool, type HitEffectType, type PointLightFlash,  } from '../engine/combat/HitEffectSystem';
 
 // ── Stage IDs ─────────────────────────────────────────────────────────────────
 export type StageId = 'urban_night' | 'training';
@@ -62,6 +63,7 @@ function CinematicCamera({
   p1Z,
   p2Z,
   fov,
+  shakeOffset,
 }: {
   phase: CinematicPhase;
   p1X: number;
@@ -69,6 +71,7 @@ function CinematicCamera({
   p1Z: number;
   p2Z: number;
   fov: number;
+  shakeOffset?: { x: number; y: number };
 }) {
   const { camera } = useThree();
   const sweepAngleRef = useRef(0);
@@ -114,6 +117,11 @@ function CinematicCamera({
       cam.position.x += (midX - cam.position.x) * 0.1;
       cam.position.y += (targetCamY - cam.position.y) * 0.07;
       cam.position.z += (targetCamZ + midZ * 0.25 - cam.position.z) * 0.08;
+      // ── Camera shake from hit effect system ──────────────────────────────
+      if (shakeOffset && (Math.abs(shakeOffset.x) > 0.001 || Math.abs(shakeOffset.y) > 0.001)) {
+        cam.position.x += shakeOffset.x * 0.01;
+        cam.position.y += shakeOffset.y * 0.01;
+      }
       cam.lookAt(midX, 1.1, midZ * 0.15);
       cam.updateProjectionMatrix();
     } else if (phase === 'victory') {
@@ -146,9 +154,10 @@ interface VFXOverlayProps {
   particles: Particle[];
   screenFlash: number;
   hitStopActive: boolean;
+  hitEffectPool?: HitEffectPool;
 }
 
-function VFXOverlay({ particles, screenFlash, hitStopActive }: VFXOverlayProps) {
+function VFXOverlay({ particles, screenFlash, hitStopActive, hitEffectPool }: VFXOverlayProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -159,8 +168,10 @@ function VFXOverlay({ particles, screenFlash, hitStopActive }: VFXOverlayProps) 
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    if (screenFlash > 0.01) {
-      ctx.fillStyle = `rgba(255,255,255,${screenFlash * 0.35})`;
+    // ── Screen flash ──────────────────────────────────────────────────────
+    const totalFlash = Math.max(screenFlash, hitEffectPool?.screenFlash ?? 0);
+    if (totalFlash > 0.01) {
+      ctx.fillStyle = `rgba(255,255,255,${totalFlash * 0.35})`;
       ctx.fillRect(0, 0, canvas.width, canvas.height);
     }
 
@@ -169,6 +180,7 @@ function VFXOverlay({ particles, screenFlash, hitStopActive }: VFXOverlayProps) 
       ctx.fillRect(0, 0, canvas.width, canvas.height);
     }
 
+    // ── Legacy particles (dust, knockdown) ───────────────────────────────
     for (const p of particles) {
       const alpha = p.life / p.maxLife;
       ctx.globalAlpha = alpha;
@@ -188,6 +200,72 @@ function VFXOverlay({ particles, screenFlash, hitStopActive }: VFXOverlayProps) 
         ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size * 2);
       }
     }
+
+    // ── AAA 3-layer billboarded hit effects ───────────────────────────────
+    if (hitEffectPool) {
+      const renderData = getHitEffectRenderData(hitEffectPool);
+      for (const effect of renderData) {
+        const { screenX, screenY, characterColor, scale, alpha, type, streaks, coreRadius, coronaRadius } = effect;
+
+        ctx.save();
+        ctx.translate(screenX, screenY);
+
+        // ── Layer 3: Directional streaks (behind everything) ──────────────
+        for (const streak of streaks) {
+          ctx.save();
+          ctx.rotate(streak.angle);
+          ctx.globalAlpha = streak.alpha * alpha;
+          ctx.strokeStyle = streak.color;
+          ctx.lineWidth = streak.width;
+          ctx.lineCap = 'round';
+          ctx.beginPath();
+          ctx.moveTo(0, 0);
+          ctx.lineTo(streak.length, 0);
+          ctx.stroke();
+          ctx.restore();
+        }
+
+        // ── Layer 2: Character color corona ───────────────────────────────
+        if (type === 'block') {
+          // Block: circular shield spark (pale blue/grey)
+          ctx.globalAlpha = alpha * 0.8;
+          const shieldGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, coronaRadius);
+          shieldGrad.addColorStop(0, 'rgba(138,180,212,0.9)');
+          shieldGrad.addColorStop(0.5, 'rgba(138,180,212,0.4)');
+          shieldGrad.addColorStop(1, 'rgba(138,180,212,0)');
+          ctx.fillStyle = shieldGrad;
+          ctx.beginPath();
+          ctx.arc(0, 0, coronaRadius, 0, Math.PI * 2);
+          ctx.fill();
+        } else {
+          // Clean hit / counter-hit: character color corona
+          ctx.globalAlpha = alpha * 0.85;
+          const coronaGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, coronaRadius);
+          const hex = characterColor;
+          coronaGrad.addColorStop(0, `${hex}ff`);
+          coronaGrad.addColorStop(0.4, `${hex}cc`);
+          coronaGrad.addColorStop(1, `${hex}00`);
+          ctx.fillStyle = coronaGrad;
+          ctx.beginPath();
+          ctx.arc(0, 0, coronaRadius, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        // ── Layer 1: White-hot core (always pure white, always on top) ────
+        ctx.globalAlpha = alpha;
+        const coreGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, coreRadius);
+        coreGrad.addColorStop(0, 'rgba(255,255,255,1)');
+        coreGrad.addColorStop(0.6, 'rgba(255,255,255,0.8)');
+        coreGrad.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.fillStyle = coreGrad;
+        ctx.beginPath();
+        ctx.arc(0, 0, coreRadius, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.restore();
+      }
+    }
+
     ctx.globalAlpha = 1;
   });
 
@@ -351,77 +429,26 @@ function spawnKnockdownDust(
   return dust;
 }
 
-// ── Per-character bloom burst on hit ─────────────────────────────────────────
-function spawnCharacterBloom(
-  screenX: number,
-  screenY: number,
-  bloomColor: string,
-  damage: number,
-  isCounter: boolean,
-  particleIdRef: React.MutableRefObject<number>,
-): Particle[] {
-  const particles: Particle[] = [];
-  const isHeavy = damage > 150;
+// ── AAA Hit Effect Pool (replaces old spawnCharacterBloom) ───────────────────
+// Pre-allocated pool of 5 slots — no new mesh creation on every hit
+const hitEffectPoolRef = { current: createHitEffectPool() };
 
-  // Core impact sparks — character-colored
-  const sparkCount = isHeavy ? 18 : 10;
-  for (let i = 0; i < sparkCount; i++) {
-    particles.push({
-      id: ++particleIdRef.current,
-      x: screenX, y: screenY,
-      vx: (Math.random() - 0.5) * (isHeavy ? 12 : 7),
-      vy: (Math.random() - 0.5) * (isHeavy ? 12 : 7) - 2,
-      life: 0.5 + Math.random() * 0.4,
-      maxLife: 0.5 + Math.random() * 0.4,
-      color: bloomColor,
-      size: isHeavy ? 4 + Math.random() * 5 : 2 + Math.random() * 3,
-      type: 'impact',
-    });
-  }
-
-  // Bloom ring — character's unique color
-  particles.push({
-    id: ++particleIdRef.current,
-    x: screenX, y: screenY,
-    vx: 0, vy: 0,
-    life: 0.45, maxLife: 0.45,
-    color: bloomColor,
-    size: isHeavy ? 40 : 22,
-    type: 'burst',
-  });
-
-  // Counter hit: extra white flash ring
-  if (isCounter) {
-    particles.push({
-      id: ++particleIdRef.current,
-      x: screenX, y: screenY,
-      vx: 0, vy: 0,
-      life: 0.3, maxLife: 0.3,
-      color: '#ffffff',
-      size: 55,
-      type: 'burst',
-    });
-  }
-
-  // Heavy hit: trailing sparks
-  if (isHeavy) {
-    for (let i = 0; i < 8; i++) {
-      particles.push({
-        id: ++particleIdRef.current,
-        x: screenX + (Math.random() - 0.5) * 20,
-        y: screenY + (Math.random() - 0.5) * 20,
-        vx: (Math.random() - 0.5) * 3,
-        vy: -1 - Math.random() * 2,
-        life: 0.6 + Math.random() * 0.3,
-        maxLife: 0.6 + Math.random() * 0.3,
-        color: bloomColor,
-        size: 3 + Math.random() * 3,
-        type: 'trail',
-      });
-    }
-  }
-
-  return particles;
+// ── Point light flash component (Three.js) ────────────────────────────────────
+function HitPointLights({ lights }: { lights: PointLightFlash[] }) {
+  return (
+    <>
+      {lights.map((light, i) => (
+        <pointLight
+          key={i}
+          position={[light.x, light.y, light.z]}
+          color={light.color}
+          intensity={light.intensity}
+          distance={4}
+          decay={2}
+        />
+      ))}
+    </>
+  );
 }
 
 // ── Main export ───────────────────────────────────────────────────────────────
@@ -460,6 +487,14 @@ export interface CombatArena3DProps {
   /** Callbacks to receive bone hitbox system references from FighterMesh */
   onP1BoneHitboxReady?: (system: import('../engine/locomotion/BoneHitboxSystem').BoneHitboxSystem) => void;
   onP2BoneHitboxReady?: (system: import('../engine/locomotion/BoneHitboxSystem').BoneHitboxSystem) => void;
+  /** Wall-splat event — triggers wall-splat VFX */
+  wallSplatEvent?: { count: number; player: 'p1' | 'p2'; wall: 'left' | 'right' };
+  /** Heat Burst activation event */
+  heatBurstEvent?: { count: number; player: 'p1' | 'p2' };
+  /** Rage Art cinematic event */
+  rageArtEvent?: { count: number; player: 'p1' | 'p2' };
+  /** Camera shake offset from hit effect system */
+  cameraShakeOffset?: { x: number; y: number };
 }
 
 export default function CombatArena3D({
@@ -491,13 +526,22 @@ export default function CombatArena3D({
   p2LocomotionVelocity,
   onP1BoneHitboxReady,
   onP2BoneHitboxReady,
+  wallSplatEvent,
+  heatBurstEvent,
+  rageArtEvent,
+  cameraShakeOffset,
 }: CombatArena3DProps) {
   const [particles, setParticles] = useState<Particle[]>([]);
   const [screenFlash, setScreenFlash] = useState(0);
+  const [hitEffectPool, setHitEffectPool] = useState<HitEffectPool>(() => createHitEffectPool());
   const particleIdRef = useRef(0);
   const flashRafRef = useRef<number>(0);
+  const hitEffectRafRef = useRef<number>(0);
   const prevDamageEventRef = useRef<typeof damageEvent>(undefined);
   const prevKnockdownEventRef = useRef<typeof knockdownEvent>(undefined);
+  const prevWallSplatEventRef = useRef<typeof wallSplatEvent>(undefined);
+  const prevHeatBurstEventRef = useRef<typeof heatBurstEvent>(undefined);
+  const prevRageArtEventRef = useRef<typeof rageArtEvent>(undefined);
 
   const { speak } = useAnnouncer(announcerEnabled);
 
@@ -528,38 +572,116 @@ export default function CombatArena3D({
     setParticles(prev => [...prev.slice(-50), ...dustParticles]);
   }, [knockdownEvent]);
 
-  // ── Per-character bloom on hit ────────────────────────────────────────────
+  // ── AAA hit effect pool tick ──────────────────────────────────────────────
   useEffect(() => {
-    if (!damageEvent) return;
-    if (prevDamageEventRef.current?.count === damageEvent.count) return;
-    prevDamageEventRef.current = damageEvent;
-
-    const { player, damage, isCounter, factionColor } = damageEvent;
-    const baseX = player === 'p2' ? 0.65 : 0.35;
-    const screenX = baseX * 800 + (Math.random() - 0.5) * 80;
-    const screenY = 200 + Math.random() * 120;
-
-    // Determine which fighter is the attacker (the one dealing damage)
-    const attackerFighter = player === 'p2' ? p1Fighter : p2Fighter;
-    const bloomColor = getCharacterHitBloom(attackerFighter.id, factionColor);
-
-    // Use per-character bloom particles instead of generic white
-    const newParticles = spawnCharacterBloom(screenX, screenY, bloomColor, damage, isCounter, particleIdRef);
-
-    setParticles(prev => [...prev.slice(-50), ...newParticles]);
-    setScreenFlash(damage > 300 ? 0.8 : 0.4);
-    cancelAnimationFrame(flashRafRef.current);
-    const fadeFlash = () => {
-      setScreenFlash(prev => {
-        if (prev < 0.02) return 0;
-        flashRafRef.current = requestAnimationFrame(fadeFlash);
-        return prev * 0.82;
+    const tick = () => {
+      setHitEffectPool(prev => {
+        const next = tickHitEffectPool(prev);
+        const hasActive = next.slots.some(s => s.active) || next.cameraShake.active || next.screenFlash > 0.01;
+        if (hasActive) hitEffectRafRef.current = requestAnimationFrame(tick);
+        return next;
       });
     };
-    flashRafRef.current = requestAnimationFrame(fadeFlash);
+    return () => cancelAnimationFrame(hitEffectRafRef.current);
+  }, []);
 
-    if (isCounter) speak('Counter hit!', 0.75, 1.1);
-  }, [damageEvent, speak, p1Fighter, p2Fighter]);
+  // ── Wall-splat VFX ────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!wallSplatEvent) return;
+    if (prevWallSplatEventRef.current?.count === wallSplatEvent.count) return;
+    prevWallSplatEventRef.current = wallSplatEvent;
+
+    const { player, wall } = wallSplatEvent;
+    const baseX = player === 'p1' ? (wall === 'left' ? 0.05 : 0.95) : (wall === 'left' ? 0.05 : 0.95);
+    const screenX = baseX * 800;
+    const screenY = 200 + Math.random() * 80;
+    const attackerFighter = player === 'p2' ? p1Fighter : p2Fighter;
+    const bloomColor = getCharacterHitBloom(attackerFighter.id, '#ffffff');
+
+    setHitEffectPool(prev => spawnHitEffect(prev, {
+      type: 'wall_splat',
+      screenX, screenY,
+      worldX: wall === 'left' ? -4.5 : 4.5,
+      worldY: 1.2,
+      worldZ: 0,
+      characterColor: bloomColor,
+      attackAngle: wall === 'left' ? 0 : Math.PI,
+      damage: 150,
+    }));
+    hitEffectRafRef.current = requestAnimationFrame(() => {
+      setHitEffectPool(prev => tickHitEffectPool(prev));
+    });
+  }, [wallSplatEvent, p1Fighter, p2Fighter]);
+
+  // ── Heat Burst activation VFX ─────────────────────────────────────────────
+  useEffect(() => {
+    if (!heatBurstEvent) return;
+    if (prevHeatBurstEventRef.current?.count === heatBurstEvent.count) return;
+    prevHeatBurstEventRef.current = heatBurstEvent;
+
+    const { player } = heatBurstEvent;
+    const screenX = player === 'p1' ? 0.3 * 800 : 0.7 * 800;
+    const screenY = 180;
+    const fighter = player === 'p1' ? p1Fighter : p2Fighter;
+    const bloomColor = getCharacterHitBloom(fighter.id, '#ff8800');
+
+    // Spawn multiple sparks for Heat Burst activation
+    setHitEffectPool(prev => {
+      let pool = prev;
+      for (let i = 0; i < 3; i++) {
+        pool = spawnHitEffect(pool, {
+          type: 'counter_hit',
+          screenX: screenX + (Math.random() - 0.5) * 60,
+          screenY: screenY + (Math.random() - 0.5) * 40,
+          worldX: player === 'p1' ? -1.8 : 1.8,
+          worldY: 1.5,
+          worldZ: 0,
+          characterColor: bloomColor,
+          attackAngle: Math.random() * Math.PI * 2,
+          damage: 200,
+        });
+      }
+      return pool;
+    });
+    hitEffectRafRef.current = requestAnimationFrame(() => {
+      setHitEffectPool(prev => tickHitEffectPool(prev));
+    });
+  }, [heatBurstEvent, p1Fighter, p2Fighter]);
+
+  // ── Rage Art cinematic VFX ────────────────────────────────────────────────
+  useEffect(() => {
+    if (!rageArtEvent) return;
+    if (prevRageArtEventRef.current?.count === rageArtEvent.count) return;
+    prevRageArtEventRef.current = rageArtEvent;
+
+    const { player } = rageArtEvent;
+    const screenX = player === 'p1' ? 0.3 * 800 : 0.7 * 800;
+    const fighter = player === 'p1' ? p1Fighter : p2Fighter;
+    const bloomColor = getCharacterHitBloom(fighter.id, '#ff0000');
+
+    // Massive Rage Art spark burst
+    setHitEffectPool(prev => {
+      let pool = prev;
+      for (let i = 0; i < 5; i++) {
+        pool = spawnHitEffect(pool, {
+          type: 'counter_hit',
+          screenX: screenX + (Math.random() - 0.5) * 120,
+          screenY: 150 + Math.random() * 200,
+          worldX: player === 'p1' ? -1.8 : 1.8,
+          worldY: 1.2 + Math.random() * 0.8,
+          worldZ: 0,
+          characterColor: bloomColor,
+          attackAngle: Math.random() * Math.PI * 2,
+          damage: 400,
+        });
+      }
+      return pool;
+    });
+    setScreenFlash(1.0);
+    hitEffectRafRef.current = requestAnimationFrame(() => {
+      setHitEffectPool(prev => tickHitEffectPool(prev));
+    });
+  }, [rageArtEvent, p1Fighter, p2Fighter]);
 
   useEffect(() => {
     if (particles.length === 0) return;
@@ -620,6 +742,9 @@ export default function CombatArena3D({
         <BlobShadow x={p1FinalX} z={p1FinalZ} scale={p1State === 'KO' ? 0.7 : 1} />
         <BlobShadow x={p2FinalX} z={p2FinalZ} scale={p2State === 'KO' ? 0.7 : 1} />
 
+        {/* ── AAA Point light flashes at impact coordinates ── */}
+        <HitPointLights lights={getActivePointLights(hitEffectPool)} />
+
         {/* P1 Fighter — faces +X (toward P2), rotationY=0 for ALL characters */}
         <FighterMesh
           state={p1State}
@@ -657,12 +782,18 @@ export default function CombatArena3D({
           p1Z={p1FinalZ}
           p2Z={p2FinalZ}
           fov={cameraFov}
+          shakeOffset={cameraShakeOffset}
         />
 
         {hitStopActive && <ambientLight intensity={0.8} color="#ffffff" />}
       </Canvas>
 
-      <VFXOverlay particles={particles} screenFlash={screenFlash} hitStopActive={hitStopActive} />
+      <VFXOverlay
+        particles={particles}
+        screenFlash={screenFlash}
+        hitStopActive={hitStopActive}
+        hitEffectPool={hitEffectPool}
+      />
       <IntroOverlay phase={cinematicPhase} p1Name={p1Fighter.name} p2Name={p2Fighter.name} />
       <VictoryOverlay phase={cinematicPhase} winnerName={winnerName} />
     </div>
