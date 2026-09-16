@@ -2203,11 +2203,13 @@ export default function GameBattleArena({
             )}
           </div>
 
-          {/* Move Execution Feedback */}
-          <MoveExecutionFeedback
-            events={feedbackEvents}
-            onExpire={(id) => setFeedbackEvents(prev => prev.filter(e => e.id !== id))}
-          />
+          {/* Move Execution Feedback — training mode only, never during real fights */}
+          {isPracticeMode && (
+            <MoveExecutionFeedback
+              events={feedbackEvents}
+              onExpire={(id) => setFeedbackEvents(prev => prev.filter(e => e.id !== id))}
+            />
+          )}
 
           {/* KO overlay */}
           {ko && (

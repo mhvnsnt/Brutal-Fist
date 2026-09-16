@@ -6,6 +6,33 @@
 
 ---
 
+## ═══════════════════════════════════════════════════════════════════
+## USER-BUILT FEATURE PRESERVATION LAW — ABSOLUTE RULE
+## ═══════════════════════════════════════════════════════════════════
+
+> **NEVER destroy, replace, or degrade a feature the user explicitly built or requested unless the user explicitly asks for it to be removed.**
+
+This law exists because agents have repeatedly replaced user-designed systems (e.g., per-character bloom hit effects) with inferior alternatives (text labels, damage numbers, "BLOCKED" overlays) without being asked to.
+
+### Specific Protections
+
+| Feature | Status | Rule |
+|---|---|---|
+| Per-character color bloom hit effects | **PROTECTED** | Never replace with text overlays, damage numbers, or labels |
+| Character-specific aura/color identity | **PROTECTED** | Never invent new colors or replace existing ones |
+| Hit effect VFX (bloom, sparks, point lights) | **PROTECTED** | Never remove or downgrade to text-only feedback |
+| Text hit labels (BLOCKED, HEAVY, COUNTER, damage numbers) | **TRAINING ONLY** | Only show when `isPracticeMode === true` — never in real fights |
+
+### The Rule in Plain Language
+
+1. **If the user built it, it stays.** Do not replace a working visual system with a "simpler" alternative.
+2. **Text hit indicators (BLOCKED, HEAVY, LIGHT, damage numbers) are training-mode-only.** They are ugly during real fights and the user did not ask for them there. Gate them behind `isPracticeMode`.
+3. **Bloom effects are the canonical hit feedback for fights.** The `spawnHitEffect` call in `CombatArena3D.tsx` on every `damageEvent` is the correct system. Do not remove it.
+4. **Before adding any new HUD element or hit feedback**, ask: "Did the user ask for this?" If no, do not add it.
+5. **If you are unsure whether a feature was user-requested**, preserve it and ask rather than removing it.
+
+---
+
 ## Operating Rules (Binding on All Agents)
 
 1. **Every turn/work session**: Check the current GitHub state and what Rocket has done.

@@ -585,6 +585,46 @@ export default function CombatArena3D({
     return () => cancelAnimationFrame(hitEffectRafRef.current);
   }, []);
 
+  // ── Per-character bloom hit effect on every damage event ─────────────────
+  // This is the core Tekken-style per-character color bloom — fires on every
+  // clean hit, block, and counter-hit. NEVER remove this effect.
+  useEffect(() => {
+    if (!damageEvent) return;
+    if (prevDamageEventRef.current?.count === damageEvent.count) return;
+    prevDamageEventRef.current = damageEvent;
+
+    const { player, damage, isCounter, factionColor } = damageEvent;
+    // Attacker is the opposite player
+    const attackerFighter = player === 'p2' ? p1Fighter : p2Fighter;
+    const bloomColor = getCharacterHitBloom(attackerFighter.id, factionColor);
+
+    // Screen-space position near the hit recipient
+    const baseX = player === 'p1' ? 0.28 : 0.72;
+    const screenX = baseX * 800;
+    const screenY = 180 + Math.random() * 80;
+
+    // World-space position near the fighter torso
+    const worldX = player === 'p1' ? -1.5 : 1.5;
+
+    const effectType: HitEffectType = isCounter ? 'counter_hit' : 'clean_hit';
+
+    setHitEffectPool(prev => spawnHitEffect(prev, {
+      type: effectType,
+      screenX,
+      screenY,
+      worldX,
+      worldY: 1.2,
+      worldZ: 0,
+      characterColor: bloomColor,
+      attackAngle: player === 'p1' ? Math.PI : 0,
+      damage,
+    }));
+
+    hitEffectRafRef.current = requestAnimationFrame(() => {
+      setHitEffectPool(prev => tickHitEffectPool(prev));
+    });
+  }, [damageEvent, p1Fighter, p2Fighter]);
+
   // ── Wall-splat VFX ────────────────────────────────────────────────────────
   useEffect(() => {
     if (!wallSplatEvent) return;
