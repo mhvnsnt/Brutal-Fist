@@ -10,7 +10,7 @@
     "lint": "tsc --noEmit",
     "preview:vite": "tsx server.ts",
     "build:vite": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
-    "start:vite": "next start",
+    "start:vite": "node dist/server.cjs",
     "clean": "rm -rf .next dist server.js",
     "psx:fighter": "node tools/psx/decimate-fighter.mjs BannonSource/assets/models/BANNON_rigged.glb public/models/bannon_psx.glb --tris=18000 --tex=256",
     "bannon:manifest": "node tools/bannon/build-character-manifest.mjs && node tools/bannon/build-animation-manifest.mjs",
@@ -65,9 +65,8 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^5.0.4",
-    "@vitejs/plugin-react": "^5.0.4",
     "autoprefixer": "^10.4.21",
-    "tailwindcss": "^4.1.0",
+    "tailwindcss": "^4.1.14",
     "typescript": "~5.8.2"
   }
 }
