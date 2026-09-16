@@ -686,29 +686,95 @@ The `animationBindingDiagnostic` field in the manifest directly identifies the *
 
 ---
 
-## Authored Skeleton Law
+## ═══════════════════════════════════════════════════════════════════
+## ANIMATION PIPELINE LAW — AUTHORITATIVE (v11)
+## ═══════════════════════════════════════════════════════════════════
 
-**The mistake**: AI agents repeatedly make the same mistakes when working with skeletons and bone-less models.
+### The Correct Pipeline
 
-**The law**:
-- When `AutoRigDetector.analyze()` returns `quality === 'none'` or `totalBones === 0`, call `AutoRigDetector.buildSyntheticRig(clonedScene)` to generate a procedural Mixamo-compatible skeleton from the mesh AABB.
-- The synthetic rig uses standard humanoid proportions (hips at 52% height, head at 90%, etc.) and Mixamo bone names so animation clips can be retargeted.
-- After building the synthetic rig, register the new bones in the clone map so UUID-based mixer binding works.
-- The synthetic rig provides AABB-level hitboxes and basic animation support. For full bone-parented hitboxes, the model should be re-rigged with Mixamo.
-- NEVER skip normalization or mixer creation for bone-less models — always run the full pipeline.
-
-```typescript
-// CORRECT
-if (report.quality === 'none' || report.totalBones === 0) {
-  const syntheticResult = AutoRigDetector.buildSyntheticRig(cloned);
-  // Register synthetic bones in clone map for UUID binding
-  cloned.traverse(obj => {
-    if ((obj as THREE.Bone).isBone && obj.name.startsWith('mixamorig')) {
-      cloneMap.set(obj.name, obj);
-    }
-  });
-}
-
-// WRONG — skipping bone-less models
-if (report.quality === 'none') return null; // ❌ breaks combat
 ```
+AUTHORED RIGGED GLB (SkinnedMesh + Skeleton + skin weights + AnimationClips)
+  ↓
+GLTFLoader → gltf.scene + gltf.animations
+  ↓
+SkeletonUtils.clone(gltf.scene)   ← CRITICAL: NOT scene.clone(true)
+  ↓
+AnimationMixer(clonedScene)       ← targets the VISIBLE clone
+  ↓
+mixer.clipAction(clip, clonedScene).play()
+  ↓
+mixer.update(delta) every frame   ← drives bone rotations
+  ↓
+SkinnedMesh deforms via authored skin weights
+  ↓
+VISIBLE JOINT DEFORMATION
+```
+
+### What NEVER to Do
+
+| Forbidden Action | Why |
+|---|---|
+| Generate synthetic bones at runtime | Produces wrong deformation, caused the tearing regression |
+| Generate vertex weights from AABB | Not authored skinning — arbitrary deformation |
+| Call `normalizeSkinWeights()` at runtime | Mutates authored weight data |
+| Call `rebind()` / replace `bindMatrix` | Breaks authored bind pose |
+| Animate the original cached GLTF scene | Affects all instances, not just this fighter |
+| Use `scene.clone(true)` for a skinned fighter | Detaches bone bind matrices → skeleton desync |
+| Declare animation success because `action.play()` ran | A playing action with a static mesh is FAILURE |
+| Declare animation success because `mixer.update()` runs | Bone travel must be measured and > 0 |
+
+### Asset Classification and Required Action
+
+| Classification | Required Action |
+|---|---|
+| `RIGGED_AND_ANIMATABLE` | Load directly → SkeletonUtils.clone() → AnimationMixer |
+| `RIGGED_NO_ANIMATIONS` | Find animation source (Bannon mocap / Mixamo / BVH) → retarget via ClipRetarget.ts |
+| `STATIC_MESH` | **BLOCKED** — send to offline asset repair. Do NOT generate synthetic rig at runtime. |
+| `MALFORMED` | **BLOCKED** — fix the source GLB |
+
+### Animation Integrity Gate
+
+Before combat begins, `AnimationIntegrityGate.ts` produces a per-fighter report:
+
+```
+FIGHTER: BANNON
+VISIBLE MESHES: X
+SKINNED MESHES: X
+SKELETON BONES: X
+ANIMATION CLIPS: X
+TRACKS: X
+RESOLVED TRACKS: X
+UNRESOLVED TRACKS: X
+ACTIVE CLIP: name
+MIXER ROOT: visible clone ✅ / WRONG OBJECT ❌
+BONE TRAVEL: Xm / X°
+VERDICT: PASS | BLOCKED | UNKNOWN
+```
+
+**UNKNOWN is never PASS.** Fix the warnings before declaring success.
+
+### Tools
+
+| Tool | Command | Output |
+|---|---|---|
+| GLB asset inspector | `npm run glb:inspect` | `docs/GLB_ASSET_MANIFEST.json` |
+| GLB roster scanner | `npm run glb:scan` | `docs/GLB_MANIFEST.json` |
+| Bannon animation source finder | `npm run bannon:find-anim-sources` | `docs/BANNON_ANIMATION_SOURCES.json` |
+| Offline rigging (placeholder only) | `npm run glb:rig` | `public/models/*_rigged_placeholder.glb` |
+
+### Authored Skeleton Law (CORRECTED)
+
+**DO NOT** use `AutoRigDetector.buildSyntheticRig()` or any runtime bone generation.
+
+The previous law in this file was wrong. Synthetic runtime rigging was the root cause of the combat tearing regression. It has been removed.
+
+**The correct approach for STATIC_MESH assets:**
+1. Find the authored rigged version in the Bannon repository (`BANNON_rigged.glb`, `BANNON_v1_rigready.glb`)
+2. If no authored rig exists, use Blender with the Bannon rig template for offline rigging
+3. The resulting GLB must have real `JOINTS_0` + `WEIGHTS_0` attributes and authored skin weights
+4. Only then load it into the game runtime
+
+**BLOCKED assets stay BLOCKED until the source GLB is fixed.**
+The game runtime is NOT the rigging tool.
+
+---

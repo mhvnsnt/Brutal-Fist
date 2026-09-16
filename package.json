@@ -15,6 +15,7 @@
     "psx:fighter": "node tools/psx/decimate-fighter.mjs BannonSource/assets/models/BANNON_rigged.glb public/models/bannon_psx.glb --tris=18000 --tex=256",
     "bannon:manifest": "node tools/bannon/build-character-manifest.mjs && node tools/bannon/build-animation-manifest.mjs",
     "bannon:verify": "node tools/bannon/verify-and-build-roster.mjs",
+    "bannon:find-anim-sources": "node tools/bannon/find-bannon-animation-sources.mjs",
     "sources:audit": "node tools/integration/build-source-audit.mjs",
     "glb:normalize": "node scripts/normalize-glb.mjs",
     "glb:normalize:dry": "node scripts/normalize-glb.mjs --dry-run --verbose",
@@ -23,7 +24,9 @@
     "glb:scan:output": "node tools/diagnostics/scan-roster-glbs.mjs --output docs/GLB_MANIFEST.json",
     "glb:rig": "node tools/diagnostics/rig-static-glbs.mjs",
     "glb:rig:dry": "node tools/diagnostics/rig-static-glbs.mjs --dry-run --verbose",
-    "glb:rig:verbose": "node tools/diagnostics/rig-static-glbs.mjs --verbose"
+    "glb:rig:verbose": "node tools/diagnostics/rig-static-glbs.mjs --verbose",
+    "glb:inspect": "node tools/diagnostics/inspect-glb-assets.mjs",
+    "glb:inspect:verbose": "node tools/diagnostics/inspect-glb-assets.mjs --verbose"
   },
   "dependencies": {
     "@dhiwise/component-tagger": "latest",

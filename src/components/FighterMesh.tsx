@@ -14,6 +14,10 @@ import {
 import {
   runCharacterPipeline,
 } from '../engine/pipeline/CharacterPipeline';
+import {
+  runAnimationIntegrityGate,
+  type AnimationIntegrityReport,
+} from '../engine/combat/AnimationIntegrityGate';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props
@@ -73,6 +77,13 @@ export interface FighterMeshProps {
    * @param failingChecks - The IDs of the failing checks
    */
   onDeformationBlocked?: (characterName: string, failingChecks: string[]) => void;
+  /**
+   * Callback fired with the animation integrity gate report on first combat entry.
+   * Reports PASS/BLOCKED/UNKNOWN with bone travel measurement, clip count,
+   * resolved/unresolved track counts, and mixer root validation.
+   * Use this to display the per-fighter animation status in DebugOverlayHUD.
+   */
+  onAnimationIntegrityReport?: (report: AnimationIntegrityReport) => void;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -388,6 +399,7 @@ function FighterMeshInner({
   onRigDiagnostic,
   onBoneHitboxReady,
   onDeformationBlocked,
+  onAnimationIntegrityReport,
 }: {
   gltfUrl: string;
   state: string;
@@ -404,6 +416,7 @@ function FighterMeshInner({
   onRigDiagnostic?: (report: RigDiagnosticReport) => void;
   onBoneHitboxReady?: (system: BoneHitboxSystem) => void;
   onDeformationBlocked?: (characterName: string, failingChecks: string[]) => void;
+  onAnimationIntegrityReport?: (report: AnimationIntegrityReport) => void;
 }) {
   const groupRef = useRef<THREE.Group>(null);
   const [normalized, setNormalized] = useState<NormalizedResult | null>(null);
@@ -556,6 +569,21 @@ function FighterMeshInner({
       };
 
       const report = runDeformationIntegrityTest(integrityInput);
+
+      // ── Run Animation Integrity Gate (per-fighter pre-combat report) ────────
+      // This produces the structured PASS/BLOCKED/UNKNOWN report documenting:
+      //   VISIBLE MESHES, SKINNED MESHES, SKELETON BONES, ANIMATION CLIPS,
+      //   TRACKS, RESOLVED TRACKS, UNRESOLVED TRACKS, ACTIVE CLIP,
+      //   MIXER ROOT, BONE TRAVEL
+      const animIntegrityReport = runAnimationIntegrityGate({
+        characterName: integrityInput.characterName.toUpperCase(),
+        clonedScene: normalized.scene,
+        mixer: normalized.mixer,
+        actions: normalized.actions,
+        activeClipName: activeClipRef.current,
+      });
+      // Fire callback so parent (CombatArena3D / GameBattleArena) can display the report
+      (onAnimationIntegrityReport as ((r: AnimationIntegrityReport) => void) | undefined)?.(animIntegrityReport);
 
       // DIAGNOSTIC ONLY: log the result but never block animation playback.
       // NOTE: FIRST_FRAME_DISPLACEMENT only calls mixer.stopAllAction() when
@@ -852,6 +880,7 @@ export function FighterMesh({
   onRigDiagnostic,
   onBoneHitboxReady,
   onDeformationBlocked,
+  onAnimationIntegrityReport,
 }: FighterMeshProps) {
   if (!modelUrl) return <FighterPlaceholder position={position} />;
 
@@ -873,6 +902,7 @@ export function FighterMesh({
         onRigDiagnostic={onRigDiagnostic}
         onBoneHitboxReady={onBoneHitboxReady}
         onDeformationBlocked={onDeformationBlocked}
+        onAnimationIntegrityReport={onAnimationIntegrityReport}
       />
     </Suspense>
   );

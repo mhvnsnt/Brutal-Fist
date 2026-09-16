@@ -182,7 +182,11 @@ function VFXOverlay({ particles, screenFlash, hitStopActive, hitEffectPool }: VF
 
     // ── Legacy particles (dust, knockdown) ───────────────────────────────
     for (const p of particles) {
-      const alpha = p.life / p.maxLife;
+      // CRITICAL: clamp alpha to [0,1] — p.life can exceed p.maxLife on the
+      // frame a particle is spawned (delta overshoot) producing alpha > 1,
+      // which makes (1 - alpha) negative and causes ctx.arc() to throw
+      // IndexSizeError: negative radius.
+      const alpha = Math.min(1, Math.max(0, p.life / p.maxLife));
       ctx.globalAlpha = alpha;
       if (p.type === 'impact') {
         ctx.fillStyle = p.color;
@@ -193,6 +197,7 @@ function VFXOverlay({ particles, screenFlash, hitStopActive, hitEffectPool }: VF
         ctx.strokeStyle = p.color;
         ctx.lineWidth = p.size * 0.5;
         ctx.beginPath();
+        // (1 - alpha) is always in [0,1] now that alpha is clamped, so radius >= 0
         ctx.arc(p.x, p.y, Math.max(0, p.size * (1 - alpha) * 20), 0, Math.PI * 2);
         ctx.stroke();
       } else if (p.type === 'trail') {

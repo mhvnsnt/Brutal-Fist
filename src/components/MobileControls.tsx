@@ -81,13 +81,18 @@ export function MobileControls({ inputRef }: MobileControlsProps) {
   useEffect(() => {
     let rafId: number;
     const drain = () => {
-      const frames = buffer.drain();
-      if (frames.length > 0 && inputRef.current) {
-        // Apply the most recent queued snapshot to the live ref.
-        // Earlier frames in the same batch are preserved in order so the
-        // engine's own input-buffer (SchwarzerblitzInputBuffer) can see them.
-        const latest = frames[frames.length - 1].snapshot;
-        Object.assign(inputRef.current, latest);
+      // Defensive guard: buffer.drain may not exist if the hook returned a
+      // stale/legacy object (e.g. from a previous build with the old API).
+      // This prevents "buffer.drain is not a function" crashes at line 84.
+      if (typeof buffer.drain === 'function') {
+        const frames = buffer.drain();
+        if (frames.length > 0 && inputRef.current) {
+          // Apply the most recent queued snapshot to the live ref.
+          // Earlier frames in the same batch are preserved in order so the
+          // engine's own input-buffer (SchwarzerblitzInputBuffer) can see them.
+          const latest = frames[frames.length - 1].snapshot;
+          Object.assign(inputRef.current, latest);
+        }
       }
       rafId = requestAnimationFrame(drain);
     };
