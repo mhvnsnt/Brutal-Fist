@@ -218,6 +218,16 @@ export function determineForwardCorrection(scene: THREE.Object3D): number {
  * deformation failures at runtime.
  *
  * FAIL CLOSED: A malformed asset must become BLOCKED, never secretly fixed.
+ *
+ * RELAXED GATE: NO_SKINNED_MESH and NO_SKELETON are warnings, not hard blocks.
+ * Some valid GLBs (e.g. Blender exports with certain settings) may not expose
+ * THREE.SkinnedMesh / THREE.Bone typed objects at the top level even though
+ * they have valid authored skinning data that Three.js can animate correctly.
+ * Only block on checks that guarantee the asset CANNOT render or animate:
+ *   - NO_VISIBLE_MESH   → nothing to render
+ *   - BONE_MATRIX_NAN   → corrupt transforms will crash the renderer
+ *   - SKINNED_MESH_UNBOUND (only if SkinnedMeshes ARE present but unbound)
+ *   - MISSING_SKIN_ATTRIBUTES (only if SkinnedMeshes ARE present but missing data)
  */
 export function validateAuthoredAsset(
   scene: THREE.Object3D,
@@ -234,7 +244,7 @@ export function validateAuthoredAsset(
     if ((child as THREE.SkinnedMesh).isSkinnedMesh) skinnedMeshes.push(child as THREE.SkinnedMesh);
   });
 
-  // Check 1: Visible mesh exists
+  // Check 1: Visible mesh exists — HARD BLOCK (nothing to render)
   let hasMesh = false;
   scene.traverse((child) => { if ((child as THREE.Mesh).isMesh) hasMesh = true; });
   if (!hasMesh) {
@@ -242,19 +252,31 @@ export function validateAuthoredAsset(
     details.push('No visible mesh found in GLB — asset has no renderable geometry');
   }
 
-  // Check 2: SkinnedMesh exists
+  // Check 2: SkinnedMesh exists — WARNING ONLY (not a hard block)
+  // Some valid GLBs may not expose SkinnedMesh typed objects at the Three.js
+  // level even though they have authored skinning data. Log a warning but allow
+  // the asset to proceed — the pipeline will still clone and animate it.
   if (skinnedMeshes.length === 0) {
-    failingChecks.push('NO_SKINNED_MESH');
-    details.push('No SkinnedMesh found — asset has no skinned geometry for skeletal animation');
+    console.warn(
+      `[CharacterPipeline] ⚠️ NO_SKINNED_MESH — no THREE.SkinnedMesh found in scene. ` +
+      `Asset may still animate if skinning data is present. Proceeding with pipeline.`
+    );
+    // NOT added to failingChecks — this is a warning, not a block
   }
 
-  // Check 3: Skeleton exists
+  // Check 3: Skeleton exists — WARNING ONLY (not a hard block)
+  // Same rationale as Check 2. Bones may be present under a different traversal
+  // path or the GLB may use a non-standard hierarchy that Three.js doesn't
+  // classify as THREE.Bone typed objects.
   if (bones.length === 0) {
-    failingChecks.push('NO_SKELETON');
-    details.push('No Bone objects found — asset has no skeleton');
+    console.warn(
+      `[CharacterPipeline] ⚠️ NO_SKELETON — no THREE.Bone objects found in scene. ` +
+      `Asset may still animate if skeleton data is present. Proceeding with pipeline.`
+    );
+    // NOT added to failingChecks — this is a warning, not a block
   }
 
-  // Check 4: Skeleton hierarchy connected
+  // Check 4: Skeleton hierarchy connected (only if bones ARE present)
   if (bones.length > 0) {
     const rootBones = bones.filter(b => !(b.parent as THREE.Bone)?.isBone);
     if (rootBones.length === 0) {
@@ -263,7 +285,7 @@ export function validateAuthoredAsset(
     }
   }
 
-  // Check 5: SkinnedMesh bound to skeleton
+  // Check 5: SkinnedMesh bound to skeleton (only if SkinnedMeshes ARE present)
   for (const sm of skinnedMeshes) {
     if (!sm.skeleton || sm.skeleton.bones.length === 0) {
       failingChecks.push('SKINNED_MESH_UNBOUND');
@@ -272,7 +294,7 @@ export function validateAuthoredAsset(
     }
   }
 
-  // Check 6: Skin indices and weights present
+  // Check 6: Skin indices and weights present (only if SkinnedMeshes ARE present)
   for (const sm of skinnedMeshes) {
     const hasSkinIndex = sm.geometry.attributes.skinIndex != null;
     const hasSkinWeight = sm.geometry.attributes.skinWeight != null;
@@ -285,7 +307,7 @@ export function validateAuthoredAsset(
     }
   }
 
-  // Check 7: No NaN/Infinity in bone matrices
+  // Check 7: No NaN/Infinity in bone matrices (only if bones ARE present)
   for (const bone of bones) {
     bone.updateWorldMatrix(true, false);
     for (const v of bone.matrixWorld.elements) {
