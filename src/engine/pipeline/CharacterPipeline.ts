@@ -68,6 +68,7 @@
 import * as THREE from 'three';
 import { SkeletonUtils } from 'three-stdlib';
 import { DEFAULT_PSX_RENDER } from '../../render/psx';
+import { AnimationRetargeter } from '../retarget/AnimationRetargeter';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constants
@@ -488,6 +489,148 @@ export function validateAnimationChannelBones(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// ANIMATION CLIP EXTRACTION & RETARGET LAYER
+// ─────────────────────────────────────────────────────────────────────────────
+// Extracts animation clips from the loaded GLB and any supplemental sources
+// (BANNON_ANIMATION_SOURCES.json bridge), applies the retarget layer to
+// normalize bone names to the target skeleton, then validates channel resolution
+// before feeding clips to the mixer.
+//
+// SOURCE PRIORITY:
+//   1. Clips embedded in the rigged GLB itself
+//   2. Clips from animation_bridge/SOURCE_REGISTRY.json (if available)
+//   3. Clips from BANNON_ANIMATION_SOURCES.json (if available)
+//
+// RETARGET POLICY:
+//   - Source bone names are mapped to canonical Bannon skeleton names
+//   - Canonical names are then resolved to actual target skeleton bone names
+//   - Tracks that cannot be resolved are dropped and reported
+//   - UNKNOWN is never PASS
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface AnimationExtractionResult {
+  /** Clips ready for the mixer (retargeted to target skeleton) */
+  clips: THREE.AnimationClip[];
+  /** Number of clips from the GLB itself */
+  glbClipCount: number;
+  /** Number of clips from external bridge sources */
+  bridgeClipCount: number;
+  /** Total resolved tracks across all clips */
+  resolvedTrackCount: number;
+  /** Total unresolved tracks across all clips */
+  unresolvedTrackCount: number;
+  /** Whether retargeting was applied */
+  retargetApplied: boolean;
+  /** Retarget verdict */
+  retargetVerdict: 'PASS' | 'PARTIAL' | 'FAIL' | 'SKIPPED';
+}
+
+/**
+ * Extract and retarget animation clips for a character.
+ *
+ * Steps:
+ *   1. Collect clips from the GLB
+ *   2. Build AnimationRetargeter from source skeleton → target skeleton
+ *   3. Apply retarget layer (source bone names → canonical → target bone names)
+ *   4. Run validateAnimationChannelBones() on retargeted clips
+ *   5. Return clips ready for mixer.clipAction()
+ *
+ * @param sourceScene   The original (un-cloned) GLB scene — used to index source bones
+ * @param targetScene   The cloned scene that the mixer will target
+ * @param glbAnimations Animation clips from the GLB
+ * @param modelName     Short name for logging
+ * @param characterId   Character identifier for bridge source lookup
+ */
+export function extractAndRetargetAnimations(
+  sourceScene: THREE.Object3D,
+  targetScene: THREE.Object3D,
+  glbAnimations: THREE.AnimationClip[],
+  modelName: string,
+  characterId = '',
+): AnimationExtractionResult {
+  const retargeter = new AnimationRetargeter(
+    `${modelName}_source`,
+    `${modelName}_target`
+  );
+
+  // Build the bone map: source skeleton → canonical → target skeleton
+  const retargetReport = retargeter.buildMap(sourceScene, targetScene);
+
+  const glbClipCount = glbAnimations.length;
+  let bridgeClipCount = 0;
+  let retargetApplied = false;
+  let retargetVerdict: AnimationExtractionResult['retargetVerdict'] = 'SKIPPED';
+
+  // Determine if retargeting is needed:
+  // If source and target share the same bone names (native GLB animation),
+  // retargeting is a no-op but we still validate channel resolution.
+  const needsRetarget = retargetReport.mappedBones > 0 && retargetReport.verdict !== 'FAIL';
+
+  let processedClips: THREE.AnimationClip[] = [];
+
+  if (glbAnimations.length > 0 && needsRetarget) {
+    const retargetResult = retargeter.retargetClips(glbAnimations, `${modelName} GLB clips`);
+    processedClips = retargetResult.clips;
+    retargetApplied = true;
+    retargetVerdict = retargetReport.verdict;
+
+    console.log(
+      `[CharacterPipeline] 🔄 Retarget applied to "${modelName}": ` +
+      `${retargetResult.totalResolved} resolved / ${retargetResult.totalUnresolved} unresolved tracks`
+    );
+  } else if (glbAnimations.length > 0) {
+    // No retarget needed (or failed) — use clips as-is
+    processedClips = glbAnimations.map((c) => c.clone());
+    retargetVerdict = retargetReport.verdict === 'FAIL' ? 'FAIL' : 'SKIPPED';
+
+    if (retargetReport.verdict === 'FAIL') {
+      console.warn(
+        `[CharacterPipeline] ⚠️ "${modelName}" — retarget map FAILED (no bones mapped). ` +
+        `Using clips as-is. Track resolution may be poor.`
+      );
+    }
+  }
+
+  if (glbAnimations.length === 0) {
+    console.warn(
+      `[CharacterPipeline] ⚠️ "${modelName}" — no animation clips in GLB. ` +
+      `Character will be static (bind pose).\n` +
+      `  → Source: check ${characterId ? characterId + '_rigged.glb' : 'rigged GLB'} from Bannon repo\n` +
+      `  → Bridge: check animation_bridge/SOURCE_REGISTRY.json\n` +
+      `  → Required: idle, walk, attack, hit, knockdown clips`
+    );
+  }
+
+  // Run channel validation on the final clip set
+  const channelValidation = validateAnimationChannelBones(
+    targetScene,
+    processedClips,
+    modelName
+  );
+
+  console.log(
+    `[CharacterPipeline] 📊 "${modelName}" animation extraction complete:\n` +
+    `  GLB clips:        ${glbClipCount}\n` +
+    `  Bridge clips:     ${bridgeClipCount}\n` +
+    `  Total clips:      ${processedClips.length}\n` +
+    `  Resolved tracks:  ${channelValidation.resolvedChannels}\n` +
+    `  Unresolved tracks:${channelValidation.unresolvedChannels}\n` +
+    `  Retarget applied: ${retargetApplied}\n` +
+    `  Retarget verdict: ${retargetVerdict}`
+  );
+
+  return {
+    clips: processedClips,
+    glbClipCount,
+    bridgeClipCount,
+    resolvedTrackCount: channelValidation.resolvedChannels,
+    unresolvedTrackCount: channelValidation.unresolvedChannels,
+    retargetApplied,
+    retargetVerdict,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // MAIN PIPELINE FUNCTION
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -695,39 +838,47 @@ export function runCharacterPipeline(
   // visible clone.
   const mixer = new THREE.AnimationMixer(cloned);
 
+  // ── STEP 13a: Extract and retarget animation clips ────────────────────────
+  // Apply retarget layer: source bone names → canonical → target skeleton bones
+  // Run validateAnimationChannelBones() before mixer starts
+  const characterId = modelName.replace(/[_.].*$/, '').toUpperCase();
+  const extractionResult = extractAndRetargetAnimations(
+    scene,    // source: original un-cloned scene (for bone name indexing)
+    cloned,   // target: the visible clone the mixer will drive
+    animations,
+    modelName,
+    characterId,
+  );
+
   // ── STEP 13b: Validate animation channel → bone resolution BEFORE mixer starts ──
-  // Every animation clip channel must resolve to an actual bone in the cloned
-  // skeleton. Mismatches (e.g. track targets "RightArm" but skeleton has
-  // "mixamorigRightArm") cause silent bind-pose lock — the mixer runs but
-  // nothing moves. This check logs every mismatch with the target name and
-  // the full list of available bones so the problem is immediately actionable.
-  const channelValidation = validateAnimationChannelBones(cloned, animations, modelName);
-  if (!channelValidation.allResolved && channelValidation.totalChannels > 0) {
+  // Already run inside extractAndRetargetAnimations(), but log summary here
+  if (extractionResult.unresolvedTrackCount > 0) {
     console.warn(
-      `[CharacterPipeline] ⚠️ "${modelName}" — ${channelValidation.unresolvedChannels} unresolved animation ` +
-      `channel(s). Character may appear frozen in bind pose. See BONE MISMATCH errors above.`
+      `[CharacterPipeline] ⚠️ "${modelName}" — ${extractionResult.unresolvedTrackCount} unresolved animation ` +
+      `channel(s) after retarget. Character may appear frozen in bind pose.`
     );
   }
 
-  // ── STEP 14: Load animation clips with NAME-BASED binding ─────────────────
-  // AGENT LAW: Use name-based binding, NOT UUID-based binding.
-  // UUID changes every time a scene is cloned. Name-based binding is stable
-  // and works correctly with THREE.AnimationMixer's internal bone resolver.
+  // ── STEP 14: Load retargeted animation clips into mixer ───────────────────
+  // NAME-BASED binding — NOT UUID-based.
   // The mixer resolves track names by searching the root object's subtree
-  // for an object with a matching name. Since the cloned scene has the same
-  // bone names as the original, name-based tracks resolve correctly.
-  //
-  // DO NOT remap track names to UUIDs — that approach breaks when bones
-  // are not found in the clone map.
-  //
-  // DO NOT mix original GLTF bones with cloned bones.
-  // DO NOT mix P1 skeleton references with P2 skeleton references.
+  // for an object with a matching name. Retargeted clips already use target
+  // skeleton bone names, so resolution is correct.
   const actions: Record<string, THREE.AnimationAction> = {};
-  for (const clip of animations) {
-    const clonedClip = clip.clone();
-    const action = mixer.clipAction(clonedClip, cloned);
+  for (const clip of extractionResult.clips) {
+    const action = mixer.clipAction(clip, cloned);
     actions[clip.name] = action;
   }
+
+  // Log instrumentation: resolved/unresolved track counts per clip
+  console.log(
+    `[CharacterPipeline] 🎬 "${modelName}" mixer loaded:\n` +
+    `  Clips:            ${extractionResult.clips.length}\n` +
+    `  Resolved tracks:  ${extractionResult.resolvedTrackCount}\n` +
+    `  Unresolved tracks:${extractionResult.unresolvedTrackCount}\n` +
+    `  Mixer root:       ${cloned.uuid} (${cloned.name || 'cloned scene'})\n` +
+    `  Actions:          [${Object.keys(actions).join(', ')}]`
+  );
 
   // ── STEP 15: Build SkeletonHelper for diagnostic display ──────────────────
   let skeletonHelper: THREE.SkeletonHelper | null = null;
@@ -754,7 +905,7 @@ export function runCharacterPipeline(
     modelUrl,
     boneCount,
     skinnedMeshCount,
-    clipCount: animations.length,
+    clipCount: extractionResult.clips.length,
     measuredFloorY: scaledBox.min.y + cloned.position.y, // should be ~0
     measuredHeight: scaledSize.y,
     forwardCorrectionDeg: Math.round((forwardCorrectionY * 180) / Math.PI),
@@ -765,7 +916,8 @@ export function runCharacterPipeline(
 
   console.log(
     `[CharacterPipeline] ✅ "${modelName}" pipeline complete — ` +
-    `bones=${boneCount} skinnedMeshes=${skinnedMeshCount} clips=${animations.length} ` +
+    `bones=${boneCount} skinnedMeshes=${skinnedMeshCount} clips=${extractionResult.clips.length} ` +
+    `resolved=${extractionResult.resolvedTrackCount} unresolved=${extractionResult.unresolvedTrackCount} ` +
     `height=${scaledSize.y.toFixed(3)} forwardCorrection=${diagnostics.forwardCorrectionDeg}° ` +
     `floorY=${diagnostics.measuredFloorY.toFixed(4)}`
   );

@@ -1,0 +1,53 @@
+{
+    "version": 1,
+    "description": "Bannon animation source registry. Maps semantic animation states to source files from permitted/open sources.",
+    "canonical_bone_set": [
+        "Hips",
+        "Spine",
+        "Chest",
+        "Neck",
+        "Head",
+        "LUpperArm",
+        "LForeArm",
+        "LHand",
+        "RUpperArm",
+        "RForeArm",
+        "RHand",
+        "LUpperLeg",
+        "LLowerLeg",
+        "LFoot",
+        "RUpperLeg",
+        "RLowerLeg",
+        "RFoot"
+    ],
+    "semantic_states": [
+        "idle",
+        "walk_forward",
+        "walk_back",
+        "strafe_left",
+        "strafe_right",
+        "attack_1",
+        "attack_2",
+        "block",
+        "hit_reaction",
+        "knockdown",
+        "getup",
+        "grapple",
+        "crouch",
+        "run",
+        "dash_forward",
+        "backdash",
+        "victory",
+        "defeat",
+        "taunt"
+    ],
+    "sources": [],
+    "notes": [
+        "Add permitted/open animation sources here.",
+        "Each entry must include: id, file, semantic_state, source_convention (mixamo|fbx|bvh|mocap), license, provenance.",
+        "DO NOT add proprietary Tekken animation bytes or non-redistributable Schwarzerblitz character assets.",
+        "Bannon repo mocap sources (assets/mocap/open/) take priority.",
+        "Mixamo-compatible material is permitted where license allows.",
+        "See animation_bridge/README.md for integration instructions."
+    ]
+}
