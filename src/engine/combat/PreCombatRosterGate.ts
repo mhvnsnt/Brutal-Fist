@@ -149,7 +149,13 @@ interface GlbMeasure {
 async function measureGlbSkeleton(url: string): Promise<GlbMeasure | null> {
   try {
     const { GLTFLoader } = await import('three/examples/jsm/loaders/GLTFLoader.js');
+    const { MeshoptDecoder } = await import('three/examples/jsm/libs/meshopt_decoder.module.js');
     const loader = new GLTFLoader();
+    // BANNON_rigged.glb (and many roster GLBs) use EXT_meshopt_compression
+    if ((MeshoptDecoder as { ready?: Promise<unknown> }).ready) {
+      await (MeshoptDecoder as { ready: Promise<unknown> }).ready;
+    }
+    loader.setMeshoptDecoder(MeshoptDecoder);
     const gltf = await new Promise<any>((resolve, reject) => {
       loader.load(url, resolve, undefined, reject);
     });

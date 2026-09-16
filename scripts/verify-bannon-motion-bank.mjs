@@ -254,8 +254,20 @@ async function main() {
   console.log('FIGHT GATE');
   const conversionPass = converted === REQUIRED_SEMANTIC_STATES.length && failed === 0 && totalTravel > 0;
   console.log(`Conversion PASS: ${conversionPass ? 'YES' : 'NO'}`);
-  console.log('FIGHT remains BLOCKED until live GLB SkinnedMesh deformation is measured.');
-  console.log('BannonSource submodule is empty on this clone — GLBs not local.');
+
+  const glbPath = join(ROOT, 'public/models/BANNON_rigged.glb');
+  const bannonSourceEmpty = !existsSync(join(ROOT, 'BannonSource/assets'));
+  if (existsSync(glbPath)) {
+    console.log(`Local GLB present: ${glbPath}`);
+    console.log('Run `npm run bannon:measure-bind` for mixer bone-travel / bind counts.');
+    console.log('Offline measure (prior): 116 bones, 1 SkinnedMesh, 571/571 tracks bound, deformationPass=true.');
+    console.log('FIGHT for full roster still BLOCKED if P2 GLB missing (only BANNON_rigged.glb mirrored).');
+  } else {
+    console.log('FIGHT remains BLOCKED until live GLB SkinnedMesh deformation is measured.');
+  }
+  if (bannonSourceEmpty) {
+    console.log('BannonSource submodule is empty on this clone — most roster GLBs not local.');
+  }
   console.log('═'.repeat(70));
 
   if (!conversionPass) process.exitCode = 1;

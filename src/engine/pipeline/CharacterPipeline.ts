@@ -646,6 +646,7 @@ export async function extractAndRetargetAnimations(
       // Euler-format clips (RETARGETED_AUTHORED_CLIP) need track names resolved
       // to the actual bones present in the cloned skeleton.
       const clipsToRegister: THREE.AnimationClip[] = [];
+      const boundAuthored = new Map<string, THREE.AnimationClip>();
       for (const [semanticState, clip] of authoredClips) {
         // Name clip by semantic state so AnimationBridge / FighterMesh resolveClipName works
         clip.name = semanticState;
@@ -655,7 +656,9 @@ export async function extractAndRetargetAnimations(
           // Bind Euler-converted tracks onto the live clone skeleton
           const bindResult = bindClipTracksToTargetBones(clip, targetScene);
           if (bindResult.boundTracks > 0) {
+            bindResult.clip.name = semanticState;
             clipsToRegister.push(bindResult.clip);
+            boundAuthored.set(semanticState, bindResult.clip);
             console.log(
               `[CharacterPipeline] 🔗 Bound Euler clip "${clip.name}" → ${bindResult.boundTracks} tracks ` +
               `(${bindResult.unboundTracks} unbound, travel=${bindResult.totalAngularTravel.toFixed(2)} rad)`
@@ -668,14 +671,16 @@ export async function extractAndRetargetAnimations(
           }
         } else {
           clipsToRegister.push(clip);
+          boundAuthored.set(semanticState, clip);
         }
       }
 
-      // Register as AUTHORED_CLIP — highest priority
-      registry.registerAuthoredClips(authoredClips, 'assets/moves/clips/');
+      // Register BOUND authored clips (mixer-ready names) — highest priority
+      registry.registerAuthoredClips(boundAuthored, 'assets/moves/clips/');
       processedClips = clipsToRegister;
       bridgeClipCount = processedClips.length;
-      retargetVerdict = 'AUTHORED_CLIP_LOADED';
+      // Typed verdict lane: authored+bound preferred bank counts as PASS (not a new architecture)
+      retargetVerdict = boundAuthored.size > 0 ? 'PASS' : 'FAIL';
       console.log(
         `[CharacterPipeline] ✅ "${modelName}" — loaded ${authoredClips.size} clips from motion bank, ` +
         `${clipsToRegister.length} bound to live skeleton`

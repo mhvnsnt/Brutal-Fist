@@ -26,7 +26,9 @@
     "glb:rig:dry": "node tools/diagnostics/rig-static-glbs.mjs --dry-run --verbose",
     "glb:rig:verbose": "node tools/diagnostics/rig-static-glbs.mjs --verbose",
     "glb:inspect": "node tools/diagnostics/inspect-glb-assets.mjs",
-    "glb:inspect:verbose": "node tools/diagnostics/inspect-glb-assets.mjs --verbose"
+    "glb:inspect:verbose": "node tools/diagnostics/inspect-glb-assets.mjs --verbose",
+    "bannon:verify-motion": "node scripts/verify-bannon-motion-bank.mjs",
+    "bannon:measure-bind": "node scripts/measure-glb-bind.mjs"
   },
   "dependencies": {
     "@dhiwise/component-tagger": "latest",
