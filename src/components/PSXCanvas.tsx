@@ -40,6 +40,11 @@ export function PSXCanvas({ fighterState, opponentState, fighterAnimation, oppon
   const separation = Math.max(4.8, Math.min(7.5, Math.hypot(p2X - p1X, p2Z - p1Z) + 3.0));
   const urban = stageId === 'urban-night';
 
+  // +Z is the canonical mesh-forward basis. Rotating +pi/2/-pi/2 maps each fighter
+  // onto the +X/-X battle line without per-character mirroring or scale hacks.
+  const p1RotationY = resolvedP1Facing === 1 ? Math.PI / 2 : -Math.PI / 2;
+  const p2RotationY = resolvedP2Facing === -1 ? -Math.PI / 2 : Math.PI / 2;
+
   return (
     <div className="absolute inset-0 overflow-hidden bg-black">
       <Canvas dpr={1} shadows gl={{ antialias: false, powerPreference: 'high-performance' }} onCreated={({ gl }) => { gl.setPixelRatio(1); gl.setSize(DEFAULT_PSX_RENDER.renderWidth, DEFAULT_PSX_RENDER.renderHeight, false); }} camera={{ position: [0, 1.35, 7], fov: 34 }} style={{ width: '100%', height: '100%', imageRendering: 'pixelated' }}>
@@ -50,8 +55,8 @@ export function PSXCanvas({ fighterState, opponentState, fighterAnimation, oppon
         <directionalLight position={[3, 5, 6]} intensity={urban ? 2.3 : 3.0} />
         {urban && <pointLight position={[-4, 3, 1]} intensity={13} distance={14} color="#7138d6" />}
         <StageEnvironment stageId={stageId} />
-        <FighterMesh state={fighterState} animation={fighterAnimation} modelUrl={modelUrl} position={[p1X, 0, p1Z]} facing={resolvedP1Facing} rotationY={Math.PI / 4} tint="#d9d9d9" />
-        <FighterMesh state={opponentState} animation={opponentAnimation} modelUrl={opponentModelUrl} position={[p2X, 0, p2Z]} facing={resolvedP2Facing} rotationY={-Math.PI / 4} tint="#7d8796" />
+        <FighterMesh state={fighterState} animation={fighterAnimation} modelUrl={modelUrl} position={[p1X, 0, p1Z]} facing={resolvedP1Facing} rotationY={p1RotationY} tint="#d9d9d9" />
+        <FighterMesh state={opponentState} animation={opponentAnimation} modelUrl={opponentModelUrl} position={[p2X, 0, p2Z]} facing={resolvedP2Facing} rotationY={p2RotationY} tint="#7d8796" />
       </Canvas>
       <div className="pointer-events-none absolute inset-0 opacity-20 bg-[linear-gradient(rgba(255,255,255,.08)_1px,transparent_1px)] bg-[size:100%_4px]" />
     </div>
