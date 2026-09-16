@@ -1,0 +1,439 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$comment": "Per-character override layer for the Universal Character Pipeline. All values are OPTIONAL \u2014 omit a key to use the pipeline default. Agents may edit this file to fine-tune outliers without touching any TypeScript code. The pipeline reads this file at load time and merges overrides on top of its universal defaults.",
+    "_defaults": {
+        "$comment": "Reference-only block \u2014 NOT consumed by the pipeline. Documents the universal defaults that apply when no override is present.",
+        "targetHeight": 1.85,
+        "uniformScale": null,
+        "yOffset": 0.0,
+        "rotationY": 0.0,
+        "forwardAxisOverride": null,
+        "expectedBounds": {
+            "minHeight": 1.4,
+            "maxHeight": 2.4,
+            "maxWidth": 1.2,
+            "maxDepth": 1.2
+        },
+        "frustumCulled": false,
+        "blocked": false,
+        "blockReason": null
+    },
+    "characters": {
+        "bannon": {
+            "$comment": "BANNON.glb \u2014 primary protagonist, verified pipeline PASS",
+            "uniformScale": null,
+            "yOffset": 0.0,
+            "rotationY": 0.0,
+            "forwardAxisOverride": null,
+            "expectedBounds": {
+                "minHeight": 1.6,
+                "maxHeight": 2.1,
+                "maxWidth": 1.0,
+                "maxDepth": 1.0
+            },
+            "frustumCulled": false,
+            "blocked": false,
+            "blockReason": null
+        },
+        "maime": {
+            "$comment": "MAIME.glb \u2014 verified pipeline PASS",
+            "uniformScale": null,
+            "yOffset": 0.0,
+            "rotationY": 0.0,
+            "forwardAxisOverride": null,
+            "expectedBounds": {
+                "minHeight": 1.5,
+                "maxHeight": 2.0,
+                "maxWidth": 0.9,
+                "maxDepth": 0.9
+            },
+            "frustumCulled": false,
+            "blocked": false,
+            "blockReason": null
+        },
+        "onyx": {
+            "$comment": "ONYX_street.glb \u2014 pending full deformation validation",
+            "uniformScale": null,
+            "yOffset": 0.0,
+            "rotationY": 0.0,
+            "forwardAxisOverride": null,
+            "expectedBounds": {
+                "minHeight": 1.5,
+                "maxHeight": 2.1,
+                "maxWidth": 1.0,
+                "maxDepth": 1.0
+            },
+            "frustumCulled": false,
+            "blocked": false,
+            "blockReason": null
+        },
+        "cain_elias": {
+            "$comment": "CAIN_ELIAS_ring.glb \u2014 pending full deformation validation",
+            "uniformScale": null,
+            "yOffset": 0.0,
+            "rotationY": 0.0,
+            "forwardAxisOverride": null,
+            "expectedBounds": {
+                "minHeight": 1.6,
+                "maxHeight": 2.2,
+                "maxWidth": 1.1,
+                "maxDepth": 1.1
+            },
+            "frustumCulled": false,
+            "blocked": false,
+            "blockReason": null
+        },
+        "stick_up": {
+            "$comment": "STICKUP.glb \u2014 pending full deformation validation",
+            "uniformScale": null,
+            "yOffset": 0.0,
+            "rotationY": 0.0,
+            "forwardAxisOverride": null,
+            "expectedBounds": {
+                "minHeight": 1.5,
+                "maxHeight": 2.0,
+                "maxWidth": 0.9,
+                "maxDepth": 0.9
+            },
+            "frustumCulled": false,
+            "blocked": false,
+            "blockReason": null
+        },
+        "cipher": {
+            "$comment": "CIPHER_feral.glb \u2014 pending full deformation validation",
+            "uniformScale": null,
+            "yOffset": 0.0,
+            "rotationY": 0.0,
+            "forwardAxisOverride": null,
+            "expectedBounds": {
+                "minHeight": 1.5,
+                "maxHeight": 2.0,
+                "maxWidth": 0.9,
+                "maxDepth": 0.9
+            },
+            "frustumCulled": false,
+            "blocked": false,
+            "blockReason": null
+        },
+        "echo": {
+            "$comment": "ECHO.glb \u2014 pending full deformation validation",
+            "uniformScale": null,
+            "yOffset": 0.0,
+            "rotationY": 0.0,
+            "forwardAxisOverride": null,
+            "expectedBounds": {
+                "minHeight": 1.5,
+                "maxHeight": 2.0,
+                "maxWidth": 0.9,
+                "maxDepth": 0.9
+            },
+            "frustumCulled": false,
+            "blocked": false,
+            "blockReason": null
+        },
+        "cody": {
+            "$comment": "CODY_sober.glb \u2014 pending full deformation validation",
+            "uniformScale": null,
+            "yOffset": 0.0,
+            "rotationY": 0.0,
+            "forwardAxisOverride": null,
+            "expectedBounds": {
+                "minHeight": 1.5,
+                "maxHeight": 2.0,
+                "maxWidth": 0.9,
+                "maxDepth": 0.9
+            },
+            "frustumCulled": false,
+            "blocked": false,
+            "blockReason": null
+        },
+        "hall_nighter": {
+            "$comment": "HALL_NIGHTER.glb \u2014 pending full deformation validation",
+            "uniformScale": null,
+            "yOffset": 0.0,
+            "rotationY": 0.0,
+            "forwardAxisOverride": null,
+            "expectedBounds": {
+                "minHeight": 1.6,
+                "maxHeight": 2.2,
+                "maxWidth": 1.1,
+                "maxDepth": 1.1
+            },
+            "frustumCulled": false,
+            "blocked": false,
+            "blockReason": null
+        },
+        "static": {
+            "$comment": "STATIC.glb \u2014 pending full deformation validation",
+            "uniformScale": null,
+            "yOffset": 0.0,
+            "rotationY": 0.0,
+            "forwardAxisOverride": null,
+            "expectedBounds": {
+                "minHeight": 1.5,
+                "maxHeight": 2.0,
+                "maxWidth": 0.9,
+                "maxDepth": 0.9
+            },
+            "frustumCulled": false,
+            "blocked": false,
+            "blockReason": null
+        },
+        "viper": {
+            "$comment": "VIPER.glb \u2014 pending full deformation validation",
+            "uniformScale": null,
+            "yOffset": 0.0,
+            "rotationY": 0.0,
+            "forwardAxisOverride": null,
+            "expectedBounds": {
+                "minHeight": 1.5,
+                "maxHeight": 2.0,
+                "maxWidth": 0.9,
+                "maxDepth": 0.9
+            },
+            "frustumCulled": false,
+            "blocked": false,
+            "blockReason": null
+        },
+        "kobra": {
+            "$comment": "KOBRA.glb \u2014 pending full deformation validation",
+            "uniformScale": null,
+            "yOffset": 0.0,
+            "rotationY": 0.0,
+            "forwardAxisOverride": null,
+            "expectedBounds": {
+                "minHeight": 1.5,
+                "maxHeight": 2.0,
+                "maxWidth": 0.9,
+                "maxDepth": 0.9
+            },
+            "frustumCulled": false,
+            "blocked": false,
+            "blockReason": null
+        },
+        "aaron_ruben": {
+            "$comment": "AARON_RUBEN.glb \u2014 pending full deformation validation",
+            "uniformScale": null,
+            "yOffset": 0.0,
+            "rotationY": 0.0,
+            "forwardAxisOverride": null,
+            "expectedBounds": {
+                "minHeight": 1.6,
+                "maxHeight": 2.1,
+                "maxWidth": 1.0,
+                "maxDepth": 1.0
+            },
+            "frustumCulled": false,
+            "blocked": false,
+            "blockReason": null
+        },
+        "hollow": {
+            "$comment": "HOLLOW.glb \u2014 pending full deformation validation",
+            "uniformScale": null,
+            "yOffset": 0.0,
+            "rotationY": 0.0,
+            "forwardAxisOverride": null,
+            "expectedBounds": {
+                "minHeight": 1.5,
+                "maxHeight": 2.0,
+                "maxWidth": 0.9,
+                "maxDepth": 0.9
+            },
+            "frustumCulled": false,
+            "blocked": false,
+            "blockReason": null
+        },
+        "edwin_kennedy": {
+            "$comment": "EDWIN_KENNEDY.glb \u2014 pending full deformation validation",
+            "uniformScale": null,
+            "yOffset": 0.0,
+            "rotationY": 0.0,
+            "forwardAxisOverride": null,
+            "expectedBounds": {
+                "minHeight": 1.6,
+                "maxHeight": 2.2,
+                "maxWidth": 1.1,
+                "maxDepth": 1.1
+            },
+            "frustumCulled": false,
+            "blocked": false,
+            "blockReason": null
+        },
+        "pablo": {
+            "$comment": "PABLO.glb \u2014 physicsScale 1.1, larger expected bounds",
+            "uniformScale": null,
+            "yOffset": 0.0,
+            "rotationY": 0.0,
+            "forwardAxisOverride": null,
+            "expectedBounds": {
+                "minHeight": 1.7,
+                "maxHeight": 2.3,
+                "maxWidth": 1.15,
+                "maxDepth": 1.15
+            },
+            "frustumCulled": false,
+            "blocked": false,
+            "blockReason": null
+        },
+        "tyneshia": {
+            "$comment": "TYNESHIA.glb \u2014 pending full deformation validation",
+            "uniformScale": null,
+            "yOffset": 0.0,
+            "rotationY": 0.0,
+            "forwardAxisOverride": null,
+            "expectedBounds": {
+                "minHeight": 1.5,
+                "maxHeight": 2.0,
+                "maxWidth": 0.9,
+                "maxDepth": 0.9
+            },
+            "frustumCulled": false,
+            "blocked": false,
+            "blockReason": null
+        },
+        "triple_xxx": {
+            "$comment": "TRIPLE_XXX.glb \u2014 pending full deformation validation",
+            "uniformScale": null,
+            "yOffset": 0.0,
+            "rotationY": 0.0,
+            "forwardAxisOverride": null,
+            "expectedBounds": {
+                "minHeight": 1.5,
+                "maxHeight": 2.0,
+                "maxWidth": 0.9,
+                "maxDepth": 0.9
+            },
+            "frustumCulled": false,
+            "blocked": false,
+            "blockReason": null
+        },
+        "el_toro_de_oro": {
+            "$comment": "EL_TORO_DE_ORO.glb \u2014 physicsScale 1.05, slightly larger expected bounds",
+            "uniformScale": null,
+            "yOffset": 0.0,
+            "rotationY": 0.0,
+            "forwardAxisOverride": null,
+            "expectedBounds": {
+                "minHeight": 1.6,
+                "maxHeight": 2.2,
+                "maxWidth": 1.1,
+                "maxDepth": 1.1
+            },
+            "frustumCulled": false,
+            "blocked": false,
+            "blockReason": null
+        },
+        "stan_combs": {
+            "$comment": "STAN_COMBS_gear.glb \u2014 pending full deformation validation",
+            "uniformScale": null,
+            "yOffset": 0.0,
+            "rotationY": 0.0,
+            "forwardAxisOverride": null,
+            "expectedBounds": {
+                "minHeight": 1.5,
+                "maxHeight": 2.0,
+                "maxWidth": 0.9,
+                "maxDepth": 0.9
+            },
+            "frustumCulled": false,
+            "blocked": false,
+            "blockReason": null
+        },
+        "brutus": {
+            "$comment": "BRUTUS.glb \u2014 physicsScale 1.15, heavy fighter, wider expected bounds",
+            "uniformScale": null,
+            "yOffset": 0.0,
+            "rotationY": 0.0,
+            "forwardAxisOverride": null,
+            "expectedBounds": {
+                "minHeight": 1.7,
+                "maxHeight": 2.4,
+                "maxWidth": 1.2,
+                "maxDepth": 1.2
+            },
+            "frustumCulled": false,
+            "blocked": false,
+            "blockReason": null
+        },
+        "titan": {
+            "$comment": "TITAN.glb \u2014 physicsScale 1.2, largest fighter, maximum expected bounds",
+            "uniformScale": null,
+            "yOffset": 0.0,
+            "rotationY": 0.0,
+            "forwardAxisOverride": null,
+            "expectedBounds": {
+                "minHeight": 1.8,
+                "maxHeight": 2.4,
+                "maxWidth": 1.2,
+                "maxDepth": 1.2
+            },
+            "frustumCulled": false,
+            "blocked": false,
+            "blockReason": null
+        },
+        "master_sensei": {
+            "$comment": "MASTER_SENSEI.glb \u2014 pending full deformation validation",
+            "uniformScale": null,
+            "yOffset": 0.0,
+            "rotationY": 0.0,
+            "forwardAxisOverride": null,
+            "expectedBounds": {
+                "minHeight": 1.5,
+                "maxHeight": 2.0,
+                "maxWidth": 0.9,
+                "maxDepth": 0.9
+            },
+            "frustumCulled": false,
+            "blocked": false,
+            "blockReason": null
+        },
+        "wreck_patterson": {
+            "$comment": "WRECK_PATTERSON.glb \u2014 physicsScale 1.1, larger expected bounds",
+            "uniformScale": null,
+            "yOffset": 0.0,
+            "rotationY": 0.0,
+            "forwardAxisOverride": null,
+            "expectedBounds": {
+                "minHeight": 1.6,
+                "maxHeight": 2.2,
+                "maxWidth": 1.1,
+                "maxDepth": 1.1
+            },
+            "frustumCulled": false,
+            "blocked": false,
+            "blockReason": null
+        },
+        "jager": {
+            "$comment": "JAGER.glb \u2014 sourced from Google Drive, pending full deformation validation",
+            "uniformScale": null,
+            "yOffset": 0.0,
+            "rotationY": 0.0,
+            "forwardAxisOverride": null,
+            "expectedBounds": {
+                "minHeight": 1.5,
+                "maxHeight": 2.1,
+                "maxWidth": 1.0,
+                "maxDepth": 1.0
+            },
+            "frustumCulled": false,
+            "blocked": false,
+            "blockReason": null
+        }
+    },
+    "_overrideSchema": {
+        "$comment": "Field reference for agents editing this file.",
+        "uniformScale": "number | null \u2014 explicit uniform scale factor to apply to the outer instance instead of the auto-computed height-based scale. null = use pipeline auto-scale to targetHeight (1.85 units).",
+        "yOffset": "number \u2014 additional Y translation (world units) applied to the outer instance AFTER Box3 floor-snap. Positive = move up. Use to correct residual floating/sinking that Box3 alone cannot resolve.",
+        "rotationY": "number \u2014 additional Y-axis rotation (radians) applied to the outer instance AFTER the pipeline's authored-forward correction. Use to fix characters that still face the wrong direction after the geometry-centroid forward pass. Positive = counter-clockwise when viewed from above.",
+        "forwardAxisOverride": "'+X' | '-X' | '+Z' | '-Z' | null \u2014 hard-codes the authored forward axis for this character, bypassing the geometry-centroid heuristic entirely. Use when the centroid heuristic produces a wrong result for an unusual asset.",
+        "expectedBounds": {
+            "minHeight": "number \u2014 minimum acceptable measured height (world units) after scale. Pipeline emits a WARNING (not BLOCKED) if measured height < minHeight.",
+            "maxHeight": "number \u2014 maximum acceptable measured height (world units) after scale. Pipeline emits a WARNING if measured height > maxHeight.",
+            "maxWidth": "number \u2014 maximum acceptable X extent (world units) after scale.",
+            "maxDepth": "number \u2014 maximum acceptable Z extent (world units) after scale."
+        },
+        "frustumCulled": "boolean \u2014 sets SkinnedMesh.frustumCulled for all meshes in this character. Should remain false during the diagnostic/recovery phase.",
+        "blocked": "boolean \u2014 when true, the pipeline immediately returns BLOCKED for this character without attempting to load or normalize. Use to hard-disable a known-broken asset.",
+        "blockReason": "string | null \u2014 human-readable reason shown in the BLOCKED diagnostic when blocked=true."
+    }
+}

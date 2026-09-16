@@ -15,7 +15,9 @@
     "psx:fighter": "node tools/psx/decimate-fighter.mjs BannonSource/assets/models/BANNON_rigged.glb public/models/bannon_psx.glb --tris=18000 --tex=256",
     "bannon:manifest": "node tools/bannon/build-character-manifest.mjs && node tools/bannon/build-animation-manifest.mjs",
     "bannon:verify": "node tools/bannon/verify-and-build-roster.mjs",
-    "sources:audit": "node tools/integration/build-source-audit.mjs"
+    "sources:audit": "node tools/integration/build-source-audit.mjs",
+    "glb:normalize": "node scripts/normalize-glb.mjs",
+    "glb:normalize:dry": "node scripts/normalize-glb.mjs --dry-run --verbose"
   },
   "dependencies": {
     "@dhiwise/component-tagger": "latest",
