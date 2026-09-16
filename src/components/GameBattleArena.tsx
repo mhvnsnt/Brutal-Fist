@@ -20,6 +20,16 @@ import {
   DEFAULT_SPECIAL_MOVES,
 } from '../engine/combat/FighterStateMachine';
 import { FrameDataHitboxSystem } from '../engine/combat/FrameDataHitbox';
+import {
+  createComboState,
+  registerHit,
+  tickComboSystem,
+  type ComboState,
+} from '../engine/combat/ComboSystem';
+import type { DebugOverlaySettings, FighterDebugData, ImpactMarker } from '../engine/debug/DebugOverlay';
+import { DEFAULT_DEBUG_SETTINGS, computeFrameWindowData } from '../engine/debug/DebugOverlay';
+import ComboCounterHUD from './ComboCounterHUD';
+import DebugOverlayHUD from './DebugOverlayHUD';
 
 // ── 3D combat arena — loaded client-side only ─────────────────────────────────
 const CombatArena3D = dynamic(() => import('./CombatArena3D'), {
@@ -43,6 +53,8 @@ interface GameBattleArenaProps {
   settings?: TournamentSettings;
   /** Stage to load in the combat arena */
   stageId?: import('./StageSelectScreen').StageId;
+  /** Debug overlay settings — only passed from practice mode */
+  debugSettings?: DebugOverlaySettings;
 }
 
 const EMPTY_INPUT: InputBitmask = {
@@ -72,6 +84,7 @@ export default function GameBattleArena({
   p2SkinTint,
   settings = DEFAULT_TOURNAMENT_SETTINGS,
   stageId = 'urban_night',
+  debugSettings = DEFAULT_DEBUG_SETTINGS,
 }: GameBattleArenaProps) {
   const engineRef = useRef<GameEngine | null>(null);
   const inputRef = useRef<InputBitmask>({ ...EMPTY_INPUT });
@@ -131,6 +144,19 @@ export default function GameBattleArena({
   const P1_X = -1.8;
   const P2_X = 1.8;
 
+  // ── Combo system state ────────────────────────────────────────────────────
+  const [p1Combo, setP1Combo] = useState<ComboState>(() => createComboState('p1'));
+  const [p2Combo, setP2Combo] = useState<ComboState>(() => createComboState('p2'));
+  const p1ComboRef = useRef<ComboState>(createComboState('p1'));
+  const p2ComboRef = useRef<ComboState>(createComboState('p2'));
+
+  // ── Debug overlay state ───────────────────────────────────────────────────
+  const [p1DebugData, setP1DebugData] = useState<FighterDebugData | null>(null);
+  const [p2DebugData, setP2DebugData] = useState<FighterDebugData | null>(null);
+  const p1ImpactMarkersRef = useRef<ImpactMarker[]>([]);
+  const p2ImpactMarkersRef = useRef<ImpactMarker[]>([]);
+  const impactMarkerIdRef = useRef(0);
+
   // Build engine
   useEffect(() => {
     const p1MoveSet = getCharacterMoveSet(p1Fighter.id);
@@ -161,6 +187,18 @@ export default function GameBattleArena({
     p2SMRef.current.registerSpecialMoves(DEFAULT_SPECIAL_MOVES);
     p1HitboxRef.current.reset();
     p2HitboxRef.current.reset();
+
+    // Reset combo system
+    const freshP1Combo = createComboState('p1');
+    const freshP2Combo = createComboState('p2');
+    p1ComboRef.current = freshP1Combo;
+    p2ComboRef.current = freshP2Combo;
+    setP1Combo(freshP1Combo);
+    setP2Combo(freshP2Combo);
+
+    // Reset impact markers
+    p1ImpactMarkersRef.current = [];
+    p2ImpactMarkersRef.current = [];
 
     // ── Cinematic sequence: sweep → intro → fight ──────────────────────────────
     setCinematicPhase('sweep');
@@ -237,7 +275,6 @@ export default function GameBattleArena({
       const p1Hb = p1HitboxRef.current;
       const prevP1Action = p1SM.action;
 
-      // Block inputs during attack recovery (state machine handles this internally)
       const p1NextMotion = p1SM.update(smInput, dt);
       const p1HbWindow = p1SM.getHitboxWindow();
       p1Hb.update(p1HbWindow);
@@ -266,6 +303,13 @@ export default function GameBattleArena({
       );
 
       if (p1Hit) {
+        // ── Combo system: register hit and apply damage scaling ──────────
+        const { scaledDamage: p1ScaledDmg, newState: newP1Combo } = registerHit(
+          p1ComboRef.current, p1Hit.damage, now,
+        );
+        p1ComboRef.current = newP1Combo;
+        setP1Combo({ ...newP1Combo });
+
         // Apply stun to P2 state machine
         const isCrumple = p1Hit.launch > 0.3;
         p2SMRef.current.applyStun(p1Hit.hitstun || 0.3, isCrumple);
@@ -282,7 +326,7 @@ export default function GameBattleArena({
         setDamageEvent({
           count: ++damageEventCountRef.current,
           player: 'p2',
-          damage: p1Hit.damage,
+          damage: p1ScaledDmg,
           isCounter,
           factionColor: p2Color,
         });
@@ -290,19 +334,32 @@ export default function GameBattleArena({
           id: ++feedbackIdRef.current,
           moveId: p1HbWindow.move?.animation ?? 'hit',
           moveName: p1HbWindow.move?.specialName ?? (p1HbWindow.move?.animation === 'heavyAttack' ? 'Heavy' : 'Light'),
-          damage: p1Hit.damage,
+          damage: p1ScaledDmg,
           isBlocked,
           isCounter,
           player: 'p1',
           x: 65 + Math.random() * 10,
           y: 20 + Math.random() * 20,
         }]);
+
+        // ── Debug: add impact marker for P1 hit ──────────────────────────
+        if (debugSettings.enabled && debugSettings.showImpactMarkers) {
+          const marker: ImpactMarker = {
+            id: ++impactMarkerIdRef.current,
+            x: 60 + Math.random() * 10,
+            y: 25 + Math.random() * 30,
+            frame: p1HbWindow.currentFrame,
+            timestamp: now,
+            damage: p1ScaledDmg,
+            isBlocked,
+          };
+          p1ImpactMarkersRef.current = [...p1ImpactMarkersRef.current.slice(-4), marker];
+        }
       }
 
       // ── Update P2 state machine (AI: simple reactive) ─────────────────
       const p2Hb = p2HitboxRef.current;
 
-      // Simple AI input for P2
       const p2AIInput: SMInput = buildP2AIInput(
         engine.p2State, engine.p1Health, engine.p2Health,
       );
@@ -320,6 +377,13 @@ export default function GameBattleArena({
       );
 
       if (p2Hit) {
+        // ── Combo system: register hit and apply damage scaling ──────────
+        const { scaledDamage: p2ScaledDmg, newState: newP2Combo } = registerHit(
+          p2ComboRef.current, p2Hit.damage, now,
+        );
+        p2ComboRef.current = newP2Combo;
+        setP2Combo({ ...newP2Combo });
+
         const isCrumple = p2Hit.launch > 0.3;
         p1SMRef.current.applyStun(p2Hit.hitstun || 0.3, isCrumple);
         p1HitboxRef.current.reset();
@@ -335,7 +399,7 @@ export default function GameBattleArena({
         setDamageEvent({
           count: ++damageEventCountRef.current,
           player: 'p1',
-          damage: p2Hit.damage,
+          damage: p2ScaledDmg,
           isCounter,
           factionColor: p1Color,
         });
@@ -343,13 +407,80 @@ export default function GameBattleArena({
           id: ++feedbackIdRef.current,
           moveId: p2HbWindow.move?.animation ?? 'hit',
           moveName: p2HbWindow.move?.specialName ?? (p2HbWindow.move?.animation === 'heavyAttack' ? 'Heavy' : 'Light'),
-          damage: p2Hit.damage,
+          damage: p2ScaledDmg,
           isBlocked,
           isCounter,
           player: 'p2',
           x: 25 + Math.random() * 10,
           y: 20 + Math.random() * 20,
         }]);
+
+        // ── Debug: add impact marker for P2 hit ──────────────────────────
+        if (debugSettings.enabled && debugSettings.showImpactMarkers) {
+          const marker: ImpactMarker = {
+            id: ++impactMarkerIdRef.current,
+            x: 28 + Math.random() * 10,
+            y: 25 + Math.random() * 30,
+            frame: p2HbWindow.currentFrame,
+            timestamp: now,
+            damage: p2ScaledDmg,
+            isBlocked,
+          };
+          p2ImpactMarkersRef.current = [...p2ImpactMarkersRef.current.slice(-4), marker];
+        }
+      }
+
+      // ── Tick combo expiry ──────────────────────────────────────────────
+      const { p1Combo: tickedP1, p2Combo: tickedP2 } = tickComboSystem(
+        p1ComboRef.current, p2ComboRef.current, now,
+      );
+      if (tickedP1 !== p1ComboRef.current) {
+        p1ComboRef.current = tickedP1;
+        setP1Combo({ ...tickedP1 });
+      }
+      if (tickedP2 !== p2ComboRef.current) {
+        p2ComboRef.current = tickedP2;
+        setP2Combo({ ...tickedP2 });
+      }
+
+      // ── Update debug overlay data ──────────────────────────────────────
+      if (debugSettings.enabled) {
+        const p1Action = mapActionToDisplayState(p1SM.action, p1NextMotion, engine.state);
+        const p2Action = mapActionToDisplayState(p2SM.action, p2NextMotion, engine.p2State);
+
+        const p1Fw = computeFrameWindowData(p1HbWindow, p1SM.action);
+        const p2Fw = computeFrameWindowData(p2HbWindow, p2SM.action);
+
+        const p1Geom = p1Hb.geometry;
+        const p2Geom = p2Hb.geometry;
+
+        setP1DebugData({
+          player: 'p1',
+          frameWindow: p1Fw,
+          aabb: p1Geom ? {
+            centerX: P1_X + p1Geom.offsetX,
+            centerZ: p1ZRef.current + p1Geom.offsetZ,
+            width: p1Geom.width,
+            depth: p1Geom.depth,
+            isActive: p1Hb.isActive,
+          } : null,
+          impactMarkers: p1ImpactMarkersRef.current,
+          actionState: p1Action,
+        });
+
+        setP2DebugData({
+          player: 'p2',
+          frameWindow: p2Fw,
+          aabb: p2Geom ? {
+            centerX: P2_X - p2Geom.offsetX,
+            centerZ: p2ZRef.current + p2Geom.offsetZ,
+            width: p2Geom.width,
+            depth: p2Geom.depth,
+            isActive: p2Hb.isActive,
+          } : null,
+          impactMarkers: p2ImpactMarkersRef.current,
+          actionState: p2Action,
+        });
       }
 
       // ── Tick legacy engine for health/state tracking ───────────────────
@@ -399,7 +530,7 @@ export default function GameBattleArena({
 
     rafRef.current = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(rafRef.current);
-  }, [ko, onMatchEnd, sfx, settings, cinematicPhase, p1Color, p2Color, p1Fighter, p2Fighter]);
+  }, [ko, onMatchEnd, sfx, settings, cinematicPhase, p1Color, p2Color, p1Fighter, p2Fighter, debugSettings]);
 
   // Round timer
   useEffect(() => {
@@ -589,6 +720,21 @@ export default function GameBattleArena({
               </div>
             </div>
           </div>
+
+          {/* ── Combo Counter HUD ── */}
+          <ComboCounterHUD
+            p1Combo={p1Combo}
+            p2Combo={p2Combo}
+            p1Color={p1Color}
+            p2Color={p2Color}
+          />
+
+          {/* ── Debug Overlay HUD (practice mode only) ── */}
+          <DebugOverlayHUD
+            settings={debugSettings}
+            p1Debug={p1DebugData}
+            p2Debug={p2DebugData}
+          />
 
           {/* ── Special Move Notification ── */}
           {specialMoveNotice && (

@@ -2,6 +2,9 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { type BannonFighterProfile, BANNON_ROSTER } from '../data/bannonRoster';
+import type { DebugOverlaySettings } from '../engine/debug/DebugOverlay';
+import { DEFAULT_DEBUG_SETTINGS } from '../engine/debug/DebugOverlay';
+import MoveLibraryViewer from './MoveLibraryViewer';
 
 interface PracticeArenaScreenProps {
   onBack: () => void;
@@ -98,6 +101,11 @@ export default function PracticeArenaScreen({ onBack }: PracticeArenaScreenProps
   const [aiName] = useState(() => AI_NAMES[Math.floor(Math.random() * AI_NAMES.length)]);
   const roundStartRef = useRef<number>(0);
 
+  // ── Debug overlay settings (practice mode only) ──────────────────────────
+  const [showSettings, setShowSettings] = useState(false);
+  const [debugSettings, setDebugSettings] = useState<DebugOverlaySettings>(DEFAULT_DEBUG_SETTINGS);
+  const [showMoveLibrary, setShowMoveLibrary] = useState(false);
+
   const cfg = DIFFICULTY_CONFIG[difficulty];
 
   function startRound() {
@@ -176,6 +184,10 @@ export default function PracticeArenaScreen({ onBack }: PracticeArenaScreenProps
     ? Math.round(trainingLog.reduce((s, e) => s + e.playerDmg, 0) / trainingLog.length)
     : 0;
 
+  if (showMoveLibrary) {
+    return <MoveLibraryViewer onClose={() => setShowMoveLibrary(false)} />;
+  }
+
   return (
     <div className="fixed inset-0 bg-[#080a10] text-white font-mono overflow-y-auto">
       <div className="max-w-2xl mx-auto px-4 py-6">
@@ -190,9 +202,23 @@ export default function PracticeArenaScreen({ onBack }: PracticeArenaScreenProps
               <div className="text-[9px] tracking-[0.5em] text-zinc-500">TRAINING MODE</div>
               <div className="text-3xl font-black tracking-widest">PRACTICE ARENA</div>
             </div>
-            <div className="border border-green-900 bg-green-900/20 px-3 py-1.5 text-right">
-              <div className="text-[7px] text-green-700">NO STAT PENALTY</div>
-              <div className="text-[9px] font-black text-green-400">SAFE ZONE</div>
+            <div className="flex items-center gap-2">
+              {/* Settings button */}
+              <button
+                onClick={() => setShowSettings(s => !s)}
+                className="border px-3 py-1.5 text-[8px] font-black tracking-widest transition-all"
+                style={{
+                  borderColor: showSettings ? '#facc15' : '#27272a',
+                  color: showSettings ? '#facc15' : '#52525b',
+                  background: showSettings ? '#facc1512' : 'transparent',
+                }}
+              >
+                ⚙ SETTINGS
+              </button>
+              <div className="border border-green-900 bg-green-900/20 px-3 py-1.5 text-right">
+                <div className="text-[7px] text-green-700">NO STAT PENALTY</div>
+                <div className="text-[9px] font-black text-green-400">SAFE ZONE</div>
+              </div>
             </div>
           </div>
           <div className="mt-1 h-px bg-zinc-800" />
@@ -200,6 +226,126 @@ export default function PracticeArenaScreen({ onBack }: PracticeArenaScreenProps
             Practice against AI opponents at any difficulty. Wins and losses here do not affect your tournament record or rank points.
           </div>
         </div>
+
+        {/* ── SETTINGS PANEL (practice mode only) ── */}
+        {showSettings && (
+          <div className="mb-5 border border-yellow-900/50 bg-yellow-900/5 p-4 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="text-[9px] tracking-[0.3em] text-yellow-400 font-black">PRACTICE SETTINGS</div>
+              <button
+                onClick={() => setShowSettings(false)}
+                className="text-[8px] text-zinc-500 hover:text-zinc-300 transition-colors"
+              >
+                ✕ CLOSE
+              </button>
+            </div>
+
+            {/* Debug overlay master toggle */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-[9px] font-black text-zinc-300">DEBUG OVERLAY</div>
+                  <div className="text-[7px] text-zinc-600 mt-0.5">Frame windows, AABB geometry, impact markers</div>
+                </div>
+                <button
+                  onClick={() => setDebugSettings(s => ({ ...s, enabled: !s.enabled }))}
+                  className="border px-3 py-1.5 text-[8px] font-black tracking-widest transition-all"
+                  style={{
+                    borderColor: debugSettings.enabled ? '#22c55e' : '#27272a',
+                    color: debugSettings.enabled ? '#22c55e' : '#52525b',
+                    background: debugSettings.enabled ? '#22c55e12' : 'transparent',
+                  }}
+                >
+                  {debugSettings.enabled ? 'ON' : 'OFF'}
+                </button>
+              </div>
+
+              {/* Per-fighter toggles */}
+              {debugSettings.enabled && (
+                <div className="pl-3 border-l border-zinc-800 space-y-2">
+                  <div className="text-[7px] tracking-widest text-zinc-600 mb-1">PER-FIGHTER</div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setDebugSettings(s => ({ ...s, showP1: !s.showP1 }))}
+                      className="border px-2 py-1 text-[7px] font-black transition-all"
+                      style={{
+                        borderColor: debugSettings.showP1 ? '#1d4ed8' : '#27272a',
+                        color: debugSettings.showP1 ? '#1d4ed8' : '#52525b',
+                      }}
+                    >
+                      P1 {debugSettings.showP1 ? '●' : '○'}
+                    </button>
+                    <button
+                      onClick={() => setDebugSettings(s => ({ ...s, showP2: !s.showP2 }))}
+                      className="border px-2 py-1 text-[7px] font-black transition-all"
+                      style={{
+                        borderColor: debugSettings.showP2 ? '#dc2626' : '#27272a',
+                        color: debugSettings.showP2 ? '#dc2626' : '#52525b',
+                      }}
+                    >
+                      P2 {debugSettings.showP2 ? '●' : '○'}
+                    </button>
+                  </div>
+
+                  {/* Layer toggles */}
+                  <div className="text-[7px] tracking-widest text-zinc-600 mb-1">LAYERS</div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={() => setDebugSettings(s => ({ ...s, showFrameWindows: !s.showFrameWindows }))}
+                      className="border px-2 py-1 text-[7px] font-black transition-all"
+                      style={{
+                        borderColor: debugSettings.showFrameWindows ? '#facc15' : '#27272a',
+                        color: debugSettings.showFrameWindows ? '#facc15' : '#52525b',
+                      }}
+                    >
+                      FRAME WINDOWS {debugSettings.showFrameWindows ? '●' : '○'}
+                    </button>
+                    <button
+                      onClick={() => setDebugSettings(s => ({ ...s, showAABB: !s.showAABB }))}
+                      className="border px-2 py-1 text-[7px] font-black transition-all"
+                      style={{
+                        borderColor: debugSettings.showAABB ? '#22c55e' : '#27272a',
+                        color: debugSettings.showAABB ? '#22c55e' : '#52525b',
+                      }}
+                    >
+                      AABB GEOMETRY {debugSettings.showAABB ? '●' : '○'}
+                    </button>
+                    <button
+                      onClick={() => setDebugSettings(s => ({ ...s, showImpactMarkers: !s.showImpactMarkers }))}
+                      className="border px-2 py-1 text-[7px] font-black transition-all"
+                      style={{
+                        borderColor: debugSettings.showImpactMarkers ? '#ef4444' : '#27272a',
+                        color: debugSettings.showImpactMarkers ? '#ef4444' : '#52525b',
+                      }}
+                    >
+                      IMPACT MARKERS {debugSettings.showImpactMarkers ? '●' : '○'}
+                    </button>
+                  </div>
+
+                  {/* Color legend */}
+                  <div className="flex gap-3 text-[6px] mt-1">
+                    <span style={{ color: '#facc15' }}>■ STARTUP</span>
+                    <span style={{ color: '#22c55e' }}>■ ACTIVE</span>
+                    <span style={{ color: '#ef4444' }}>■ RECOVERY</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Move Library button */}
+            <div className="pt-2 border-t border-zinc-800">
+              <button
+                onClick={() => setShowMoveLibrary(true)}
+                className="w-full border border-purple-900 py-2.5 text-[8px] font-black tracking-widest text-purple-400 hover:border-purple-700 hover:text-purple-300 transition-all bg-purple-900/10"
+              >
+                📋 VIEW MOVE LIBRARY — GLB ANIMATION MANIFEST
+              </button>
+              <div className="mt-1 text-[7px] text-zinc-600">
+                Schwarzerblitz / Tekken research clips normalized to frame-data metadata
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* ── SETUP PHASE ── */}
         {phase === 'SETUP' && (
