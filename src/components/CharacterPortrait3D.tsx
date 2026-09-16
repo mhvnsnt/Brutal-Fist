@@ -3,6 +3,7 @@
 import React, { Suspense, useEffect, useRef, useState } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
+import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 
@@ -40,36 +41,6 @@ interface CharacterPortrait3DProps {
  *
  * PORTRAIT ORIENTATION IS COMPLETELY DECOUPLED FROM IN-FIGHT ORIENTATION.
  */
-
-// ── Forward direction detection (same logic as FighterMesh) ──────────────────
-function detectForwardCorrection(scene: THREE.Object3D): number {
-  const allBones: THREE.Bone[] = [];
-  scene.traverse((child) => {
-    if ((child as THREE.Bone).isBone) allBones.push(child as THREE.Bone);
-  });
-  if (allBones.length === 0) return 0;
-
-  const headBone = allBones.find(b => {
-    const n = b.name.toLowerCase();
-    return n.includes('head') && !n.includes('headtop') && !n.includes('headend');
-  });
-  const hipsBone = allBones.find(b => {
-    const n = b.name.toLowerCase();
-    return n.includes('hip') || n.includes('pelvis') || n.includes('root') || n === 'hips';
-  });
-
-  if (!headBone || !hipsBone) return 0;
-
-  const headPos = new THREE.Vector3();
-  const hipsPos = new THREE.Vector3();
-  headBone.getWorldPosition(headPos);
-  hipsBone.getWorldPosition(hipsPos);
-
-  if (headPos.z - hipsPos.z > 0.05) {
-    return Math.PI;
-  }
-  return 0;
-}
 
 /** Select the best idle animation clip from available clips */
 function selectIdleClip(clips: THREE.AnimationClip[]): THREE.AnimationClip {
@@ -132,7 +103,9 @@ function PortraitModel({
       modelUrl,
       (gltf) => {
         if (!active) return;
-        const cloned = gltf.scene.clone(true);
+        // Independent skinned instances must use SkeletonUtils; Object3D.clone(true)
+        // can leave SkinnedMesh skeleton references shared with the source.
+        const cloned = SkeletonUtils.clone(gltf.scene) as THREE.Group;
 
         // ── Step 1: Measure raw bounding box (pre-scale) ──────────────────────
         const rawBox = new THREE.Box3().setFromObject(cloned);
@@ -152,16 +125,11 @@ function PortraitModel({
         // ── Step 5: Center horizontally; floor bottom of bounding box at Y=0 ──
         cloned.position.set(-scaledCenter.x, -scaledBox.min.y, -scaledCenter.z);
 
-        // ── Step 6: Reset ONLY the root scene rotation (not children) ─────────
-        cloned.rotation.set(0, 0, 0);
-
-        // ── Step 7: Force update so bone world positions are accurate ──────────
+        // Preserve the authored GLB root rotation and bind pose. Translation and
+        // uniform scale belong to the portrait instance, not the skeleton.
         cloned.updateMatrixWorld(true);
 
-        // ── Step 8: Detect forward direction ──────────────────────────────────
-        const forwardCorrectionY = detectForwardCorrection(cloned);
-
-        // ── Step 9: Apply faction color tint ──────────────────────────────────
+        // ── Step 8: Apply faction color tint ──────────────────────────────────
         const color = new THREE.Color(factionColor);
         cloned.traverse((child) => {
           if (!(child as THREE.Mesh).isMesh) return;
@@ -177,7 +145,7 @@ function PortraitModel({
           });
         });
 
-        // ── Step 10: Idle animation — mixer bound to CLONED scene ─────────────
+        // ── Step 9: Idle animation — mixer bound to CLONED scene ─────────────
         if (gltf.animations && gltf.animations.length > 0) {
           // Build name→object map for retargeting
           const cloneMap = new Map<string, THREE.Object3D>();
@@ -205,7 +173,8 @@ function PortraitModel({
           action.play();
         }
 
-        setModel({ scene: cloned, forwardCorrectionY });
+        // No runtime forward heuristic: preserve the GLB's authored orientation.
+        setModel({ scene: cloned, forwardCorrectionY: 0 });
       },
       undefined,
       (err) => console.warn('[Portrait] GLB load failed:', modelUrl, err)
@@ -223,16 +192,14 @@ function PortraitModel({
 
   if (!model) return null;
 
-  // Portrait rotation = explicit rotationY prop (or flip fallback) + forward correction
-  // The forward correction is applied to the inner group so it doesn't interfere
-  // with the portrait's intentional inward-facing angle.
+  // Portrait rotation is explicit and independent from the GLB skeleton.
   const portraitRotY = rotationY !== undefined ? rotationY : (flip ? Math.PI : 0);
 
   return (
     // OUTER GROUP: portrait orientation (inward angle for P1/P2 panels)
     <group rotation={[0, portraitRotY, 0]}>
-      {/* INNER GROUP: forward correction — makes +Z-facing models face -Z */}
-      <group rotation={[0, model.forwardCorrectionY, 0]}>
+      {/* Native GLB orientation is preserved; no pose-based forward inference. */}
+      <group rotation={[0, 0, 0]}>
         <primitive object={model.scene} />
       </group>
     </group>
