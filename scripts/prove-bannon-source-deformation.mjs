@@ -3,13 +3,14 @@
  * Reproducible proof runner using the canonical public Bannon assets.
  *
  * This does NOT vendor a multi-MB GLB into Brutal-Fist. It downloads the
- * known Bannon source assets into a temporary directory, retargets only the
- * bone names needed by the real 28-joint BANNON rig, and invokes the live
- * deformation harness.
+ * known Bannon source assets into a temporary directory, retains only the
+ * bone tracks present on the real 28-joint BANNON reference rig, and invokes
+ * the live deformation harness.
  *
  * Finger tracks are omitted because the 28-joint target does not contain
- * finger joints. No rotations are invented or modified; only target naming
- * is changed. The live harness remains the authority for PASS/UNKNOWN/BLOCKED.
+ * finger joints. No rotations are invented or modified; source Mixamo bone
+ * names are preserved because the reference GLB itself uses those names.
+ * The live harness remains the authority for PASS/UNKNOWN/BLOCKED.
  */
 
 import { mkdtemp, rm, writeFile, readFile } from 'node:fs/promises';
@@ -23,30 +24,33 @@ const GLB_URL = 'https://raw.githubusercontent.com/mhvnsnt/Bannon/main/assets/mo
 const CLIP_URL = 'https://raw.githubusercontent.com/mhvnsnt/Bannon/main/assets/moves/clips/DWARF_WALK.json';
 const GLB_GIT_BLOB_SHA = '1842af42f6777c6f04b79c8c5a877dcc27b3f3e9';
 
-const TARGET_NAMES = {
-  mixamorigHips: 'Hips',
-  mixamorigSpine: 'Spine',
-  mixamorigSpine1: 'Spine1',
-  mixamorigSpine2: 'Spine2',
-  mixamorigNeck: 'Neck',
-  mixamorigHead: 'Head',
-  mixamorigLeftShoulder: 'LeftShoulder',
-  mixamorigLeftArm: 'LeftArm',
-  mixamorigLeftForeArm: 'LeftForeArm',
-  mixamorigLeftHand: 'LeftHand',
-  mixamorigRightShoulder: 'RightShoulder',
-  mixamorigRightArm: 'RightArm',
-  mixamorigRightForeArm: 'RightForeArm',
-  mixamorigRightHand: 'RightHand',
-  mixamorigLeftUpLeg: 'LeftUpLeg',
-  mixamorigLeftLeg: 'LeftLeg',
-  mixamorigLeftFoot: 'LeftFoot',
-  mixamorigLeftToeBase: 'LeftToeBase',
-  mixamorigRightUpLeg: 'RightUpLeg',
-  mixamorigRightLeg: 'RightLeg',
-  mixamorigRightFoot: 'RightFoot',
-  mixamorigRightToeBase: 'RightToeBase',
-};
+// These are the 20-joint pose vocabulary plus the additional hand/toe joints
+// present in the actual Mixamo-named BANNON reference skeleton. We preserve
+// names byte-for-byte so the live harness can exact-match the real GLB bones.
+const TARGET_NAMES = new Set([
+  'mixamorigHips',
+  'mixamorigSpine',
+  'mixamorigSpine1',
+  'mixamorigSpine2',
+  'mixamorigNeck',
+  'mixamorigHead',
+  'mixamorigLeftShoulder',
+  'mixamorigLeftArm',
+  'mixamorigLeftForeArm',
+  'mixamorigLeftHand',
+  'mixamorigRightShoulder',
+  'mixamorigRightArm',
+  'mixamorigRightForeArm',
+  'mixamorigRightHand',
+  'mixamorigLeftUpLeg',
+  'mixamorigLeftLeg',
+  'mixamorigLeftFoot',
+  'mixamorigLeftToeBase',
+  'mixamorigRightUpLeg',
+  'mixamorigRightLeg',
+  'mixamorigRightFoot',
+  'mixamorigRightToeBase',
+]);
 
 async function download(url, output) {
   const response = await fetch(url, { redirect: 'follow' });
@@ -64,12 +68,11 @@ async function retargetClip(sourcePath, targetPath) {
   for (const key of source.keys ?? []) {
     const nextBones = {};
     for (const [sourceName, sample] of Object.entries(key.bones ?? {})) {
-      const targetName = TARGET_NAMES[sourceName];
-      if (!targetName) {
+      if (!TARGET_NAMES.has(sourceName)) {
         dropped++;
         continue;
       }
-      nextBones[targetName] = sample;
+      nextBones[sourceName] = sample;
       retained++;
     }
     key.bones = nextBones;
