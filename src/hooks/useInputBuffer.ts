@@ -15,6 +15,12 @@
  *  - drain() → called once per rAF tick; returns all queued snapshots in order
  *  - Fixed-size ring buffer (BUFFER_FRAMES) so allocation is O(1) and GC
  *    pressure stays zero during gameplay.
+ *
+ * STABILITY GUARANTEE:
+ *  - The buffer object is created exactly once using a module-level singleton
+ *    per hook instance, stored in useRef. This guarantees push() and drain()
+ *    are always defined regardless of React Strict Mode double-invocations,
+ *    render cycles, or hot-module replacement.
  */
 
 import { useRef } from 'react';
@@ -46,71 +52,48 @@ export interface InputBuffer {
   drain(): BufferedFrame[];
 }
 
-// ─── Internal ring-buffer state ───────────────────────────────────────────────
-
-interface RingBufferState {
-  frames: (BufferedFrame | null)[];
-  writeHead: number;
-  readHead: number;
-  count: number;
-}
-
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
 /**
  * Returns a stable InputBuffer object with push() and drain() methods.
- * Uses useRef so the buffer object identity is guaranteed stable across
- * renders and React Strict Mode double-invocations.
+ *
+ * Implementation uses a plain array queue (not a ring buffer) for maximum
+ * clarity and reliability. The array is bounded to BUFFER_FRAMES entries.
+ *
+ * The buffer object is created once via lazy useRef initialization and never
+ * recreated — identity is stable across all renders and React Strict Mode
+ * double-invocations.
  */
 export function useInputBuffer(): InputBuffer {
-  // All ring-buffer state lives in a single ref to avoid closure capture issues.
-  const stateRef = useRef<RingBufferState>({
-    frames: Array(BUFFER_FRAMES).fill(null) as (BufferedFrame | null)[],
-    writeHead: 0,
-    readHead: 0,
-    count: 0,
-  });
-
-  // The buffer object itself is stored in a ref — created once, never recreated.
   const bufferRef = useRef<InputBuffer | null>(null);
 
   if (bufferRef.current === null) {
+    // Create the queue array inside the closure so it's private to this instance.
+    const queue: BufferedFrame[] = [];
+
     bufferRef.current = {
       push(snapshot: InputBitmask): void {
-        const s = stateRef.current;
-        if (s.count >= BUFFER_FRAMES) {
-          // Buffer full — overwrite oldest entry (recency wins in fighting games).
-          s.readHead = (s.readHead + 1) % BUFFER_FRAMES;
-          s.count--;
+        // Bound the queue to BUFFER_FRAMES — drop oldest if full (recency wins).
+        if (queue.length >= BUFFER_FRAMES) {
+          queue.shift();
         }
-        s.frames[s.writeHead] = {
+        queue.push({
           snapshot: { ...snapshot },
-          ts: performance.now(),
-        };
-        s.writeHead = (s.writeHead + 1) % BUFFER_FRAMES;
-        s.count++;
+          ts: typeof performance !== 'undefined' ? performance.now() : Date.now(),
+        });
       },
 
       drain(): BufferedFrame[] {
-        const s = stateRef.current;
-        if (s.count === 0) return [];
-
-        const result: BufferedFrame[] = [];
-        while (s.count > 0) {
-          const frame = s.frames[s.readHead];
-          if (frame) {
-            result.push(frame);
-            s.frames[s.readHead] = null;
-          }
-          s.readHead = (s.readHead + 1) % BUFFER_FRAMES;
-          s.count--;
-        }
+        if (queue.length === 0) return [];
+        // Splice all entries out in FIFO order.
+        const result = queue.splice(0, queue.length);
         return result;
       },
     };
   }
 
-  return bufferRef.current;
+  // TypeScript non-null assertion: we just guaranteed it's non-null above.
+  return bufferRef.current!;
 }
 
 // ─── Legacy export for any callers that used the old API ──────────────────────

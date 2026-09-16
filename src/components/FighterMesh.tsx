@@ -558,8 +558,10 @@ function FighterMeshInner({
       const report = runDeformationIntegrityTest(integrityInput);
 
       // DIAGNOSTIC ONLY: log the result but never block animation playback.
-      // The FIRST_FRAME_DISPLACEMENT check calls mixer.stopAllAction() + setTime(0)
-      // so we ALWAYS need to recover the mixer here regardless of verdict.
+      // NOTE: FIRST_FRAME_DISPLACEMENT only calls mixer.stopAllAction() when
+      // SkinnedMeshes with valid skeletons are present. For static-mesh GLBs,
+      // the mixer is NOT stopped — so we only need to recover when the test
+      // actually ran the destructive path (i.e., skinnedMeshes with skeletons exist).
       if (report.verdict === 'BLOCKED') {
         // Only fire the blocked callback for truly unrenderable assets
         const isUnrenderable = report.failingChecks.includes('NO_VISIBLE_MESH');
@@ -580,24 +582,31 @@ function FighterMeshInner({
         );
       }
 
-      // ALWAYS recover the mixer after the integrity test.
-      // FIRST_FRAME_DISPLACEMENT calls mixer.stopAllAction() + setTime(0).
-      // We must re-start the current animation so the character doesn't freeze.
-      const recoverClip = resolveClipName(inputKey, Object.keys(normalized.actions)) ??
-                          resolveClipName('idle', Object.keys(normalized.actions));
-      if (recoverClip && normalized.actions[recoverClip]) {
-        const recoverAction = normalized.actions[recoverClip];
-        const isRecoverLoop = LOOP_STATES.has(inputKey);
-        recoverAction.setLoop(isRecoverLoop ? THREE.LoopRepeat : THREE.LoopOnce, isRecoverLoop ? Infinity : 1);
-        recoverAction.clampWhenFinished = !isRecoverLoop;
-        recoverAction.reset().play();
-        activeClipRef.current = recoverClip;
-        committedClipRef.current = recoverClip;
-        lastCrossfadeTimeRef.current = performance.now() / 1000;
-        console.log(`[FighterMesh] 🔄 Mixer recovered after integrity test — playing "${recoverClip}" for "${integrityInput.characterName}"`);
+      // Check if FIRST_FRAME_DISPLACEMENT ran the destructive path (stopped the mixer).
+      // It only does so when SkinnedMeshes with valid skeletons exist.
+      // We detect this by checking if any action is currently running — if none are,
+      // the mixer was stopped and we must recover.
+      const anyActionRunning = Object.values(normalized.actions).some(a => a?.isRunning());
+      if (!anyActionRunning) {
+        // Mixer was stopped by FIRST_FRAME_DISPLACEMENT — recover by restarting animation.
+        const recoverClip = resolveClipName(inputKey, Object.keys(normalized.actions)) ??
+                            resolveClipName('idle', Object.keys(normalized.actions));
+        if (recoverClip && normalized.actions[recoverClip]) {
+          const recoverAction = normalized.actions[recoverClip];
+          const isRecoverLoop = LOOP_STATES.has(inputKey);
+          recoverAction.setLoop(isRecoverLoop ? THREE.LoopRepeat : THREE.LoopOnce, isRecoverLoop ? Infinity : 1);
+          recoverAction.clampWhenFinished = !isRecoverLoop;
+          recoverAction.reset().play();
+          activeClipRef.current = recoverClip;
+          committedClipRef.current = recoverClip;
+          lastCrossfadeTimeRef.current = performance.now() / 1000;
+          console.log(`[FighterMesh] 🔄 Mixer recovered after integrity test — playing "${recoverClip}" for "${integrityInput.characterName}"`);
+        }
+      } else {
+        console.log(`[FighterMesh] ✅ Mixer still running after integrity test (static mesh path) — no recovery needed for "${integrityInput.characterName}"`);
       }
+
       // Integrity test handled — proceed to normal animation logic below
-      // (deformationPassedRef is always true now; blocking is only for NO_VISIBLE_MESH)
       deformationPassedRef.current = true;
     }
 

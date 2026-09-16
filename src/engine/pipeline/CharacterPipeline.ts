@@ -428,14 +428,17 @@ export function runCharacterPipeline(
 
     skinnedMesh.frustumCulled = false;
 
-    // ── STEP 5: Normalize skin weights (Khronos glTF spec) ───────────────────
-    // Three.js normalizeSkinWeights() enforces the Khronos glTF spec requirement
-    // that float weights sum as closely as possible to 1.0 per vertex.
-    // Without this, vertices with weights that don't sum to 1 produce
-    // stretched/displaced geometry during animation.
-    // IMPORTANT: This is a non-destructive normalization of the CLONED data —
-    // it does NOT modify the original authored GLB data.
-    skinnedMesh.normalizeSkinWeights();
+    // ── STEP 5: Skin weights — DO NOT normalize at runtime ────────────────────
+    // AGENT LAW: Do NOT call skinnedMesh.normalizeSkinWeights() here.
+    // The authored GLB skin weights are the authoritative source of truth.
+    // Runtime normalization was removed because:
+    //   1. It mutates the cloned asset's authored weight data
+    //   2. It can cause subtle deformation differences from the authored bind pose
+    //   3. The user directive explicitly prohibits runtime weight rewriting
+    // If skin weights don't sum to 1.0, that is an asset authoring issue to fix
+    // in the source GLB — not something to silently patch at runtime.
+    //
+    // Previously: skinnedMesh.normalizeSkinWeights();  ← REMOVED
 
     // Validate binding after clone
     if (!skinnedMesh.skeleton || skinnedMesh.skeleton.bones.length === 0) {

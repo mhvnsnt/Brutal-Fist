@@ -410,6 +410,11 @@ function check_ANIMATION_CLIPS_EXIST(actions: Record<string, THREE.AnimationActi
  * AGENT LAW: This test MUST NOT leave the mixer in a dirty state.
  * We save/restore mixer time and stop all actions after the test.
  * The caller is responsible for re-starting the idle action after this check.
+ *
+ * STATIC MESH EXCEPTION: If no SkinnedMesh with a valid skeleton is found,
+ * we return pass:false WITHOUT calling stopAllAction() or setTime(0).
+ * Stopping the mixer on a static-mesh GLB kills any running idle animation
+ * and the recovery path cannot restart it — causing the statue/bind-pose lock.
  */
 function check_FIRST_FRAME_DISPLACEMENT(
   mixer: THREE.AnimationMixer,
@@ -418,7 +423,9 @@ function check_FIRST_FRAME_DISPLACEMENT(
   clonedScene: THREE.Object3D,
 ): CheckResult {
   if (skinnedMeshes.length === 0) {
-    return { id: 'FIRST_FRAME_DISPLACEMENT', pass: false, detail: 'No SkinnedMesh — cannot test vertex displacement' };
+    // Static mesh — no SkinnedMesh present. Do NOT stop the mixer.
+    // Just report the failure without disrupting animation playback.
+    return { id: 'FIRST_FRAME_DISPLACEMENT', pass: false, detail: 'No SkinnedMesh — static mesh asset, skeletal deformation not possible (mixer not disrupted)' };
   }
 
   const clipNames = Object.keys(actions);
@@ -443,7 +450,9 @@ function check_FIRST_FRAME_DISPLACEMENT(
   );
 
   if (!testMesh) {
-    return { id: 'FIRST_FRAME_DISPLACEMENT', pass: false, detail: 'No valid SkinnedMesh with skeleton + skinWeight for displacement test' };
+    // SkinnedMesh objects exist but none have a valid skeleton + skinWeight.
+    // Do NOT stop the mixer — just report the failure.
+    return { id: 'FIRST_FRAME_DISPLACEMENT', pass: false, detail: 'No valid SkinnedMesh with skeleton + skinWeight for displacement test (mixer not disrupted)' };
   }
 
   // Sample BEFORE positions
