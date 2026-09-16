@@ -72,6 +72,12 @@ export interface CharacterMoveSet {
   // Optional extras
   extraMove1?: string;
   extraMove2?: string;
+  extraMove3?: string;
+  extraMove4?: string;
+  extraMove5?: string;
+  extraMove6?: string;
+  extraMove7?: string;
+  extraMove8?: string;
 }
 
 // ─── ROSTER ──────────────────────────────────────────────────────────────────

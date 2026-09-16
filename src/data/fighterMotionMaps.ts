@@ -28,6 +28,7 @@ export interface FighterMotionClip {
  * Not a catching spinning side slam / Black Hole Slam.
  */
 export const TARZANIAN_DEVIL_MOTION: FighterMotionClip[] = [
+  { key: 'JUNGLE_JUICE',        semanticState: 'grapple',   role: 'Jungle Juice authored bank clip — inverted facelock toss into impaler DDT' },
   { key: 'DDT',                 semanticState: 'grapple',   role: 'Jungle Juice impact — Impaler / implant DDT' },
   { key: 'HAMMERLOCKDDT',       semanticState: 'grapple',   role: 'Jungle Juice lifting-DDT variant from Bannon bank' },
   { key: 'TZ_TILT_WHIRL_SLAM',  semanticState: 'throw',     role: 'Inverted facelock toss — overhead flip, land face-to-face' },

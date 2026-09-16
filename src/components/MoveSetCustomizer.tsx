@@ -9,10 +9,11 @@ import {
   resetAllMoveSlots,
   getAvailableMovesForSlot,
   MOVE_SLOT_CONFIG,
+  importMoveSetConfig,
   type MoveSlot,
   type CustomizedMoveSet,
 } from '../engine/CharacterMoveSetSystem';
-import { getMoveById, type BrutalFistMove } from '../engine/BrutalFistMoveCatalog';
+import { getMoveById, getAllMoves, type BrutalFistMove } from '../engine/BrutalFistMoveCatalog';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -91,6 +92,8 @@ function MoveSlotRow({
   availableMoves,
   onAssign,
   onReset,
+  selected,
+  onSelect,
 }: {
   slot: MoveSlot;
   label: string;
@@ -100,13 +103,17 @@ function MoveSlotRow({
   availableMoves: BrutalFistMove[];
   onAssign: (slot: MoveSlot, moveId: string) => void;
   onReset: (slot: MoveSlot) => void;
+  selected?: boolean;
+  onSelect?: () => void;
 }) {
   const currentMove = currentMoveId ? getMoveById(currentMoveId) : null;
 
   return (
     <div className={`flex items-center gap-2 p-2 rounded-lg border ${
-      isCustomized ? 'border-green-800 bg-green-950/30' : 'border-gray-800 bg-gray-900/50'
-    }`}>
+      selected ? 'border-yellow-600 bg-yellow-950/20' : isCustomized ? 'border-green-800 bg-green-950/30' : 'border-gray-800 bg-gray-900/50'
+    }`}
+      onClick={onSelect}
+    >
       <div className="w-32 shrink-0">
         <span className="text-xs text-gray-400 font-mono uppercase tracking-wide">{label}</span>
       </div>
@@ -158,6 +165,9 @@ export default function MoveSetCustomizer({ onClose, onConfirm, initialCharacter
     return map;
   });
   const [activeCategory, setActiveCategory] = useState<string>('all');
+  const [selectedSlot, setSelectedSlot] = useState<MoveSlot>('signature');
+  const [libraryQuery, setLibraryQuery] = useState('');
+  const [libraryFilter, setLibraryFilter] = useState<'all' | 'bank' | 'authored'>('all');
 
   const selectedFighter = useMemo(() => getBannonFighter(selectedId), [selectedId]);
   const selectedMoveSet = moveSets.get(selectedId);
@@ -199,6 +209,45 @@ export default function MoveSetCustomizer({ onClose, onConfirm, initialCharacter
     return MOVE_SLOT_CONFIG.filter(c => c.category === activeCategory);
   }, [activeCategory]);
 
+  const libraryMoves = useMemo(() => {
+    let list = getAllMoves();
+    if (libraryFilter === 'bank') list = list.filter(m => m.id.startsWith('bf_bank_'));
+    if (libraryFilter === 'authored') list = list.filter(m => !m.id.startsWith('bf_bank_'));
+    const q = libraryQuery.trim().toLowerCase();
+    if (q) {
+      list = list.filter(m =>
+        m.displayName.toLowerCase().includes(q)
+        || m.id.toLowerCase().includes(q)
+        || m.animation.toLowerCase().includes(q)
+        || (m.description ?? '').toLowerCase().includes(q),
+      );
+    }
+    return list.sort((a, b) => a.displayName.localeCompare(b.displayName));
+  }, [libraryQuery, libraryFilter]);
+
+  const handleSavePreset = useCallback(() => {
+    if (!selectedMoveSet) return;
+    const blob = new Blob([JSON.stringify(selectedMoveSet, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${selectedId}-moveset.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [selectedId, selectedMoveSet]);
+
+  const handleLoadPreset = useCallback((file: File) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const parsed = JSON.parse(String(reader.result)) as Record<string, string>;
+        const updated = importMoveSetConfig(selectedId, parsed);
+        if (updated) setMoveSets(prev => new Map(prev).set(selectedId, updated));
+      } catch { /* ignore bad json */ }
+    };
+    reader.readAsText(file);
+  }, [selectedId]);
+
   if (!selectedFighter || !selectedMoveSet) return null;
 
   return (
@@ -209,13 +258,28 @@ export default function MoveSetCustomizer({ onClose, onConfirm, initialCharacter
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-800 bg-gray-900 shrink-0">
           <div>
             <h1 className="text-xl font-bold text-yellow-400 font-mono tracking-wider uppercase">
-              Move Set Customizer
+              Moveset Editor
             </h1>
             <p className="text-xs text-gray-500 font-mono mt-0.5">
-              Assign moves from the full catalog to each character slot
+              WWE / Tekken create-a-moveset — every Bannon, SBW, and Tekken bank clip is assignable
             </p>
           </div>
           <div className="flex gap-3">
+            <button
+              onClick={handleSavePreset}
+              className="px-4 py-2 text-sm font-mono text-zinc-300 border border-zinc-700 rounded hover:bg-zinc-800 transition-colors"
+            >
+              Save JSON
+            </button>
+            <label className="px-4 py-2 text-sm font-mono text-zinc-300 border border-zinc-700 rounded hover:bg-zinc-800 transition-colors cursor-pointer">
+              Load JSON
+              <input
+                type="file"
+                accept="application/json"
+                className="hidden"
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) handleLoadPreset(f); }}
+              />
+            </label>
             {selectedMoveSet.isCustomized && (
               <button
                 onClick={handleResetAll}
@@ -333,11 +397,59 @@ export default function MoveSetCustomizer({ onClose, onConfirm, initialCharacter
                     availableMoves={availableMoves}
                     onAssign={handleAssign}
                     onReset={handleReset}
+                    selected={selectedSlot === slotConfig.slot}
+                    onSelect={() => setSelectedSlot(slotConfig.slot)}
                   />
                 );
               })}
             </div>
 
+          </div>
+
+          {/* Motion library — unused clips live here for later assignment */}
+          <div className="w-72 shrink-0 border-l border-gray-800 bg-gray-950 flex flex-col">
+            <div className="px-3 py-2 border-b border-gray-800">
+              <div className="text-[10px] text-zinc-500 font-mono tracking-widest uppercase mb-2">
+                Motion Library ({libraryMoves.length})
+              </div>
+              <input
+                value={libraryQuery}
+                onChange={(e) => setLibraryQuery(e.target.value)}
+                placeholder="Search clips…"
+                className="w-full bg-gray-900 border border-gray-700 text-xs text-white font-mono px-2 py-1 rounded mb-2"
+              />
+              <div className="flex gap-1">
+                {(['all', 'authored', 'bank'] as const).map((f) => (
+                  <button
+                    key={f}
+                    onClick={() => setLibraryFilter(f)}
+                    className={`text-[9px] font-mono px-2 py-0.5 border uppercase ${
+                      libraryFilter === f ? 'border-yellow-500 text-yellow-300' : 'border-zinc-800 text-zinc-600'
+                    }`}
+                  >
+                    {f}
+                  </button>
+                ))}
+              </div>
+              <div className="text-[9px] text-zinc-600 font-mono mt-2">
+                Assign to: {selectedSlot}
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              {libraryMoves.map((move) => (
+                <button
+                  key={move.id}
+                  onClick={() => handleAssign(selectedSlot, move.id)}
+                  className="w-full text-left px-3 py-1.5 border-b border-zinc-900 hover:bg-zinc-900"
+                  title={move.description}
+                >
+                  <div className="text-[11px] text-zinc-200 font-mono truncate">{move.displayName}</div>
+                  <div className="text-[9px] text-zinc-600 font-mono truncate">
+                    {move.id.startsWith('bf_bank_') ? 'BANK' : move.category.toUpperCase()} · {move.animation}
+                  </div>
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       </div>

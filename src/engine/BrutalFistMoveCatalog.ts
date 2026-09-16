@@ -12,6 +12,7 @@
  */
 
 import type { FrameData } from '../types';
+import { BANK_LIBRARY_MOVES } from './BannonMotionLibrary';
 
 // ─── Move Category Types ──────────────────────────────────────────────────────
 
@@ -747,6 +748,7 @@ export const SIGNATURE_MOVES: Record<string, BrutalFistMove> = {
 // ─── MASTER CATALOG ───────────────────────────────────────────────────────────
 
 export const BRUTAL_FIST_FULL_CATALOG: Record<string, BrutalFistMove> = {
+  ...BANK_LIBRARY_MOVES,
   ...LOCOMOTION_MOVES,
   ...STRIKE_MOVES,
   ...KICK_MOVES,
@@ -760,6 +762,10 @@ export const BRUTAL_FIST_FULL_CATALOG: Record<string, BrutalFistMove> = {
   ...KO_MOVES,
   ...SIGNATURE_MOVES,
 };
+
+export function getAllMoves(): BrutalFistMove[] {
+  return Object.values(BRUTAL_FIST_FULL_CATALOG);
+}
 
 export function getMoveById(id: string): BrutalFistMove | null {
   if (BRUTAL_FIST_FULL_CATALOG[id]) return BRUTAL_FIST_FULL_CATALOG[id];

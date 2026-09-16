@@ -50,6 +50,56 @@ This law exists because agents have repeatedly replaced user-designed systems (e
 
 ---
 
+## ═══════════════════════════════════════════════════════════════════
+## OPEN SOURCE + OWNER REPOS FIRST — DO NOT WASTE TIME HOMEBREWING
+## ═══════════════════════════════════════════════════════════════════
+
+> **Pull from mhvnsnt repos, vendored engines, and verified open-source first. Homebrew only to gap-fill and wire those sources into Brutal Fist.**
+
+This is a standing rule for every agent, every session.
+
+### Source order (mandatory)
+
+1. **mhvnsnt/Bannon** — characters, attires, Euler motion bank (`assets/moves/clips`), bios, mocap.
+2. **mhvnsnt/Brutal-Fist** — this repo, including `Research/`, `SchwarzerblitzEngine/`, `vendor/`.
+3. **mhvnsnt Tekken / Night Sky / related research repos** — movement, attacks, tooling. Owner has granted use of movement/animations/attacks for this game.
+4. **AndreaJens/SchwarzerblitzEngine** (and the vendored copy) — engine patterns, move resources. Keep its license. Replace restricted game content with Bannon/Brutal Fist content.
+5. **Permissive open-source** (Mixamo, three.js examples, MIT/Apache tooling) after license check.
+6. **Homebrew last** — only to gap-fill, bind, retarget, or UI-wire what those sources do not provide.
+
+### What this means in practice
+
+- Do **not** invent a parallel animation format, move catalog, or skeleton when the Bannon Euler bank / Mixamo bind / Schwarzerblitz move resource already exists.
+- Unused bank clips still belong in the **moveset library** so players can assign them later (WWE / Tekken / MK create-a-moveset).
+- Per-character defaults come from **bio + personality + fightingStyle** in `bannonRoster.ts`, then players edit and save in the Moveset Editor.
+- Record source + license when vendoring. See `docs/OPEN_SOURCE_INTEGRATION_POLICY.md`.
+
+---
+
+## ═══════════════════════════════════════════════════════════════════
+## CONCEPT ART / DEVELOPMENT SCREENSHOTS
+## ═══════════════════════════════════════════════════════════════════
+
+> **Save screenshots, generated portraits, and preview captures into the repo as concept art and development artwork so every agent (and the owner) can view them.**
+
+- `public/concept-art/` — served captures (title, select, combat, menus).
+- `docs/concept-art/` — same files for docs/PRs.
+- `public/portraits/` — roster headshots (grid + concept).
+- Do not leave captures only in a chat sandbox. Copy them into those folders and commit.
+
+---
+
+## ═══════════════════════════════════════════════════════════════════
+## MOVESET LIBRARY + EDITOR (WWE / TEKKEN / MK)
+## ═══════════════════════════════════════════════════════════════════
+
+- Default movesets are per-character, from bio/personality (`bannonRoster.defaultMoveSet`).
+- The Moveset Editor (`MoveSetCustomizer`, menu: MOVESET EDITOR) can change **every slot**, including unused Bannon bank clips (`bf_bank_*`).
+- Saves persist to `localStorage` (`bf-movesets-v1`) and export/import JSON.
+- Do not shrink the library to "only what the default roster uses." Unused animations are inventory for players.
+
+---
+
 ## Sync Workflow (Every Cycle)
 
 ```

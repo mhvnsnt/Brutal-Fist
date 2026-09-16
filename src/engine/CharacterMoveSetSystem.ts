@@ -13,7 +13,7 @@
 
 import type { CharacterMoveSet } from '../data/bannonRoster';
 import { getBannonFighter, getAllBannonFighters } from '../data/bannonRoster';
-import { getMoveById, getMovesByCategory, type MoveCategory, type BrutalFistMove } from './BrutalFistMoveCatalog';
+import { getMoveById, getMovesByCategory, getAllMoves, type MoveCategory, type BrutalFistMove } from './BrutalFistMoveCatalog';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -53,9 +53,37 @@ export const MOVE_SLOT_CONFIG: MoveSlotConfig[] = [
   { slot: 'hitReaction',     label: 'Hit Reaction',     category: 'reaction',   required: true },
   { slot: 'ko',              label: 'KO Animation',     category: 'ko',         required: true },
   { slot: 'signature',       label: 'Signature / Finisher', category: 'signature', required: true },
-  { slot: 'extraMove1',      label: 'Extra Move 1',     category: 'strike',     required: false },
-  { slot: 'extraMove2',      label: 'Extra Move 2',     category: 'throw',      required: false },
+  { slot: 'extraMove1',      label: 'Create-a-Move 1',  category: 'strike',     required: false },
+  { slot: 'extraMove2',      label: 'Create-a-Move 2',  category: 'throw',      required: false },
+  { slot: 'extraMove3',      label: 'Create-a-Move 3',  category: 'strike',     required: false },
+  { slot: 'extraMove4',      label: 'Create-a-Move 4',  category: 'kick',       required: false },
+  { slot: 'extraMove5',      label: 'Create-a-Move 5',  category: 'throw',      required: false },
+  { slot: 'extraMove6',      label: 'Create-a-Move 6',  category: 'signature',  required: false },
+  { slot: 'extraMove7',      label: 'Create-a-Move 7',  category: 'counter',    required: false },
+  { slot: 'extraMove8',      label: 'Create-a-Move 8',  category: 'grapple',    required: false },
 ];
+
+const STORAGE_KEY = 'bf-movesets-v1';
+
+function persistMoveSets(): void {
+  if (typeof window === 'undefined') return;
+  const obj: Record<string, CustomizedMoveSet> = {};
+  customizedMoveSets.forEach((v, k) => { obj[k] = v; });
+  try { window.localStorage.setItem(STORAGE_KEY, JSON.stringify(obj)); } catch { /* ignore */ }
+}
+
+function hydrateMoveSets(): void {
+  if (typeof window === 'undefined') return;
+  if (customizedMoveSets.size > 0) return;
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) return;
+    const obj = JSON.parse(raw) as Record<string, CustomizedMoveSet>;
+    for (const [id, ms] of Object.entries(obj)) {
+      if (ms && ms.characterId) customizedMoveSets.set(id, ms);
+    }
+  } catch { /* ignore */ }
+}
 
 // ─── In-Memory Store ──────────────────────────────────────────────────────────
 
@@ -67,6 +95,7 @@ const customizedMoveSets = new Map<string, CustomizedMoveSet>();
  * Get the current move set for a character (custom or default).
  */
 export function getCharacterMoveSet(characterId: string): CustomizedMoveSet | null {
+  hydrateMoveSets();
   if (customizedMoveSets.has(characterId)) {
     return customizedMoveSets.get(characterId)!;
   }
@@ -112,6 +141,7 @@ export function assignMoveToSlot(
   };
 
   customizedMoveSets.set(characterId, updated);
+  persistMoveSets();
   return updated;
 }
 
@@ -134,6 +164,7 @@ export function resetMoveSlot(characterId: string, slot: MoveSlot): CustomizedMo
   updated.isCustomized = updated.customizedSlots.length > 0;
 
   customizedMoveSets.set(characterId, updated);
+  persistMoveSets();
   return updated;
 }
 
@@ -151,6 +182,7 @@ export function resetAllMoveSlots(characterId: string): CustomizedMoveSet | null
     customizedSlots: [],
   };
   customizedMoveSets.set(characterId, reset);
+  persistMoveSets();
   return reset;
 }
 
@@ -168,19 +200,19 @@ export function getAvailableMovesForSlot(slot: MoveSlot): BrutalFistMove[] {
   }
 
   // Attack/combo/throw/grapple slots show broader options
-  const attackSlots: MoveSlot[] = ['lightAttack', 'heavyAttack', 'extraMove1', 'extraMove2'];
+  const attackSlots: MoveSlot[] = ['lightAttack', 'heavyAttack', 'extraMove1', 'extraMove2', 'extraMove3', 'extraMove4', 'extraMove5', 'extraMove6', 'extraMove7', 'extraMove8'];
   if (attackSlots.includes(slot)) {
-    return [
-      ...getMovesByCategory('strike'),
-      ...getMovesByCategory('kick'),
-    ];
+    return getAllMoves().filter(m =>
+      m.category === 'strike' || m.category === 'kick' || m.category === 'throw'
+      || m.category === 'signature' || m.category === 'combo' || m.category === 'counter' || m.category === 'grapple',
+    );
   }
 
-  if (slot === 'primaryCombo') return getMovesByCategory('combo');
-  if (slot === 'counter') return getMovesByCategory('counter');
-  if (slot === 'grappleInitiate') return getMovesByCategory('grapple');
-  if (slot === 'primaryThrow') return getMovesByCategory('throw');
-  if (slot === 'signature') return getMovesByCategory('signature');
+  if (slot === 'primaryCombo') return [...getMovesByCategory('combo'), ...getAllMoves().filter(m => m.id.startsWith('bf_bank_'))];
+  if (slot === 'counter') return [...getMovesByCategory('counter'), ...getAllMoves().filter(m => m.category === 'throw' || m.id.startsWith('bf_bank_'))];
+  if (slot === 'grappleInitiate') return [...getMovesByCategory('grapple'), ...getMovesByCategory('throw')];
+  if (slot === 'primaryThrow') return [...getMovesByCategory('throw'), ...getAllMoves().filter(m => m.throw || m.id.startsWith('bf_bank_'))];
+  if (slot === 'signature') return [...getMovesByCategory('signature'), ...getMovesByCategory('throw'), ...getAllMoves().filter(m => m.id.startsWith('bf_bank_'))];
   if (slot === 'lowKick') return getMovesByCategory('kick');
   if (slot === 'highKick') return getMovesByCategory('kick');
 
@@ -247,5 +279,6 @@ export function importMoveSetConfig(
   };
 
   customizedMoveSets.set(characterId, result);
+  persistMoveSets();
   return result;
 }

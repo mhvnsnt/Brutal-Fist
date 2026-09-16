@@ -26,6 +26,7 @@ const MatchmakingQueueScreen = dynamic(() => import('./components/MatchmakingQue
 const SpectatorViewerScreen = dynamic(() => import('./components/SpectatorViewerScreen'), { ssr: false });
 const AnimationTestArena = dynamic(() => import('./components/AnimationTestArena'), { ssr: false });
 const PreCombatValidationScreen = dynamic(() => import('./components/PreCombatValidationScreen'), { ssr: false });
+const MoveSetCustomizer = dynamic(() => import('./components/MoveSetCustomizer'), { ssr: false });
 
 export default function App() {
   const { user, loading: authLoading, signOut } = useAuth();
@@ -171,6 +172,13 @@ export default function App() {
               <span className="ml-3 text-[10px] text-purple-400 tracking-widest">MOVESET CREATION</span>
             </button>
             <button
+              onClick={() => setScreen('moveset_editor' as any)}
+              className="block w-full border border-slate-600 px-6 py-4 text-left text-xl font-black tracking-widest hover:bg-white hover:text-black transition-all"
+            >
+              MOVESET EDITOR
+              <span className="ml-3 text-[10px] text-yellow-400 tracking-widest">WWE / TEKKEN CREATE-A-MOVE</span>
+            </button>
+            <button
               onClick={() => setScreen('story' as any)}
               className="block w-full border border-slate-600 px-6 py-4 text-left text-xl font-black tracking-widest hover:bg-white hover:text-black transition-all"
             >
@@ -213,6 +221,10 @@ export default function App() {
   // ── Animation Test Arena ──
   if ((screen as any) === 'anim_test_arena') {
     return <AnimationTestArena onBack={() => setScreen(AppScreen?.MainMenu)} />;
+  }
+
+  if ((screen as any) === 'moveset_editor') {
+    return <MoveSetCustomizer onClose={() => setScreen(AppScreen?.MainMenu)} />;
   }
 
   // ── Pre-Combat Validation ──
