@@ -78,6 +78,24 @@ When a merge conflict arises between Rocket's work and another agent's work:
 
 ---
 
+## GLB Runtime Integrity Law — Binding
+
+Before modifying fighter rendering, animation, locomotion, combat timing, transforms, rigs, or model ingestion, read `docs/GLB_RUNTIME_INTEGRITY_LAW.md`.
+
+The following are hard regressions:
+
+- No plain `Object3D.clone(true)` for animated SkinnedMesh fighters; use `SkeletonUtils.clone`.
+- Do not call animation PASS because a clip name resolved or a hidden skeleton moved; prove the rendered SkinnedMesh deforms.
+- Do not use bind-pose-only floor validation; inspect animated rendered bounds.
+- Do not hard-code P1/P2 facing as universally correct for every source asset.
+- Facing corrections belong in an explicit asset/model transform calibration layer, never random bone rotations.
+- `UNKNOWN` is never PASS.
+- Gameplay root movement and animation root motion must have one explicit owner.
+- Frame timing must remain tied to authoritative move/frame data; crossfade duration is not move timing.
+- Every discovered AI failure becomes a durable rule, diagnostic, or regression test.
+
+---
+
 ## Communication Between Agents
 
 - Rocket commits to `rocket-update` branch → opens PR to `main`.
@@ -88,4 +106,4 @@ When a merge conflict arises between Rocket's work and another agent's work:
 
 ---
 
-*Last updated by Rocket agent — Brutal-Fist v7 combat/animation cycle.*
+*Last updated by Brutal Fist agent — GLB runtime integrity cycle.*
