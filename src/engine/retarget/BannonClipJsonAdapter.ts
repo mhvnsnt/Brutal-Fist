@@ -33,6 +33,12 @@
  */
 
 import * as THREE from 'three';
+import {
+  isBannonEulerFormat,
+  convertBannonEulerClip,
+  type BannonEulerClipJson,
+  type EulerAdapterResult,
+} from './BannonEulerMotionAdapter';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Bannon motion bank JSON schema
@@ -348,6 +354,43 @@ export function convertBannonClipBank(
 
   return result;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Format-detecting auto-converter
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Auto-detect the Bannon clip format and route to the correct converter.
+ *
+ * BANNON_EULER_RX_RY_RZ (hasQuaternion: false):
+ *   → BannonEulerMotionAdapter.convertBannonEulerClip()
+ *   → Euler rx/ry/rz → THREE.Quaternion → QuaternionKeyframeTrack
+ *   → clipSourceType: 'RETARGETED_AUTHORED_CLIP'
+ *
+ * Standard quaternion format (hasQuaternion: true or absent):
+ *   → convertBannonClipJson()
+ *   → Direct quaternion [x,y,z,w] → QuaternionKeyframeTrack
+ *   → clipSourceType: 'AUTHORED_CLIP'
+ *
+ * This is the preferred entry point for loading clips from the Bannon motion
+ * bank index, where the format varies per clip.
+ */
+export function convertBannonClipAuto(
+  json: BannonClipJson | BannonEulerClipJson,
+  semanticStateOverride?: string,
+): AdapterResult | EulerAdapterResult {
+  if (isBannonEulerFormat(json)) {
+    console.log(
+      `[BannonClipJsonAdapter] 🔄 BANNON_EULER_RX_RY_RZ detected for "${json.name}" — routing to EulerMotionAdapter`
+    );
+    return convertBannonEulerClip(json as BannonEulerClipJson, semanticStateOverride);
+  }
+  return convertBannonClipJson(json as BannonClipJson, semanticStateOverride);
+}
+
+// Re-export Euler types for consumers
+export type { BannonEulerClipJson, EulerAdapterResult };
+export { isBannonEulerFormat };
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Procedural fallback clip generator

@@ -259,7 +259,6 @@ function resolveClipName(key: string, availableClips: string[]): string | null {
   const semanticState = COMBAT_STATE_TO_SEMANTIC[key];
   if (semanticState) {
     // Build a minimal clipsByState map from available clips for bridge lookup
-    const clipsByState = new Map<string, THREE.AnimationClip>();
     // We don't have real AnimationClip objects here, only names — so we do
     // name-based semantic resolution using SEMANTIC_STATE_ALIASES directly.
     const semanticAliases = ANIMATION_ALIASES[semanticState] ?? [semanticState];
@@ -283,6 +282,21 @@ function resolveClipName(key: string, availableClips: string[]): string | null {
         `[FighterMesh] 🗺️ AnimationBridge partial: combatState="${key}" → semantic="${semanticState}" → clip="${semanticPartial}"`
       );
       return semanticPartial;
+    }
+
+    // COMBAT VERB GUARD: attack, block, hit, knockdown, getup, grapple
+    // must NOT silently fall back to idle — return null (MISSING_CLIP)
+    const COMBAT_VERBS = new Set([
+      'attack_1', 'attack_2', 'block', 'hit_reaction',
+      'knockdown', 'getup', 'grapple',
+    ]);
+    if (COMBAT_VERBS.has(semanticState)) {
+      console.warn(
+        `[FighterMesh] ⚠️ MISSING_CLIP: combatState="${key}" → semantic="${semanticState}" — ` +
+        `no matching clip. Combat verb will NOT substitute idle. ` +
+        `Available: [${availableClips.slice(0, 4).join(', ')}${availableClips.length > 4 ? '...' : ''}]`
+      );
+      return null;
     }
 
     console.warn(
@@ -310,6 +324,11 @@ function resolveClipName(key: string, availableClips: string[]): string | null {
              lc.includes('hit') || lc.includes('strike') || lc.includes('jab') || lc.includes('cross');
     });
     if (found) return found;
+    // MISSING_CLIP — do NOT fall back to idle for attack states
+    console.warn(
+      `[FighterMesh] ⚠️ MISSING_CLIP: attack state "${key}" — no attack clip found. Returning null.`
+    );
+    return null;
   }
 
   // 4. Walk/movement fallback
@@ -321,31 +340,35 @@ function resolveClipName(key: string, availableClips: string[]): string | null {
     if (found) return found;
   }
 
-  // 5. Hit/stun fallback
+  // 5. Hit/stun fallback — do NOT fall back to idle
   if (key === 'hit' || key === 'Hitstun' || key === 'HitStun' || key === 'Stunned') {
     found = availableClips.find(c => {
       const lc = c.toLowerCase();
       return lc.includes('hit') || lc.includes('hurt') || lc.includes('flinch') || lc.includes('damage');
     });
     if (found) return found;
+    console.warn(`[FighterMesh] ⚠️ MISSING_CLIP: hit state "${key}" — no hit clip found. Returning null.`);
+    return null;
   }
 
-  // 6. KO/knockdown fallback
+  // 6. KO/knockdown fallback — do NOT fall back to idle
   if (key === 'ko' || key === 'KO' || key === 'knockdown' || key === 'Knockdown' || key === 'Crumple') {
     found = availableClips.find(c => {
       const lc = c.toLowerCase();
       return lc.includes('ko') || lc.includes('fall') || lc.includes('down') || lc.includes('death') || lc.includes('knockdown');
     });
     if (found) return found;
+    console.warn(`[FighterMesh] ⚠️ MISSING_CLIP: knockdown state "${key}" — no knockdown clip found. Returning null.`);
+    return null;
   }
 
-  // 7. Wakeup fallback → walk or idle
+  // 7. Wakeup fallback → walk or idle (locomotion, not combat verb)
   if (key.startsWith('Wakeup')) {
     found = availableClips.find(c => c.toLowerCase().includes('walk'));
     if (found) return found;
   }
 
-  // 8. Idle fallback → first available clip
+  // 8. Idle fallback → first available clip (only for non-combat states)
   found = availableClips.find(c => c.toLowerCase().includes('idle'));
   if (found) return found;
 

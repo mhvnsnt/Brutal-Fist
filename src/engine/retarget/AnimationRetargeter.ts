@@ -535,7 +535,8 @@ export class AnimationRetargeter {
       if (targetBoneName && property) {
         // Rewrite track name to use target bone name
         const newTrackName = `${targetBoneName}.${property}`;
-        const RetargetedTrack = track.constructor as unknown as new (...args: unknown[]) => THREE.KeyframeTrack;
+        type TrackCtor = new (...ctorArgs: unknown[]) => THREE.KeyframeTrack;
+        const RetargetedTrack = track.constructor as unknown as TrackCtor;
         retargetedTracks.push(
           new RetargetedTrack(newTrackName, track.times, track.values, track.getInterpolation())
         );
@@ -597,6 +598,107 @@ export class AnimationRetargeter {
     );
 
     return { clips: retargetedClips, totalResolved, totalUnresolved };
+  }
+
+  /**
+   * Bind pre-converted clip tracks onto a live cloned skeleton.
+   *
+   * Used by the Euler motion adapter path: after BannonEulerMotionAdapter
+   * converts rx/ry/rz → quaternion tracks with canonical bone names, this
+   * method resolves those canonical names to the actual bone names present
+   * in the target skeleton and rewrites track names in-place.
+   *
+   * If a canonical name matches a bone directly, no rewrite is needed.
+   * Tracks with no matching bone are dropped and reported.
+   *
+   * @param clips       Clips with canonical bone name tracks
+   * @param targetRoot  The live cloned scene (SkeletonUtils.clone() output)
+   * @returns Clips with track names rewritten to target skeleton bone names
+   */
+  bindClipTracksToTargetBones(
+    clips: THREE.AnimationClip[],
+    targetRoot: THREE.Object3D,
+  ): { clips: THREE.AnimationClip[]; totalBound: number; totalUnbound: number } {
+    // Build bone name index from target skeleton
+    const boneNameSet = new Set<string>();
+    const canonicalToTarget = new Map<string, string>();
+
+    targetRoot.traverse((child) => {
+      if ((child as THREE.Bone).isBone && child.name) {
+        boneNameSet.add(child.name);
+        // Map canonical name → target name
+        const canonical = this._resolveToCanonical(child.name);
+        if (canonical && !canonicalToTarget.has(canonical)) {
+          canonicalToTarget.set(canonical, child.name);
+        }
+        // Also map the bone's own name directly
+        if (!canonicalToTarget.has(child.name)) {
+          canonicalToTarget.set(child.name, child.name);
+        }
+      }
+    });
+
+    const boundClips: THREE.AnimationClip[] = [];
+    let totalBound = 0;
+    let totalUnbound = 0;
+
+    for (const clip of clips) {
+      const boundTracks: THREE.KeyframeTrack[] = [];
+      const unboundTargets: string[] = [];
+
+      for (const track of clip.tracks) {
+        const dotIdx = track.name.lastIndexOf('.');
+        const boneName = dotIdx !== -1 ? track.name.slice(0, dotIdx) : track.name;
+        const property = dotIdx !== -1 ? track.name.slice(dotIdx) : '';
+
+        // Direct match
+        if (boneNameSet.has(boneName)) {
+          boundTracks.push(track);
+          totalBound++;
+          continue;
+        }
+
+        // Canonical → target resolution
+        const canonical = this._resolveToCanonical(boneName);
+        const targetBoneName = canonical ? canonicalToTarget.get(canonical) : canonicalToTarget.get(boneName);
+
+        if (targetBoneName) {
+          const rewrittenTrack = track.clone();
+          rewrittenTrack.name = `${targetBoneName}${property}`;
+          boundTracks.push(rewrittenTrack);
+          totalBound++;
+          continue;
+        }
+
+        // No match — drop
+        unboundTargets.push(boneName);
+        totalUnbound++;
+      }
+
+      const boundClip = new THREE.AnimationClip(clip.name, clip.duration, boundTracks);
+      // Preserve userData
+      (boundClip as unknown as Record<string, unknown>).userData = {
+        ...((clip as unknown as Record<string, unknown>).userData ?? {}),
+        boundTracks: boundTracks.length,
+        unboundTracks: unboundTargets.length,
+      };
+
+      if (unboundTargets.length > 0) {
+        console.warn(
+          `[AnimationRetargeter] ⚠️ bindClipTracksToTargetBones: clip="${clip.name}" ` +
+          `${unboundTargets.length} unbound: [${unboundTargets.join(', ')}]`
+        );
+      }
+
+      boundClips.push(boundClip);
+    }
+
+    console.log(
+      `[AnimationRetargeter] 🔗 bindClipTracksToTargetBones: ${clips.length} clips, ` +
+      `${totalBound} bound / ${totalUnbound} unbound tracks`
+    );
+
+    return { clips: boundClips, totalBound, totalUnbound };
   }
 
   /**

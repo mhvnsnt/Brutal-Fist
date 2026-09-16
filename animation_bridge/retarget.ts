@@ -194,40 +194,76 @@ export class AnimationBridge {
   /**
    * Get the best clip for a combat state from a clips-by-state map.
    * Applies the combat state → semantic state → clip lookup chain.
+   *
+   * MISSING_CLIP LAW: If no clip exists for a combat verb (attack_1, attack_2,
+   * block, hit_reaction, knockdown, getup, grapple), returns null.
+   * Combat verbs MUST NOT silently fall back to idle — that would mask a
+   * real MISSING_CLIP condition and produce incorrect animation evidence.
+   *
+   * Only locomotion states (walk_back, strafe_left, strafe_right, backdash,
+   * crouch) may fall back to related locomotion clips.
    */
   static getClipForCombatState(
     combatState: string,
     clipsByState: Map<string, THREE.AnimationClip>,
   ): THREE.AnimationClip | null {
     const semanticState = COMBAT_STATE_TO_SEMANTIC[combatState];
-    if (!semanticState) return clipsByState.get('idle') ?? null;
+    if (!semanticState) {
+      // No semantic mapping — MISSING_CLIP, do NOT substitute idle
+      console.warn(
+        `[AnimationBridge] ⚠️ MISSING_CLIP: no semantic mapping for combatState="${combatState}"`
+      );
+      return null;
+    }
 
     // Direct semantic state lookup
     const direct = clipsByState.get(semanticState);
     if (direct) return direct;
 
-    // Fallback chain
-    const fallbacks: Record<string, string[]> = {
-      walk_back:    ['walk_forward', 'idle'],
-      strafe_left:  ['walk_forward', 'idle'],
-      strafe_right: ['walk_forward', 'idle'],
-      backdash:     ['walk_back', 'walk_forward', 'idle'],
-      crouch:       ['idle'],
-      grapple:      ['attack_2', 'attack_1', 'idle'],
-      hit_reaction: ['idle'],
-      knockdown:    ['idle'],
-      getup:        ['idle'],
-      victory:      ['idle'],
-      taunt:        ['idle'],
-      defeat:       ['knockdown', 'idle'],
-    };
-
-    const chain = fallbacks[semanticState] ?? ['idle'];
-    for (const fb of chain) {
-      const fbClip = clipsByState.get(fb);
-      if (fbClip) return fbClip;
+    // COMBAT VERB GUARD: attack, block, hit, knockdown, getup, grapple
+    // must NOT fall back to idle — return null (MISSING_CLIP)
+    const COMBAT_VERBS = new Set([
+      'attack_1', 'attack_2', 'block', 'hit_reaction',
+      'knockdown', 'getup', 'grapple',
+    ]);
+    if (COMBAT_VERBS.has(semanticState)) {
+      console.warn(
+        `[AnimationBridge] ⚠️ MISSING_CLIP: combatState="${combatState}" → semantic="${semanticState}" — ` +
+        `no clip found. Combat verb will NOT substitute idle. Fix the animation source.`
+      );
+      return null;
     }
 
+    // Locomotion fallback chain (walk variants may fall back to related locomotion)
+    const fallbacks: Record<string, string[]> = {
+      walk_back:    ['walk_forward'],
+      strafe_left:  ['walk_forward'],
+      strafe_right: ['walk_forward'],
+      backdash:     ['walk_back', 'walk_forward'],
+      crouch:       ['idle'],
+      victory:      ['idle'],
+      taunt:        ['idle'],
+      defeat:       ['knockdown'],
+    };
+
+    const chain = fallbacks[semanticState];
+    if (chain) {
+      for (const fb of chain) {
+        const fbClip = clipsByState.get(fb);
+        if (fbClip) {
+          console.log(
+            `[AnimationBridge] ℹ️ Locomotion fallback: "${semanticState}" → "${fb}"`
+          );
+          return fbClip;
+        }
+      }
+    }
+
+    // No fallback found — MISSING_CLIP
+    console.warn(
+      `[AnimationBridge] ⚠️ MISSING_CLIP: combatState="${combatState}" → semantic="${semanticState}" — ` +
+      `no clip and no fallback found.`
+    );
     return null;
   }
 }

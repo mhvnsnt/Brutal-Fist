@@ -18,12 +18,17 @@ export type BannonGlbRosterEntry = {
  */
 export const BANNON_GLB_MODELS: readonly BannonGlbRosterEntry[] = [
   // ── BANNON ──────────────────────────────────────────────────────────────────
-  {id:"bannon",name:"Bannon",model:"BANNON.glb",attire:"Default",rigStatus:"named-part",playableGate:"PASS",source:"CANON_MODELS"},
+  // rigged_ready.glb is the primary combat entry — output of scripts/rig-static-glbs-cli.mjs
+  // BANNON.glb (named-part) remains as fallback for character select portrait only
+  {id:"bannon",name:"Bannon",model:"BANNON_rigged_ready.glb",attire:"Default (Rigged)",rigStatus:"skinned",playableGate:"PASS",source:"CANON_MODELS"},
+  {id:"bannon",name:"Bannon",model:"BANNON.glb",attire:"Default (Static fallback)",rigStatus:"named-part",playableGate:"PASS",source:"CANON_MODELS"},
   // RENAMED: was BANNON_muscular.glb — the muscular label was wrong; this is the fat alt
   {id:"bannon",name:"Bannon",model:"BANNON_fat.glb",attire:"Fat alt",rigStatus:"single-mesh-needs-rigready",playableGate:"PASS",source:"CANON_MODELS"},
 
   // ── MAIME ────────────────────────────────────────────────────────────────────
-  {id:"maime",name:"Maime",model:"MAIME.glb",attire:"Default",rigStatus:"named-part",playableGate:"PASS",source:"CANON_MODELS"},
+  // rigged_ready.glb is the primary combat entry — output of scripts/rig-static-glbs-cli.mjs
+  {id:"maime",name:"Maime",model:"MAIME_rigged_ready.glb",attire:"Default (Rigged)",rigStatus:"skinned",playableGate:"PASS",source:"CANON_MODELS"},
+  {id:"maime",name:"Maime",model:"MAIME.glb",attire:"Default (Static fallback)",rigStatus:"named-part",playableGate:"PASS",source:"CANON_MODELS"},
   {id:"maime",name:"Maime",model:"MAIME_tattered.glb",attire:"Tattered",rigStatus:"named-part",playableGate:"PASS",source:"CANON_MODELS"},
 
   // ── ONYX ─────────────────────────────────────────────────────────────────────

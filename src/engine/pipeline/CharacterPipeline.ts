@@ -73,6 +73,7 @@ import {
   generateProceduralClipSet,
   loadBannonClipsFromPublic,
 } from '../retarget/BannonClipJsonAdapter';
+import { bindClipTracksToTargetBones,  } from '../retarget/BannonEulerMotionAdapter';
 import {
   AnimationSourceRegistry,
   validateRegistryCompleteness,
@@ -641,13 +642,41 @@ export async function extractAndRetargetAnimations(
     }
 
     if (authoredClips && authoredClips.size > 0) {
+      // Bind authored clips onto the live target skeleton.
+      // Euler-format clips (RETARGETED_AUTHORED_CLIP) need track names resolved
+      // to the actual bones present in the cloned skeleton.
+      const clipsToRegister: THREE.AnimationClip[] = [];
+      for (const [semanticState, clip] of authoredClips) {
+        const userData = (clip as unknown as Record<string, unknown>).userData as Record<string, unknown> | undefined;
+        const isEuler = userData?.format === 'BANNON_EULER_RX_RY_RZ';
+        if (isEuler) {
+          // Bind Euler-converted tracks onto the live clone skeleton
+          const bindResult = bindClipTracksToTargetBones(clip, targetScene);
+          if (bindResult.boundTracks > 0) {
+            clipsToRegister.push(bindResult.clip);
+            console.log(
+              `[CharacterPipeline] 🔗 Bound Euler clip "${clip.name}" → ${bindResult.boundTracks} tracks ` +
+              `(${bindResult.unboundTracks} unbound, travel=${bindResult.totalAngularTravel.toFixed(2)} rad)`
+            );
+          } else {
+            console.warn(
+              `[CharacterPipeline] ⚠️ Euler clip "${clip.name}" bound 0 tracks — skeleton mismatch. ` +
+              `Unbound: [${bindResult.unboundTargets.slice(0, 5).join(', ')}]`
+            );
+          }
+        } else {
+          clipsToRegister.push(clip);
+        }
+      }
+
       // Register as AUTHORED_CLIP — highest priority
       registry.registerAuthoredClips(authoredClips, 'assets/moves/clips/');
-      processedClips = [...authoredClips.values()];
+      processedClips = clipsToRegister;
       bridgeClipCount = processedClips.length;
       retargetVerdict = 'AUTHORED_CLIP_LOADED';
       console.log(
-        `[CharacterPipeline] ✅ "${modelName}" — loaded ${authoredClips.size} AUTHORED_CLIP clips from motion bank`
+        `[CharacterPipeline] ✅ "${modelName}" — loaded ${authoredClips.size} clips from motion bank, ` +
+        `${clipsToRegister.length} bound to live skeleton`
       );
     } else {
       // Fall back to procedural placeholders

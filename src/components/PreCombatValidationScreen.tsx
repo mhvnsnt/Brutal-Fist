@@ -345,7 +345,12 @@ export default function PreCombatValidationScreen({
   const bothBlocked = p1Result?.overallStatus === 'BLOCKED' && p2Result?.overallStatus === 'BLOCKED';
   const anyBlocked  = p1Result?.overallStatus === 'BLOCKED' || p2Result?.overallStatus === 'BLOCKED';
   const bothPass    = p1Result?.overallStatus === 'PASS'    && p2Result?.overallStatus === 'PASS';
-  const canProceed  = bothPass || (!anyBlocked) || overrideEnabled;
+  // FIGHT requires BOTH fighters to be PASS. WARN is NOT PASS.
+  // Override checkbox only available when BOTH fighters are WARN (not BLOCKED).
+  const anyWarn     = p1Result?.overallStatus === 'WARN'    || p2Result?.overallStatus === 'WARN';
+  const bothWarnOrPass = !anyBlocked;
+  // Combat is authorized ONLY when both are PASS, or override is enabled for WARN-only scenarios
+  const canProceed  = bothPass || (bothWarnOrPass && overrideEnabled);
 
   return (
     <div className="fixed inset-0 bg-[#080b10] text-white font-mono overflow-y-auto">
@@ -376,20 +381,23 @@ export default function PreCombatValidationScreen({
           <>
             {/* Overall verdict banner */}
             <div className={`mb-6 px-4 py-3 border ${
-              anyBlocked ? 'border-red-700 bg-red-950/30' : (!bothPass) ?'border-yellow-700 bg-yellow-950/20': 'border-green-700 bg-green-950/20'
+              anyBlocked ? 'border-red-700 bg-red-950/30' : anyWarn ?'border-yellow-700 bg-yellow-950/20': 'border-green-700 bg-green-950/20'
             }`}>
               <div className="flex items-center justify-between">
                 <div>
                   <div className="text-[8px] tracking-widest text-zinc-500">COMBAT AUTHORIZATION</div>
                   <div className={`text-xl font-black tracking-widest mt-0.5 ${
-                    anyBlocked ? 'text-red-400' : (!bothPass) ?'text-yellow-400': 'text-green-400'
+                    anyBlocked ? 'text-red-400' : anyWarn ?'text-yellow-400': 'text-green-400'
                   }`}>
-                    {anyBlocked ? 'COMBAT BLOCKED' : !bothPass ? 'PROCEED WITH WARNINGS' : 'COMBAT AUTHORIZED'}
+                    {anyBlocked ? 'COMBAT BLOCKED' : anyWarn ?'COMBAT BLOCKED — WARN ≠ PASS': 'COMBAT AUTHORIZED'}
                   </div>
                 </div>
-                {anyBlocked && (
-                  <div className="text-[9px] text-red-400/70 text-right max-w-[200px]">
-                    Resolve all BLOCKED checks before combat can begin
+                {(anyBlocked || anyWarn) && (
+                  <div className="text-[9px] text-right max-w-[200px]">
+                    {anyBlocked
+                      ? <span className="text-red-400/70">Resolve all BLOCKED checks before combat can begin</span>
+                      : <span className="text-yellow-400/70">WARN is not PASS. Enable override to proceed in test mode only.</span>
+                    }
                   </div>
                 )}
               </div>
@@ -459,18 +467,19 @@ export default function PreCombatValidationScreen({
             )}
 
             {/* Warning: WARN-only fighters */}
-            {!anyBlocked && !bothPass && (
+            {!anyBlocked && anyWarn && (
               <div className="mb-6 border border-yellow-800/50 bg-yellow-950/10 p-4">
-                <div className="text-[9px] tracking-widest text-yellow-400 mb-2">WARNINGS DETECTED</div>
+                <div className="text-[9px] tracking-widest text-yellow-400 mb-2">WARN IS NOT PASS — COMBAT BLOCKED</div>
                 <div className="text-[10px] text-zinc-400">
-                  Some checks returned warnings. Combat can proceed but animation quality may be reduced.
-                  Procedural placeholder clips will be used where authored clips are missing.
+                  One or more fighters returned WARN status. WARN is not PASS — combat is blocked until all
+                  checks return PASS. Enable the override below to proceed in TEST MODE ONLY (no animation
+                  evidence will be recorded as PASS).
                 </div>
               </div>
             )}
 
             {/* Override for WARN-only (not BLOCKED) */}
-            {anyBlocked && !bothBlocked && (
+            {!anyBlocked && anyWarn && (
               <div className="mb-4 flex items-center gap-3">
                 <input
                   type="checkbox"
@@ -480,7 +489,7 @@ export default function PreCombatValidationScreen({
                   className="w-3 h-3 accent-yellow-400"
                 />
                 <label htmlFor="override-check" className="text-[9px] tracking-widest text-yellow-600 cursor-pointer">
-                  OVERRIDE: Allow combat with partial fighter validation (TEST MODE ONLY)
+                  OVERRIDE: Allow combat with WARN fighters (TEST MODE ONLY — not a real PASS)
                 </label>
               </div>
             )}
@@ -507,7 +516,13 @@ export default function PreCombatValidationScreen({
                     ? 'bg-white text-black hover:bg-yellow-400 cursor-pointer' :'bg-zinc-800 text-zinc-600 cursor-not-allowed border border-zinc-700'
                 }`}
               >
-                {anyBlocked && !overrideEnabled ? 'COMBAT BLOCKED' : 'BEGIN COMBAT'}
+                {anyBlocked
+                  ? 'COMBAT BLOCKED'
+                  : anyWarn && !overrideEnabled
+                  ? 'WARN ≠ PASS — ENABLE OVERRIDE'
+                  : anyWarn && overrideEnabled
+                  ? 'BEGIN COMBAT (TEST MODE)'
+                  : 'BEGIN COMBAT'}
               </button>
 
               <button
