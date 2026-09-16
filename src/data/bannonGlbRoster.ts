@@ -100,6 +100,11 @@ export const BANNON_GLB_MODELS: readonly BannonGlbRosterEntry[] = [
 
   {id:"jager",name:"Jager",model:"JAGER.glb",attire:"Default",rigStatus:"skinned",playableGate:"PASS",source:"CANON_MODELS",measuredJoints:58,measuredJoints0:1},
   {id:"jager",name:"Jager",model:"JAGER_beard.glb",attire:"Beard",rigStatus:"skinned",playableGate:"PASS",source:"CANON_MODELS",measuredJoints:58,measuredJoints0:1},
+
+  {id:"finxsse",name:"Finxsse",model:"NPC_FINXSSE.glb",attire:"NPC",rigStatus:"skinned",playableGate:"PASS",source:"CANON_MODELS",measuredJoints:58,measuredJoints0:1},
+
+  {id:"tarzanian_devil",name:"Tarzanian Devil",model:"TARZANIAN_DEVIL_skinned.glb",attire:"Default",rigStatus:"skinned",playableGate:"PASS",source:"CANON_MODELS",measuredJoints:58,measuredJoints0:1},
+  {id:"tarzanian_devil",name:"Tarzanian Devil",model:"TARZANIAN_DEVIL_dec_rig28.glb",attire:"Decimated",rigStatus:"skinned",playableGate:"PASS",source:"BATCH_RERIG",measuredJoints:58,measuredJoints0:1},
 ];
 
 export const BANNON_GLB_PLAYABLE_MODELS = BANNON_GLB_MODELS.filter(e => e.playableGate === "PASS");

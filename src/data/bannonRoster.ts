@@ -33,8 +33,10 @@ export interface BannonFighterProfile {
   fightingStyle: string;
   model: string;
   attire?: string;
-  /** Raw GLB URL from mhvnsnt/Bannon repo for portrait/bust display */
+  /** Raw GLB URL for 3D bust / combat mesh — not the grid sprite */
   portraitUrl: string;
+  /** 2D PSX grid headshot. Separate from the 3D GLB so tiny boxes never load SkinnedMeshes. */
+  gridPortrait?: string;
   // Per-character move set — IDs from BrutalFistMoveCatalog
   defaultMoveSet: CharacterMoveSet;
 }
@@ -910,6 +912,80 @@ export const BANNON_ROSTER: readonly BannonFighterProfile[] = [
       extraMove2: 'bf_iron_palm',
     }
   },
+
+  // ── FINXSSE ──────────────────────────────────────────────────────────────────
+  // Canon: mhvnsnt/Bannon canon/characters/finxsse_match_notes.txt
+  // Pronounced "N P C Finesse". GLB: NPC_FINXSSE.glb (NPC attire).
+  {
+    id: 'finxsse',
+    name: 'Finxsse',
+    dna: 'FINXSSE',
+    role: 'Showman / Power-Agility Hybrid',
+    faction: 'Street / Stick-Up Alliance',
+    factionAlignment: 'independent',
+    poise: 88, hp: 10000, speed: 91, strength: 89, physicsScale: 1.05,
+    payback: 'Getbackk',
+    manager: 'None',
+    bio: 'NPC Finxsse — pronounced N-P-C Finesse. A direct showman from the books who mixes Brock-Lesnar power with Eddie-Guerrero agility. He wears the gold jeweled diamond cross stolen from Chainlink, a symbol of his alliance with Stick-Up and his feud with Bannon, who he calls a corporate sell-out.',
+    personality: 'Good and direct. Rapper-style charisma, promo-heavy, never hides the grudge. Sees Bannon as a traitor and a snitch.',
+    fightingStyle: 'Power + speed hybrid. Signature Chainsnatcher (jumping double-knee backstabber). Finisher Getbackk — a violent fireman-carry tornado slam, a modified F-5.',
+    model: 'NPC_FINXSSE.glb',
+    attire: 'NPC',
+    portraitUrl: `${BANNON_RAW}/NPC_FINXSSE.glb`,
+    gridPortrait: '/portraits/finxsse.png',
+    defaultMoveSet: {
+      idle: 'bf_idle', walkForward: 'bf_walk_fwd', walkBackward: 'bf_walk_back',
+      crouch: 'bf_crouch', guard: 'bf_guard',
+      lightAttack: 'bf_jab', heavyAttack: 'bf_cross',
+      lowKick: 'bf_low_kick', highKick: 'bf_high_kick',
+      primaryCombo: 'bf_rush_combo',
+      counter: 'bf_reversal',
+      grappleInitiate: 'bf_clinch',
+      primaryThrow: 'bf_suplex',
+      knockdown: 'bf_knockdown', wakeup: 'bf_wakeup',
+      hitReaction: 'bf_hit_reaction', ko: 'bf_ko',
+      signature: 'bf_getbackk',
+      extraMove1: 'bf_chainsnatcher',
+      extraMove2: 'bf_uppercut',
+    }
+  },
+
+  // ── TARZANIAN DEVIL ──────────────────────────────────────────────────────────
+  // Owner filename: "tarzanian devil (based on Tarzan duran indie wrestler)"
+  // Original Bannon character. Lucha + hardcore wildman. Attires: skinned + dec_rig28.
+  {
+    id: 'tarzanian_devil',
+    name: 'Tarzanian Devil',
+    dna: 'TARZANIAN_DEVIL',
+    role: 'Wildman Luchador / Hardcore High Flyer',
+    faction: 'Independent',
+    factionAlignment: 'independent',
+    poise: 86, hp: 10000, speed: 92, strength: 84, physicsScale: 1.0,
+    payback: 'Jungle Bomb',
+    manager: 'None',
+    bio: 'The Tarzanian Devil is the roster\'s dirtbag luchador — a shirtless wildman who swings between high-flying lucha and hardcore brawling. Gold hoop, messy hair, Tarzan yell on the way in. Independent circuit energy, no faction leash.',
+    personality: 'Loose cannon. Hilarious, loud, lives on three things: wrestling, chaos, and the scream. Never more dangerous than when he looks like he is having fun.',
+    fightingStyle: 'Lucha libre / hardcore hybrid. Hurricanranas, springboards, and deathmatch grit. Finisher Jungle Bomb — a flying senton that ends with a wildman pin.',
+    model: 'TARZANIAN_DEVIL_skinned.glb',
+    attire: 'Default',
+    portraitUrl: `${BANNON_RAW}/TARZANIAN_DEVIL_skinned.glb`,
+    gridPortrait: '/portraits/tarzanian_devil.png',
+    defaultMoveSet: {
+      idle: 'bf_idle', walkForward: 'bf_walk_fwd', walkBackward: 'bf_walk_back',
+      crouch: 'bf_crouch', guard: 'bf_guard',
+      lightAttack: 'bf_chop', heavyAttack: 'bf_cross',
+      lowKick: 'bf_low_kick', highKick: 'bf_spin_kick',
+      primaryCombo: 'bf_rush_combo',
+      counter: 'bf_mars_counter',
+      grappleInitiate: 'bf_clinch',
+      primaryThrow: 'bf_exploder',
+      knockdown: 'bf_knockdown', wakeup: 'bf_wakeup_kick',
+      hitReaction: 'bf_hit_reaction', ko: 'bf_ko',
+      signature: 'bf_jungle_bomb',
+      extraMove1: 'bf_hurricanrana',
+      extraMove2: 'bf_shining_wizard',
+    }
+  },
 ];
 
 export const getBannonFighter = (id: string): BannonFighterProfile | null => {
@@ -924,12 +1000,14 @@ export const getAllBannonFighters = (): BannonFighterProfile[] => BANNON_ROSTER.
 
 /** Overlay the measured skinned GLB (and attire URL) onto a roster profile. */
 export function hydrateFighterGlb(fighter: BannonFighterProfile): BannonFighterProfile {
+  const gridPortrait = fighter.gridPortrait ?? `/portraits/${fighter.id}.png`;
   const entry = getGlbEntryForFighter(fighter.id, fighter.model);
-  if (!entry) return fighter;
+  if (!entry) return { ...fighter, gridPortrait };
   return {
     ...fighter,
     model: entry.model,
     attire: fighter.attire ?? entry.attire,
     portraitUrl: resolveGlbUrl(entry.model, entry.overrideUrl),
+    gridPortrait,
   };
 }

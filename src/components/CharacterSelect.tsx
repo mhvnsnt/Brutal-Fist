@@ -185,34 +185,41 @@ function RosterSlot({
   const factionColor = FACTION_COLOR[fighter.factionAlignment];
   const moveSet = useMemo(() => getCharacterMoveSet(fighter.id), [fighter.id]);
   const isCustomized = moveSet?.isCustomized ?? false;
+  const face = fighter.gridPortrait ?? `/portraits/${fighter.id}.png`;
 
   return (
     <button
       onClick={onClick}
       className={`relative flex flex-col items-center justify-center w-full aspect-square border transition-all duration-100 overflow-hidden group
-        ${cursorOn ? 'scale-105 z-10' : 'scale-100'}
+        ${cursorOn ? 'scale-110 z-10' : 'scale-100'}
         ${p1Selected ? 'border-blue-500' : p2Selected ? 'border-red-500' : 'border-zinc-700 hover:border-zinc-500'}
       `}
       style={{
-        background: cursorOn
-          ? `linear-gradient(135deg, ${factionColor}33 0%, #18181b 100%)`
-          : 'linear-gradient(135deg, #1c1c1e 0%, #18181b 100%)',
-        boxShadow: cursorOn ? `0 0 16px ${factionColor}66` : undefined,
+        background: '#0a0a0c',
+        boxShadow: cursorOn
+          ? `0 0 0 2px #facc15, 0 0 12px #22d3ee, 0 0 18px ${factionColor}88`
+          : p1Selected
+            ? '0 0 8px #3b82f6aa'
+            : p2Selected
+              ? '0 0 8px #ef4444aa'
+              : undefined,
+        outline: cursorOn ? '1px solid #22d3ee' : undefined,
+        outlineOffset: cursorOn ? 1 : undefined,
       }}
     >
-      {/* Scanlines */}
-      <div className="absolute inset-0 opacity-5 pointer-events-none" style={{
-        backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.5) 2px, rgba(0,0,0,0.5) 4px)'
-      }} />
+      {/* 2D PSX headshot — never a 3D GLB in the tiny box */}
+      <img
+        src={face}
+        alt=""
+        draggable={false}
+        className="absolute inset-0 z-0 w-full h-full object-cover"
+        style={{ imageRendering: 'pixelated' }}
+      />
 
-      {/* 3D character portrait */}
-      <div className="absolute inset-0 z-0">
-        <CharacterPortrait3D
-          modelUrl={fighter.portraitUrl}
-          factionColor={factionColor}
-          mode="full"
-        />
-      </div>
+      {/* Scanlines over the sprite */}
+      <div className="absolute inset-0 z-[1] opacity-20 pointer-events-none" style={{
+        backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 1px, rgba(0,0,0,0.55) 1px, rgba(0,0,0,0.55) 2px)'
+      }} />
 
       {/* Name label overlay */}
       <div className="absolute bottom-0 left-0 right-0 z-10 bg-black/70 py-0.5">
@@ -273,7 +280,7 @@ export default function CharacterSelect({ onSelectP1, onSelectP2, onStartMatch }
 
   // Keyboard navigation
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    const cols = Math.min(characters.length, 12);
+    const cols = 9;
     if (e.key === 'ArrowRight') setCursorIndex(i => Math.min(characters.length - 1, i + 1));
     else if (e.key === 'ArrowLeft') setCursorIndex(i => Math.max(0, i - 1));
     else if (e.key === 'ArrowDown') setCursorIndex(i => Math.min(characters.length - 1, i + cols));
@@ -323,10 +330,12 @@ export default function CharacterSelect({ onSelectP1, onSelectP2, onStartMatch }
 
   const canStart = !!(p1Id && p2Id);
 
-  // Two rows of 12 slots each (Tekken-style)
-  const SLOTS_PER_ROW = 12;
-  const row1 = characters.slice(0, SLOTS_PER_ROW);
-  const row2 = characters.slice(SLOTS_PER_ROW, SLOTS_PER_ROW * 2);
+  // Tekken-3 block grid: 9 columns × 3 rows = 27 (Bannon roster + Finxsse + Tarzanian Devil)
+  const SLOTS_PER_ROW = 9;
+  const rosterRows: BannonFighterProfile[][] = [];
+  for (let i = 0; i < characters.length; i += SLOTS_PER_ROW) {
+    rosterRows.push(characters.slice(i, i + SLOTS_PER_ROW));
+  }
 
   return (
     <div className="fixed inset-0 overflow-hidden select-none font-mono flex flex-col"
@@ -482,67 +491,52 @@ export default function CharacterSelect({ onSelectP1, onSelectP2, onStartMatch }
           </div>
         </div>
 
-        {/* Roster rows — Tekken-style two rows at the bottom */}
+        {/* Roster rows — Tekken-3 bottom-anchored block grid */}
         <div className="flex flex-col gap-0.5 px-1 py-1">
-          {/* Row 1 */}
-          <div
-            className="grid gap-0.5"
-            style={{ gridTemplateColumns: `repeat(${SLOTS_PER_ROW + 2}, 1fr)` }}
-          >
-            {/* Random select left */}
-            <button className="aspect-square border border-zinc-800 bg-zinc-900/50 flex items-center justify-center text-zinc-700 text-[10px] font-mono hover:border-zinc-600 hover:text-zinc-400 transition-colors">
-              ?
-            </button>
-            {row1.map((fighter, i) => (
-              <RosterSlot
-                key={fighter.id}
-                fighter={fighter}
-                p1Selected={fighter.id === p1Id}
-                p2Selected={fighter.id === p2Id}
-                cursorOn={cursorIndex === i}
-                onClick={() => { setCursorIndex(i); handleFighterSelect(fighter); }}
-              />
-            ))}
-            {/* Fill empty slots in row 1 if fewer than SLOTS_PER_ROW */}
-            {Array.from({ length: Math.max(0, SLOTS_PER_ROW - row1.length) }).map((_, i) => (
-              <div key={`empty1-${i}`} className="aspect-square border border-zinc-900/30 bg-zinc-950/30" />
-            ))}
-            {/* Random select right */}
-            <button className="aspect-square border border-zinc-800 bg-zinc-900/50 flex items-center justify-center text-zinc-700 text-[10px] font-mono hover:border-zinc-600 hover:text-zinc-400 transition-colors">
-              ?
-            </button>
-          </div>
-
-          {/* Row 2 (overflow characters) */}
-          {row2.length > 0 && (
+          {rosterRows.map((row, rowIdx) => (
             <div
+              key={`row-${rowIdx}`}
               className="grid gap-0.5"
               style={{ gridTemplateColumns: `repeat(${SLOTS_PER_ROW + 2}, 1fr)` }}
             >
-              {/* Random select left */}
-              <button className="aspect-square border border-zinc-800 bg-zinc-900/50 flex items-center justify-center text-zinc-700 text-[10px] font-mono hover:border-zinc-600 hover:text-zinc-400 transition-colors">
+              <button
+                type="button"
+                className="aspect-square border border-zinc-800 bg-zinc-900/50 flex items-center justify-center text-zinc-700 text-[10px] font-mono hover:border-zinc-600 hover:text-zinc-400 transition-colors"
+                onClick={() => {
+                  const pick = characters[Math.floor(Math.random() * characters.length)];
+                  if (pick) { setCursorIndex(characters.indexOf(pick)); handleFighterSelect(pick); }
+                }}
+              >
                 ?
               </button>
-              {row2.map((fighter, i) => (
-                <RosterSlot
-                  key={fighter.id}
-                  fighter={fighter}
-                  p1Selected={fighter.id === p1Id}
-                  p2Selected={fighter.id === p2Id}
-                  cursorOn={cursorIndex === i + SLOTS_PER_ROW}
-                  onClick={() => { setCursorIndex(i + SLOTS_PER_ROW); handleFighterSelect(fighter); }}
-                />
+              {row.map((fighter, i) => {
+                const index = rowIdx * SLOTS_PER_ROW + i;
+                return (
+                  <RosterSlot
+                    key={fighter.id}
+                    fighter={fighter}
+                    p1Selected={fighter.id === p1Id}
+                    p2Selected={fighter.id === p2Id}
+                    cursorOn={cursorIndex === index}
+                    onClick={() => { setCursorIndex(index); handleFighterSelect(fighter); }}
+                  />
+                );
+              })}
+              {Array.from({ length: Math.max(0, SLOTS_PER_ROW - row.length) }).map((_, i) => (
+                <div key={`empty-${rowIdx}-${i}`} className="aspect-square border border-zinc-900/30 bg-zinc-950/30" />
               ))}
-              {/* Fill empty slots in row 2 */}
-              {Array.from({ length: Math.max(0, SLOTS_PER_ROW - row2.length) }).map((_, i) => (
-                <div key={`empty2-${i}`} className="aspect-square border border-zinc-900/30 bg-zinc-950/30" />
-              ))}
-              {/* Random select right */}
-              <button className="aspect-square border border-zinc-800 bg-zinc-900/50 flex items-center justify-center text-zinc-700 text-[10px] font-mono hover:border-zinc-600 hover:text-zinc-400 transition-colors">
+              <button
+                type="button"
+                className="aspect-square border border-zinc-800 bg-zinc-900/50 flex items-center justify-center text-zinc-700 text-[10px] font-mono hover:border-zinc-600 hover:text-zinc-400 transition-colors"
+                onClick={() => {
+                  const pick = characters[Math.floor(Math.random() * characters.length)];
+                  if (pick) { setCursorIndex(characters.indexOf(pick)); handleFighterSelect(pick); }
+                }}
+              >
                 ?
               </button>
             </div>
-          )}
+          ))}
         </div>
 
         {/* Bottom info bar */}

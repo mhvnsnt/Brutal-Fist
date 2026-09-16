@@ -634,6 +634,48 @@ export const SIGNATURE_MOVES: Record<string, BrutalFistMove> = {
     description: "Cody's signature. Sober-style buster.",
     hitbox: { offsetX: 0.4, offsetZ: 0, width: 0.8, depth: 0.7, damage: 74, hitstun: 64, blockstun: 0, pushback: 0, launch: 0 }
   },
+  // Finxsse — Chainsnatcher (signature extra) + Getbackk (finisher)
+  chainsnatcher: {
+    id: 'bf_chainsnatcher', displayName: 'Chainsnatcher', category: 'signature',
+    startup: 14, active: 3, recovery: 28, damage: 42, hitAdvantage: 6, blockAdvantage: -8,
+    pushback: 0.6, hitstun: 36, blockstun: 14, animation: 'chainsnatcher',
+    animationAliases: ['chainsnatcher', 'chain_snatcher', 'backstabber', 'Backstabber', 'finxsse_sig'],
+    minRange: 0.2, maxRange: 1.6, priority: 36, low: false, mid: true, overhead: false, throw: false, canCancel: true,
+    inputSequence: 'RP+RK (Finxsse)',
+    description: "Finxsse's Chainsnatcher. Jumping double-knee to the back — a backstabber.",
+    hitbox: { offsetX: 0.5, offsetZ: 0, width: 0.7, depth: 0.6, damage: 42, hitstun: 36, blockstun: 14, pushback: 0.6, launch: 0 }
+  },
+  getbackk: {
+    id: 'bf_getbackk', displayName: 'Getbackk', category: 'signature',
+    startup: 20, active: 3, recovery: 48, damage: 82, hitAdvantage: 0, blockAdvantage: 0,
+    pushback: 0, hitstun: 70, blockstun: 0, animation: 'getbackk',
+    animationAliases: ['getbackk', 'get_backk', 'Getbackk', 'finxsse_finisher', 'f5_mod'],
+    minRange: 0.1, maxRange: 0.9, priority: 50, low: false, mid: false, overhead: false, throw: true, canCancel: false,
+    inputSequence: 'LP+RP+LK+RK (Finxsse)',
+    description: "Finxsse's Getbackk. Fireman-carry tornado slam — a violent modified F-5.",
+    hitbox: { offsetX: 0.4, offsetZ: 0, width: 0.8, depth: 0.7, damage: 82, hitstun: 70, blockstun: 0, pushback: 0, launch: 0.2 }
+  },
+  // Tarzanian Devil
+  hurricanrana: {
+    id: 'bf_hurricanrana', displayName: 'Hurricanrana', category: 'throw',
+    startup: 12, active: 3, recovery: 26, damage: 38, hitAdvantage: 4, blockAdvantage: -6,
+    pushback: 0.8, hitstun: 32, blockstun: 12, animation: 'hurricanrana',
+    animationAliases: ['hurricanrana', 'hurricane_rana', 'Hurricanrana', 'rana'],
+    minRange: 0.1, maxRange: 1.2, priority: 32, low: false, mid: false, overhead: false, throw: true, canCancel: true,
+    inputSequence: 'LP+LK (Tarzanian)',
+    description: "Tarzanian Devil's hurricanrana. Lucha headscissors takeover.",
+    hitbox: { offsetX: 0.35, offsetZ: 0, width: 0.7, depth: 0.6, damage: 38, hitstun: 32, blockstun: 12, pushback: 0.8, launch: 0 }
+  },
+  jungleBomb: {
+    id: 'bf_jungle_bomb', displayName: 'Jungle Bomb', category: 'signature',
+    startup: 22, active: 3, recovery: 50, damage: 78, hitAdvantage: 0, blockAdvantage: -14,
+    pushback: 1.6, hitstun: 66, blockstun: 20, animation: 'jungleBomb',
+    animationAliases: ['jungleBomb', 'jungle_bomb', 'JungleBomb', 'tarzanian_finisher', 'senton'],
+    minRange: 0.2, maxRange: 2.8, priority: 48, low: false, mid: true, overhead: true, throw: false, canCancel: false,
+    inputSequence: 'LP+RP+RK (Tarzanian)',
+    description: "Tarzanian Devil's Jungle Bomb. Flying senton, wildman pin.",
+    hitbox: { offsetX: 0.5, offsetZ: 0, width: 1.0, depth: 0.8, damage: 78, hitstun: 66, blockstun: 20, pushback: 1.6, launch: 0 }
+  },
 };
 
 // ─── MASTER CATALOG ───────────────────────────────────────────────────────────
