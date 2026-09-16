@@ -81,6 +81,17 @@ const VELOCITY_ANIM_THRESHOLD = 0.12;
 const MIN_CROSSFADE_HOLD_S = 0.05;
 const FLOOR_EPSILON = 0.008;
 
+// Asset-level calibration, deliberately outside the bone/skeleton layer.
+// Current measured cohort: canonical Bannon/Maime assets already face correctly;
+// imported legacy/non-canonical assets currently arrive 180° inverted. This is
+// an explicit temporary calibration rule, not a fighter-specific bone hack.
+// Each model should move to an explicit measured manifest entry as QA confirms it.
+function getAssetFacingCorrectionY(gltfUrl: string): number {
+  const file = decodeURIComponent(gltfUrl.split('?')[0].split('/').pop() ?? '').toLowerCase();
+  if (file.startsWith('bannon') || file.startsWith('maime')) return 0;
+  return Math.PI;
+}
+
 function resolveClipName(key: string, availableClips: string[]): string | null {
   const aliases = ANIMATION_ALIASES[key] ?? [key];
   let found = availableClips.find(c => aliases.some(a => c.toLowerCase() === a.toLowerCase()));
@@ -134,14 +145,9 @@ function validateSkinnedBindings(root: THREE.Object3D, gltfUrl: string) {
     skinnedMeshes += 1;
     if (!mesh.skeleton || mesh.skeleton.bones.some(bone => !descendants.has(bone))) detachedBones += 1;
   });
-  if (skinnedMeshes === 0) {
-    console.warn(`[FighterMesh] ⚠️ No SkinnedMesh found after clone for "${gltfUrl.split('/').pop()}"`);
-  }
-  if (detachedBones > 0) {
-    console.error(`[FighterMesh] ❌ SkinnedMesh skeleton binding invalid for "${gltfUrl.split('/').pop()}" — detachedBones=${detachedBones}`);
-  } else if (skinnedMeshes > 0) {
-    console.log(`[FighterMesh] 🦴 Visible mesh binding verified — skinnedMeshes=${skinnedMeshes}, all bones belong to rendered clone`);
-  }
+  if (skinnedMeshes === 0) console.warn(`[FighterMesh] ⚠️ No SkinnedMesh found after clone for "${gltfUrl.split('/').pop()}"`);
+  if (detachedBones > 0) console.error(`[FighterMesh] ❌ SkinnedMesh skeleton binding invalid for "${gltfUrl.split('/').pop()}" — detachedBones=${detachedBones}`);
+  else if (skinnedMeshes > 0) console.log(`[FighterMesh] 🦴 Visible mesh binding verified — skinnedMeshes=${skinnedMeshes}, all bones belong to rendered clone`);
 }
 
 function enforceAnimatedFloorContact(scene: THREE.Object3D, state: string, gltfUrl: string) {
@@ -183,29 +189,21 @@ function FighterMeshInner({
 
   useEffect(() => {
     if (!scene) return;
-
-    // IMPORTANT: plain Object3D.clone(true) is forbidden for skinned fighters.
-    // SkeletonUtils.clone creates an independent skeleton whose bones drive the visible SkinnedMesh.
     const cloned = SkeletonUtils.clone(scene) as THREE.Group;
     validateSkinnedBindings(cloned, gltfUrl);
-
     const report = AutoRigDetector.analyze(cloned, animations);
     onRigDiagnostic?.(report);
-
     if (!report.hasRootAtFloor) AutoRigDetector.normalizeRootToFloor(cloned);
-
     const box = new THREE.Box3().setFromObject(cloned);
     const size = box.getSize(new THREE.Vector3());
     const TARGET_HEIGHT = 1.85;
     const scale = size.y > 0.01 ? TARGET_HEIGHT / size.y : 1;
     cloned.scale.setScalar(scale);
-
     cloned.updateMatrixWorld(true);
     const scaledBox = new THREE.Box3().setFromObject(cloned);
     const scaledCenter = scaledBox.getCenter(new THREE.Vector3());
     cloned.position.set(-scaledCenter.x, -scaledBox.min.y, -scaledCenter.z);
     cloned.rotation.set(0, 0, 0);
-
     cloned.traverse((child) => {
       if (!(child as THREE.Mesh).isMesh) return;
       const mesh = child as THREE.Mesh;
@@ -219,27 +217,22 @@ function FighterMeshInner({
           m.needsUpdate = true;
         }
         m.onBeforeCompile = (shader) => {
-          shader.vertexShader = shader.vertexShader.replace(
-            '#include <project_vertex>',
-            `vec4 mvPosition = modelViewMatrix * vec4(transformed, 1.0);
+          shader.vertexShader = shader.vertexShader.replace('#include <project_vertex>', `vec4 mvPosition = modelViewMatrix * vec4(transformed, 1.0);
              vec4 clipPosition = projectionMatrix * mvPosition;
              float snapRes = ${DEFAULT_PSX_RENDER.renderWidth.toFixed(1)};
              vec2 ndc = clipPosition.xy / clipPosition.w;
              ndc = floor(ndc * snapRes + 0.5) / snapRes;
              clipPosition.xy = ndc * clipPosition.w;
-             gl_Position = clipPosition;`
-          );
+             gl_Position = clipPosition;`);
         };
       });
     });
-
     cloned.updateMatrixWorld(true);
     boneHitboxRef.current.initFromSkeleton(cloned);
     onBoneHitboxReady?.(boneHitboxRef.current);
     normalizedRef.current = cloned;
     setNormalizedScene(cloned);
-
-    console.log(`[FighterMesh] ✅ Normalized "${gltfUrl.split('/').pop()}" — rigQuality=${report.quality} convention=${report.convention} bones=${report.totalBones} rootAtFloor=${report.hasRootAtFloor} clips=[${animations.map(a => a.name).join(', ')}]`);
+    console.log(`[FighterMesh] ✅ Normalized "${gltfUrl.split('/').pop()}" — rigQuality=${report.quality} convention=${report.convention} bones=${report.totalBones} rootAtFloor=${report.hasRootAtFloor} facingCorrectionY=${getAssetFacingCorrectionY(gltfUrl).toFixed(3)} clips=[${animations.map(a => a.name).join(', ')}]`);
   }, [scene, gltfUrl, animations]);
 
   useEffect(() => {
@@ -256,70 +249,47 @@ function FighterMeshInner({
       const velMag = Math.sqrt(locomotionVelocity.forward * locomotionVelocity.forward + locomotionVelocity.strafe * locomotionVelocity.strafe);
       if (velMag < VELOCITY_ANIM_THRESHOLD) return;
     }
-
     const isAttack = ATTACK_STATES.has(inputKey);
     if (isAttack) {
       const profile = ATTACK_ROOT_MOTION_PROFILES[inputKey];
       if (profile?.hasRootMotion) {
         activeAttackKeyRef.current = inputKey;
         boneHitboxRef.current.activateAttack(inputKey);
-      } else {
-        activeAttackKeyRef.current = null;
-      }
-    } else {
-      if (activeAttackKeyRef.current) {
-        boneHitboxRef.current.deactivateAll();
-        activeAttackKeyRef.current = null;
-      }
+      } else activeAttackKeyRef.current = null;
+    } else if (activeAttackKeyRef.current) {
+      boneHitboxRef.current.deactivateAll();
+      activeAttackKeyRef.current = null;
     }
-
     console.log(`[FighterMesh] 🎬 input="${inputKey}" → clip="${clipName ?? 'NONE'}" (trigger=${animationTrigger}) vel={fwd=${locomotionVelocity?.forward?.toFixed(2) ?? '?'},str=${locomotionVelocity?.strafe?.toFixed(2) ?? '?'}}`);
     if (!clipName || !actions[clipName]) {
       console.warn(`[FighterMesh] ⚠️ No matching clip for state="${state}" animation="${animation}" on "${gltfUrl.split('/').pop()}"`);
       return;
     }
-
     const nextAction = actions[clipName];
     const fadeDuration = FADE_DURATIONS[inputKey] ?? DEFAULT_FADE;
     const isLoop = LOOP_STATES.has(inputKey);
     const currentAction = availableClips.map(k => actions[k]).find(a => a?.isRunning());
     const isSameClip = clipName === committedClipRef.current;
-
     if (isSameClip && isAttack && animationTrigger > 0) {
-      console.log(`[FighterMesh] 🔁 Re-triggering attack clip "${clipName}" from start`);
-      nextAction.stop();
-      nextAction.reset();
-      nextAction.setLoop(THREE.LoopOnce, 1);
-      nextAction.clampWhenFinished = true;
-      nextAction.play();
-      activeClipRef.current = clipName;
-      committedClipRef.current = clipName;
-      lastCrossfadeTimeRef.current = performance.now() / 1000;
-      return;
+      nextAction.stop(); nextAction.reset(); nextAction.setLoop(THREE.LoopOnce, 1); nextAction.clampWhenFinished = true; nextAction.play();
+      activeClipRef.current = clipName; committedClipRef.current = clipName; lastCrossfadeTimeRef.current = performance.now() / 1000; return;
     }
-
     const isUrgent = isAttack || ['hit', 'Hitstun', 'HitStun', 'Stunned', 'knockdown', 'Knockdown', 'ko', 'KO', 'Crumple'].includes(inputKey);
     const now = performance.now() / 1000;
     const timeSinceLastCrossfade = now - lastCrossfadeTimeRef.current;
     if (!isUrgent && isSameClip) return;
     if (!isUrgent && timeSinceLastCrossfade < MIN_CROSSFADE_HOLD_S) return;
-
     nextAction.setLoop(isLoop ? THREE.LoopRepeat : THREE.LoopOnce, isLoop ? Infinity : 1);
     nextAction.clampWhenFinished = !isLoop;
-    nextAction.reset();
-    nextAction.setEffectiveTimeScale(1);
-    nextAction.setEffectiveWeight(1);
+    nextAction.reset(); nextAction.setEffectiveTimeScale(1); nextAction.setEffectiveWeight(1);
     if (currentAction && currentAction !== nextAction) {
-      currentAction.crossFadeTo(nextAction, fadeDuration, true);
-      nextAction.play();
+      currentAction.crossFadeTo(nextAction, fadeDuration, true); nextAction.play();
       console.log(`[FighterMesh] ↔️ Crossfade "${currentAction.getClip().name}" → "${clipName}" (${(fadeDuration * 1000).toFixed(0)}ms / ${Math.round(fadeDuration * 60)}f)`);
     } else {
       nextAction.fadeIn(fadeDuration).play();
       console.log(`[FighterMesh] ▶️ FadeIn "${clipName}" (${(fadeDuration * 1000).toFixed(0)}ms)`);
     }
-    activeClipRef.current = clipName;
-    committedClipRef.current = clipName;
-    lastCrossfadeTimeRef.current = now;
+    activeClipRef.current = clipName; committedClipRef.current = clipName; lastCrossfadeTimeRef.current = now;
   }, [state, animation, animationTrigger, normalizedScene, actions, gltfUrl, locomotionVelocity]);
 
   useEffect(() => {
@@ -329,43 +299,31 @@ function FighterMeshInner({
     const idleClip = resolveClipName('idle', availableClips);
     if (idleClip && actions[idleClip]) {
       const idleAction = actions[idleClip];
-      idleAction.setLoop(THREE.LoopRepeat, Infinity);
-      idleAction.reset().play();
-      activeClipRef.current = idleClip;
-      committedClipRef.current = idleClip;
-      lastCrossfadeTimeRef.current = performance.now() / 1000;
+      idleAction.setLoop(THREE.LoopRepeat, Infinity); idleAction.reset().play();
+      activeClipRef.current = idleClip; committedClipRef.current = idleClip; lastCrossfadeTimeRef.current = performance.now() / 1000;
       console.log(`[FighterMesh] 🟢 Auto-play idle="${idleClip}" on mount for "${gltfUrl.split('/').pop()}"`);
     }
   }, [normalizedScene]);
 
   useEffect(() => {
     if (!mixer) return;
-    if (hitStopActive) {
-      mixerTimeScaleRef.current = mixer.timeScale;
-      mixer.timeScale = 0;
-    } else {
-      mixer.timeScale = 1;
-    }
+    if (hitStopActive) { mixerTimeScaleRef.current = mixer.timeScale; mixer.timeScale = 0; }
+    else mixer.timeScale = 1;
   }, [hitStopActive, mixer]);
 
   useFrame((_, delta) => {
     if (!groupRef.current) return;
     const attacking = state === 'Startup' || state === 'Active';
     const bob = (state === 'Neutral' || state === 'idle') ? Math.sin(performance.now() * 0.005) * 0.025 : 0;
-
     groupRef.current.position.set(position[0], position[1] + bob, position[2]);
-    groupRef.current.rotation.y = rotationY;
+    groupRef.current.rotation.y = rotationY + getAssetFacingCorrectionY(gltfUrl);
     groupRef.current.scale.setScalar(attacking ? 1.03 : 1.0);
-
-    // This check is deliberately against the rendered animated scene, not the source GLB or skeleton proxy.
     if (!hitStopActive && normalizedScene) enforceAnimatedFloorContact(normalizedScene, state, gltfUrl);
-
     if (!hitStopActive) boneHitboxRef.current.update(delta);
   });
 
   if (!normalizedScene) return null;
   const activeSpheres = boneHitboxRef.current.getActiveSpheres();
-
   return (
     <group ref={groupRef} position={position}>
       <primitive object={normalizedScene} />
@@ -405,20 +363,11 @@ export function FighterMesh({
   return (
     <Suspense fallback={<FighterPlaceholder position={position} />}>
       <FighterMeshInner
-        gltfUrl={modelUrl}
-        state={state}
-        animation={animation}
-        position={position}
-        facing={facing}
-        rotationY={rotationY}
-        tint={tint}
-        showHitbox={showHitbox}
-        hitboxGeometry={hitboxGeometry}
-        animationTrigger={animationTrigger}
-        locomotionVelocity={locomotionVelocity}
-        hitStopActive={hitStopActive}
-        onRigDiagnostic={onRigDiagnostic}
-        onBoneHitboxReady={onBoneHitboxReady}
+        gltfUrl={modelUrl} state={state} animation={animation} position={position}
+        facing={facing} rotationY={rotationY} tint={tint} showHitbox={showHitbox}
+        hitboxGeometry={hitboxGeometry} animationTrigger={animationTrigger}
+        locomotionVelocity={locomotionVelocity} hitStopActive={hitStopActive}
+        onRigDiagnostic={onRigDiagnostic} onBoneHitboxReady={onBoneHitboxReady}
       />
     </Suspense>
   );
