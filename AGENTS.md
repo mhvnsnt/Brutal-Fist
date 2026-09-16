@@ -384,5 +384,56 @@ if (report.quality === 'none') return null; // ❌ breaks combat
 
 ---
 
-*Last updated: Brutal-Fist v8 — Synthetic rig + full source alias coverage + loop mode laws.*
+### LAW 17 — Announcer System Must Be Wired to Match State, Not Timers
+
+**The mistake**: AI fires announcer lines on arbitrary timers or in useEffect cleanup functions, causing double-fires, missed calls, or calls during wrong game phases.
+
+**The law**:
+- `AnnouncerSystem` (`src/engine/announcer/AnnouncerSystem.ts`) is the single source of truth for all voice lines.
+- Every announcer line MUST be fired from a specific game state transition, not a generic timer:
+  - `getReady` → pre-match mount (200ms after component mounts)
+  - `round1/2/3` → SWEEP_DURATION_MS + 300ms (intro cinematic start)
+  - `fight` → SWEEP_DURATION_MS + INTRO_DURATION_MS + 600ms (player control unlocked)
+  - `ko` / `doubleKo` → exact frame `engine.isMatchOver()` returns true
+  - `perfect` / `great` → 800ms after KO, based on winner HP percentage
+  - `timeUp` → exact frame `roundTimer` hits 0
+  - `draw` → 1200ms after timeUp or doubleKo
+  - `p1Wins` / `p2Wins` → 2200ms after KO (during victory cinematic)
+  - `kiCharge` → exact frame `isKiChargeInput()` returns true
+- Use `announcerFiredRef` to prevent double-firing per round.
+- Reset `announcerFiredRef` on every new match/rematch.
+
+---
+
+### LAW 18 — Ki Charge Blocks Blocking and Consumes on First Hit
+
+**The mistake**: AI implements Ki Charge as a pure buff without the blocking penalty, or forgets to consume the charge when the attack lands.
+
+**The law**:
+- Ki Charge (`KiChargeSystem.ts`) is triggered by `lp && rp && lk && rk` simultaneously (1+2+3+4).
+- While active: `blockingDisabled = true` — the fighter CANNOT block. Guard input is ignored.
+- On hit: `nextAttackIsCounter = true` — apply `applyKiChargeCounterHit()` (1.25x damage).
+- On blocked hit: apply `chipDamageMultiplier` (15%) instead of full guard reduction.
+- Charge is consumed (reset to `createKiChargeState()`) the moment the first attack lands.
+- Charge expires after 120 frames (2 seconds) if no attack lands.
+- `p2IsBlocking` check in `GameBattleArena.tsx` MUST check `!p2KiChargeRef.current.blockingDisabled`.
+
+---
+
+### LAW 19 — Combat State Tick Must Be Decoupled from R3F Render Loop
+
+**The mistake**: AI puts hit math, health updates, and position calculations inside `useFrame()` or the R3F Canvas render loop. Frame drops on mobile break combat math.
+
+**The law**:
+- `CombatStateTick.ts` contains the pure combat state machine (health, stun, airborne, Ki Charge).
+- `tickCombatState()` is a pure function — no Three.js references, no side effects.
+- The R3F Canvas (`CombatArena3D.tsx`) ONLY reads state from refs — it NEVER writes to combat state.
+- `GameBattleArena.tsx` runs the combat tick in `requestAnimationFrame` at fixed 60fps, separate from R3F.
+- Juggle gravity uses exponential fall acceleration (`JUGGLE_GRAVITY_EXPONENT = 1.08`) — not linear.
+- Z-axis sidestep whiff: if `|attackerZ - defenderZ| >= SIDESTEP_WHIFF_THRESHOLD (0.6)`, linear attacks miss.
+- Block stun is shorter than hit stun — defender recovers before attacker on most normals.
+
+---
+
+*Last updated: Brutal-Fist v9 — Announcer system + Ki Charge + decoupled combat tick + juggle gravity + sidestep whiff.*
 *These laws are derived from real recurring failures observed across multiple AI agent sessions.*

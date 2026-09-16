@@ -330,7 +330,8 @@ export class FighterStateMachine {
   private queuedAction: QueuedAction | null = null;
 
   private inputBuffer: BufferEntry[] = [];
-  private readonly BUFFER_WINDOW_MS = 600;
+  /** 10-frame input buffer at 60fps = 167ms. Holds inputs during block stun recovery. */
+  private readonly BUFFER_WINDOW_MS = 167;
 
   // ── HitStun state ─────────────────────────────────────────────────────────
   private hitStunTimer = 0;

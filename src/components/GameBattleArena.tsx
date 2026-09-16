@@ -37,6 +37,12 @@ import { InputStringRecorder } from './InputStringRecorder';
 // ── Locomotion + bone hitbox systems ─────────────────────────────────────────
 import { LocomotionSystem, ATTACK_ROOT_MOTION_PROFILES } from '../engine/locomotion/LocomotionSystem';
 import { BoneHitboxSystem, HIT_STOP_DURATIONS, HIT_STOP_DEFAULT_MS } from '../engine/locomotion/BoneHitboxSystem';
+// ── Announcer system ──────────────────────────────────────────────────────────
+import { getAnnouncerSystem } from '../engine/announcer/AnnouncerSystem';
+// ── Ki Charge system ──────────────────────────────────────────────────────────
+import { createKiChargeState, tickKiCharge, applyKiChargeCounterHit, type KiChargeState,  } from '../engine/combat/KiChargeSystem';
+// ── Decoupled combat state tick ───────────────────────────────────────────────
+import { createCombatMatchState, tickCombatState, checkSidestepWhiff, type CombatMatchState,  } from '../engine/combat/CombatStateTick';
 
 // ── 3D combat arena — loaded client-side only ─────────────────────────────────
 const CombatArena3D = dynamic(() => import('./CombatArena3D'), {
@@ -152,6 +158,36 @@ export default function GameBattleArena({
   // ── Hit-stop state ────────────────────────────────────────────────────────
   const hitStopTimerRef = useRef<number>(0);
   const hitStopActiveRef = useRef<boolean>(false);
+
+  // ── Ki Charge state (one per fighter) ────────────────────────────────────
+  const [p1KiCharge, setP1KiCharge] = useState<KiChargeState>(createKiChargeState());
+  const [p2KiCharge, setP2KiCharge] = useState<KiChargeState>(createKiChargeState());
+  const p1KiChargeRef = useRef<KiChargeState>(createKiChargeState());
+  const p2KiChargeRef = useRef<KiChargeState>(createKiChargeState());
+
+  // ── Decoupled combat state (Night Sky Engine pattern) ────────────────────
+  const combatStateRef = useRef<CombatMatchState>(
+    createCombatMatchState(p1Fighter.hp, p2Fighter.hp)
+  );
+
+  // ── Announcer system ──────────────────────────────────────────────────────
+  const announcerRef = useRef(getAnnouncerSystem({
+    p1Name: p1Fighter.name,
+    p2Name: p2Fighter.name,
+    enabled: settings.soundEnabled,
+  }));
+
+  // Track announcer state to avoid double-firing
+  const announcerFiredRef = useRef({
+    getReady: false,
+    round: false,
+    fight: false,
+    ko: false,
+  });
+
+  // ── Z-axis sidestep state ─────────────────────────────────────────────────
+  const p1SidestepZRef = useRef(0);
+  const p2SidestepZRef = useRef(0);
 
   // ── Special move notification state ──────────────────────────────────────
   const [specialMoveNotice, setSpecialMoveNotice] = useState<{
@@ -302,6 +338,45 @@ export default function GameBattleArena({
     return () => window.clearTimeout(t);
   }, [sfx, settings.soundEnabled]);
 
+  // ── Announcer: fire "Get Ready" on mount, "Round X" on intro, "Fight!" on fight ──
+  useEffect(() => {
+    const announcer = announcerRef.current;
+    announcer.updateConfig({ enabled: settings.soundEnabled, p1Name: p1Fighter.name, p2Name: p2Fighter.name });
+
+    // Reset fired flags on new match
+    announcerFiredRef.current = { getReady: false, round: false, fight: false, ko: false };
+
+    // "Get ready for the next battle." — fires immediately on VS/loading screen
+    const tGetReady = window.setTimeout(() => {
+      if (!announcerFiredRef.current.getReady) {
+        announcerFiredRef.current.getReady = true;
+        announcer.fire('getReady');
+      }
+    }, 200);
+
+    // "Round 1!" — fires when intro cinematic starts
+    const tRound = window.setTimeout(() => {
+      if (!announcerFiredRef.current.round) {
+        announcerFiredRef.current.round = true;
+        announcer.fire('round1');
+      }
+    }, SWEEP_DURATION_MS + 300);
+
+    // "Fight!" — fires when player control is unlocked
+    const tFight = window.setTimeout(() => {
+      if (!announcerFiredRef.current.fight) {
+        announcerFiredRef.current.fight = true;
+        announcer.fire('fight');
+      }
+    }, SWEEP_DURATION_MS + INTRO_DURATION_MS + 600);
+
+    return () => {
+      window.clearTimeout(tGetReady);
+      window.clearTimeout(tRound);
+      window.clearTimeout(tFight);
+    };
+  }, [p1Fighter, p2Fighter, settings.soundEnabled]);
+
   const prevP1StateRef = useRef<string>('Neutral');
   const prevP2StateRef = useRef<string>('Neutral');
   const prevP1HealthRef = useRef<number>(p1Fighter.hp);
@@ -355,6 +430,35 @@ export default function GameBattleArena({
         leftThrow: (bitmask as any).leftThrow ?? false,
         rightThrow: (bitmask as any).rightThrow ?? false,
       };
+
+      // ── Ki Charge detection (1+2+3+4 = all four limbs) ────────────────
+      const p1KiInput = {
+        lp: smInput.lp, rp: smInput.rp, lk: smInput.lk, rk: smInput.rk,
+      };
+      const prevP1KiActive = p1KiChargeRef.current.active;
+      const newP1KiCharge = tickKiCharge(
+        p1KiChargeRef.current,
+        p1KiInput,
+        false, // attackLanded resolved below
+        dt,
+      );
+      if (!prevP1KiActive && newP1KiCharge.active) {
+        // Just activated Ki Charge — fire announcer
+        announcerRef.current.fire('kiCharge');
+        setSpecialMoveNotice({ name: 'Ki Charge!', player: 'p1', id: ++specialNoticeIdRef.current });
+        setTimeout(() => setSpecialMoveNotice(null), 2000);
+        console.log('[Arena] ⚡ P1 Ki Charge activated');
+      }
+      p1KiChargeRef.current = newP1KiCharge;
+      setP1KiCharge({ ...newP1KiCharge });
+
+      // ── Tick decoupled combat state (Night Sky Engine pattern) ─────────
+      combatStateRef.current = tickCombatState(
+        combatStateRef.current,
+        p1KiInput,
+        {},
+        dt,
+      );
 
       // ── Update rage art availability based on P1 HP ────────────────────
       const p1HpPct = prevP1HealthRef.current / p1Fighter.hp;
@@ -422,8 +526,13 @@ export default function GameBattleArena({
 
       // ── Check P1 hitbox vs P2 ──────────────────────────────────────────
       const p2SM = p2SMRef.current;
-      const p2IsBlocking = p2SM.action === 'Guard';
-      const p1Hit = p1Hb.checkCollision(
+      const p2IsBlocking = p2SM.action === 'Guard' && !p2KiChargeRef.current.blockingDisabled;
+
+      // ── Z-axis sidestep whiff check ────────────────────────────────────
+      const p1AttackIsLinear = !(p1HbWindow.move?.isSpecial); // specials track
+      const p1HitWhiffs = checkSidestepWhiff(p1ZRef.current, p2ZRef.current, !p1AttackIsLinear);
+
+      const p1Hit = p1HitWhiffs ? null : p1Hb.checkCollision(
         p1XRef.current, p1ZRef.current, 1,
         p2XRef.current, p2ZRef.current,
         p2IsBlocking,
@@ -431,13 +540,32 @@ export default function GameBattleArena({
       );
 
       if (p1Hit) {
+        // ── Ki Charge: apply counter-hit bonus and consume charge ─────────
+        const p1KiActive = p1KiChargeRef.current.active;
+        const isKiCounter = p1KiActive;
+        if (p1KiActive) {
+          // Consume the Ki Charge
+          p1KiChargeRef.current = { ...p1KiChargeRef.current, active: false, framesRemaining: 0, nextAttackIsCounter: false, blockingDisabled: false };
+          setP1KiCharge({ ...p1KiChargeRef.current });
+        }
+
         // ── Guard system: check if P2 blocks, apply chip damage or full damage ──
         const p1HitMove = p1HbWindow.move;
         const guardResult = p1HitMove
           ? p2SMRef.current.processIncomingHit(p1HitMove)
           : { blocked: false, chipDamage: 0, guardBroken: false, finalDamage: p1Hit.damage };
 
-        const effectiveDamage = guardResult.blocked ? guardResult.finalDamage : p1Hit.damage;
+        // Ki Charge chip damage on block
+        let effectiveDamage = guardResult.blocked
+          ? (p1KiActive
+              ? Math.round(p1Hit.damage * p1KiChargeRef.current.chipDamageMultiplier)
+              : guardResult.finalDamage)
+          : p1Hit.damage;
+
+        // Ki Charge counter-hit bonus
+        if (p1KiActive && !guardResult.blocked) {
+          effectiveDamage = applyKiChargeCounterHit(effectiveDamage);
+        }
 
         // ── Combo system: register hit and apply damage scaling ──────────
         const { scaledDamage: p1ScaledDmg, newState: newP1Combo } = registerHit(
@@ -867,6 +995,40 @@ export default function GameBattleArena({
         cancelAnimationFrame(rafRef.current);
         if (settings.soundEnabled) sfx.playKO();
 
+        // ── Announcer: K.O. / Double K.O. / Perfect / Great ──────────────
+        const announcer = announcerRef.current;
+        if (!announcerFiredRef.current.ko) {
+          announcerFiredRef.current.ko = true;
+          const isDoubleKo = engine.p1Health <= 0 && engine.p2Health <= 0;
+          const winnerHealth = w === 'p1' ? engine.p1Health : engine.p2Health;
+          const winnerMaxHp = w === 'p1' ? p1Fighter.hp : p2Fighter.hp;
+          const winnerHpPct = winnerHealth / winnerMaxHp;
+
+          if (isDoubleKo) {
+            // Double K.O. fires first, then Draw
+            announcer.fire('doubleKo');
+            setTimeout(() => announcer.fire('draw'), 1200);
+          } else if (winnerHpPct >= 0.99) {
+            // Perfect — winner took no damage
+            announcer.fire('ko');
+            setTimeout(() => announcer.fire('perfect'), 800);
+          } else if (winnerHpPct <= 0.05) {
+            // Great — pixel health comeback
+            announcer.fire('ko');
+            setTimeout(() => announcer.fire('great'), 800);
+          } else {
+            announcer.fire('ko');
+          }
+
+          // "[Name] Wins!" fires during victory cinematic
+          if (!isDoubleKo) {
+            setTimeout(() => {
+              const winnerName = w === 'p1' ? p1Fighter.name : p2Fighter.name;
+              announcer.fire(w === 'p1' ? 'p1Wins' : 'p2Wins', winnerName);
+            }, 2200);
+          }
+        }
+
         // Determine condition
         const isPerfect = (w === 'p1' && engine.p1Health >= p1Fighter.hp * 0.99) ||
                           (w === 'p2' && engine.p2Health >= p2Fighter.hp * 0.99);
@@ -916,6 +1078,19 @@ export default function GameBattleArena({
             setWinner(w);
             cancelAnimationFrame(rafRef.current);
             if (settings.soundEnabled) sfx.playKO();
+
+            // ── Announcer: Time Up! + Draw/Winner ─────────────────────────
+            const announcer = announcerRef.current;
+            announcer.fire('timeUp');
+            setTimeout(() => {
+              if (w === 'draw') {
+                announcer.fire('draw');
+              } else {
+                const winnerName = w === 'p1' ? p1Fighter.name : p2Fighter.name;
+                announcer.fire(w === 'p1' ? 'p1Wins' : 'p2Wins', winnerName);
+              }
+            }, 1200);
+
             setMatchCondition('TIMEOUT');
             const elapsed = Math.round((Date.now() - roundStartTimeRef.current) / 1000);
             setRoundResults([{
@@ -1134,6 +1309,26 @@ export default function GameBattleArena({
             p2Color={p2Color}
           />
 
+          {/* ── Ki Charge HUD — glowing aura indicator ── */}
+          {p1KiCharge.active && (
+            <div className="absolute z-40 pointer-events-none" style={{ bottom: '28%', left: '12%' }}>
+              <div
+                className="px-3 py-1 text-[9px] font-black tracking-widest uppercase animate-pulse"
+                style={{
+                  color: '#a78bfa',
+                  textShadow: '0 0 16px #a78bfa, 0 0 32px #a78bfa88',
+                  border: '1px solid #a78bfa44',
+                  background: 'rgba(0,0,0,0.75)',
+                }}
+              >
+                ⚡ KI CHARGE · {Math.ceil(p1KiCharge.framesRemaining / 60 * 10) / 10}s
+              </div>
+              <div className="text-[6px] text-purple-300/70 tracking-widest mt-0.5 text-center">
+                NEXT HIT = COUNTER · NO BLOCK
+              </div>
+            </div>
+          )}
+
           {/* ── Debug Overlay HUD (practice mode only) ── */}
           <DebugOverlayHUD
             settings={debugSettings}
@@ -1255,6 +1450,7 @@ export default function GameBattleArena({
           <div className="absolute bottom-2 left-3 z-30 text-[7px] text-zinc-500 space-y-0.5 pointer-events-none">
             <div>ARROWS: MOVE · Z/U: 1(LP) · X/I: 2(RP) · J: 3(LK) · K: 4(RK) · C: GUARD · V: GRAPPLE · Q/E: SIDESTEP</div>
             <div className="text-zinc-600">COMBOS: U+J=THROW · I+K=THROW · I+J=HEAT BURST · →+C=CMD THROW · SPECIAL: L+L+H or H+H+L</div>
+            <div className="text-purple-500/60">KI CHARGE: U+X+J+K (1+2+3+4) — NEXT HIT = COUNTER · NO BLOCK</div>
           </div>
 
           {/* ── Grab Range Visualization ── */}
