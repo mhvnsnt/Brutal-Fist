@@ -148,6 +148,8 @@ export default function GameBattleArena({
   // ── Queued action display state (read from SM each frame) ─────────────────
   const [p1QueuedAction, setP1QueuedAction] = useState<{ type: string; label: string } | null>(null);
   const [p1RecoveryProgress, setP1RecoveryProgress] = useState(0);
+  // ── Wakeup buffer display state ───────────────────────────────────────────
+  const [p1WakeupBuffered, setP1WakeupBuffered] = useState<string | null>(null);
 
   // ── Fighter world positions (for hitbox collision) ────────────────────────
   const P1_X = -1.8;
@@ -330,19 +332,35 @@ export default function GameBattleArena({
       );
 
       if (p1Hit) {
+        // ── Guard system: check if P2 blocks, apply chip damage or full damage ──
+        const p1HitMove = p1HbWindow.move;
+        const guardResult = p1HitMove
+          ? p2SMRef.current.processIncomingHit(p1HitMove)
+          : { blocked: false, chipDamage: 0, guardBroken: false, finalDamage: p1Hit.damage };
+
+        const effectiveDamage = guardResult.blocked ? guardResult.finalDamage : p1Hit.damage;
+
         // ── Combo system: register hit and apply damage scaling ──────────
         const { scaledDamage: p1ScaledDmg, newState: newP1Combo } = registerHit(
-          p1ComboRef.current, p1Hit.damage, now,
+          p1ComboRef.current, effectiveDamage, now,
         );
         p1ComboRef.current = newP1Combo;
         setP1Combo({ ...newP1Combo });
 
-        // Apply stun to P2 state machine
-        const isCrumple = p1Hit.launch > 0.3;
-        p2SMRef.current.applyStun(p1Hit.hitstun || 0.3, isCrumple);
+        // Apply stun/knockdown to P2 state machine
+        const isCrumple = !guardResult.blocked && p1Hit.launch > 0.3;
+        if (isCrumple) {
+          p2SMRef.current.applyKnockdown();
+        } else if (!guardResult.blocked) {
+          p2SMRef.current.applyStun(p1Hit.hitstun || 0.3, false);
+        }
+        // On guard break (throw/unblockable), apply stun even through guard
+        if (guardResult.guardBroken) {
+          p2SMRef.current.applyStun(p1Hit.hitstun || 0.3, false);
+        }
         p2HitboxRef.current.reset();
 
-        const isBlocked = p2IsBlocking;
+        const isBlocked = guardResult.blocked;
         const isCounter = prevP2State === FighterState.Startup || prevP2State === FighterState.Active;
         if (settings.soundEnabled) {
           if (isBlocked) sfx.playBlock();
@@ -404,18 +422,33 @@ export default function GameBattleArena({
       );
 
       if (p2Hit) {
+        // ── Guard system: check if P1 blocks, apply chip damage or full damage ──
+        const p2HitMove = p2HbWindow.move;
+        const p1GuardResult = p2HitMove
+          ? p1SMRef.current.processIncomingHit(p2HitMove)
+          : { blocked: false, chipDamage: 0, guardBroken: false, finalDamage: p2Hit.damage };
+
+        const p1EffectiveDamage = p1GuardResult.blocked ? p1GuardResult.finalDamage : p2Hit.damage;
+
         // ── Combo system: register hit and apply damage scaling ──────────
         const { scaledDamage: p2ScaledDmg, newState: newP2Combo } = registerHit(
-          p2ComboRef.current, p2Hit.damage, now,
+          p2ComboRef.current, p1EffectiveDamage, now,
         );
         p2ComboRef.current = newP2Combo;
         setP2Combo({ ...newP2Combo });
 
-        const isCrumple = p2Hit.launch > 0.3;
-        p1SMRef.current.applyStun(p2Hit.hitstun || 0.3, isCrumple);
+        const isCrumple = !p1GuardResult.blocked && p2Hit.launch > 0.3;
+        if (isCrumple) {
+          p1SMRef.current.applyKnockdown();
+        } else if (!p1GuardResult.blocked) {
+          p1SMRef.current.applyStun(p2Hit.hitstun || 0.3, false);
+        }
+        if (p1GuardResult.guardBroken) {
+          p1SMRef.current.applyStun(p2Hit.hitstun || 0.3, false);
+        }
         p1HitboxRef.current.reset();
 
-        const isBlocked = p1IsBlocking;
+        const isBlocked = p1GuardResult.blocked;
         const isCounter = prevP1State === FighterState.Startup || prevP1State === FighterState.Active;
         if (settings.soundEnabled) {
           if (isBlocked) sfx.playBlock();
@@ -579,6 +612,7 @@ export default function GameBattleArena({
       // ── Update queued action HUD display ──────────────────────────────────
       setP1QueuedAction(p1SM.getQueuedAction());
       setP1RecoveryProgress(p1SM.getRecoveryProgress());
+      setP1WakeupBuffered(p1SM.getBufferedWakeup());
 
       if (engine.isMatchOver() && !koHandledRef.current) {
         koHandledRef.current = true;
@@ -698,11 +732,15 @@ export default function GameBattleArena({
   const getStateLabel = (state: string, anim: string) => {
     if (state === 'KO') return 'KO';
     if (state === 'Hitstun' || state === 'Stunned') return 'HIT';
-    if (state === 'Crumple') return 'DOWN';
+    if (state === 'Crumple' || state === 'Knockdown') return 'DOWN';
+    if (state === 'WakeupTechRoll') return 'ROLL';
+    if (state === 'WakeupBackrise') return 'RISE';
+    if (state === 'WakeupQuickStand') return 'STAND';
     if (state === 'Blockstun' || state === 'Guard') return 'BLOCK';
     if (state === 'Startup' || state === 'Attacking') return 'ATK';
     if (state === 'Active') return 'ACTIVE';
     if (state === 'Grappled') return 'GRAPPLE';
+    if (state === 'Backdashing') return 'DASH';
     if (state === 'Walking') return 'WALK';
     return anim.toUpperCase();
   };
@@ -881,6 +919,19 @@ export default function GameBattleArena({
                 </div>
               </div>
             )}
+            {/* Wakeup buffer badge — shown during knockdown */}
+            {p1WakeupBuffered && (
+              <div className="flex items-center gap-1.5 animate-pulse">
+                <div className="text-[7px] text-cyan-400/80 tracking-widest">WAKEUP</div>
+                <div
+                  className="px-2 py-0.5 text-[9px] font-black tracking-widest border border-cyan-500/50"
+                  style={{ color: '#22d3ee', background: 'rgba(0,0,0,0.75)' }}
+                >
+                  {p1WakeupBuffered === 'techRoll' ? 'ROLL'
+                   : p1WakeupBuffered === 'backrise'? 'RISE' :'STAND'}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Move Execution Feedback */}
@@ -937,13 +988,18 @@ function mapActionToDisplayState(
   legacyState: string,
 ): string {
   switch (action) {
-    case 'Attacking': return 'Startup';
-    case 'Stunned':   return 'Hitstun';
-    case 'Crumple':   return 'Hitstun';
-    case 'Guard':     return 'Blockstun';
-    case 'Walking':   return 'Neutral';
-    case 'Idle':      return legacyState === 'KO' ? 'KO' : 'Neutral';
-    default:          return legacyState;
+    case 'Attacking':          return 'Startup';
+    case 'Stunned':            return 'Hitstun';
+    case 'Crumple':            return 'Hitstun';
+    case 'Guard':              return 'Blockstun';
+    case 'Walking':            return 'Walking';
+    case 'Backdashing':        return 'Backdashing';
+    case 'Knockdown':          return 'Knockdown';
+    case 'WakeupTechRoll':     return 'WakeupTechRoll';
+    case 'WakeupBackrise':     return 'WakeupBackrise';
+    case 'WakeupQuickStand':   return 'WakeupQuickStand';
+    case 'Idle':               return legacyState === 'KO' ? 'KO' : 'Neutral';
+    default:                   return legacyState;
   }
 }
 

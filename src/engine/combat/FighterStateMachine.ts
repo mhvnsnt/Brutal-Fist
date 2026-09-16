@@ -2,7 +2,10 @@ import type { FighterMotionState } from '../retarget/AnimationController';
 
 // ── Action States ─────────────────────────────────────────────────────────────
 export type ActionState =
-  | 'Idle' |'Walking' |'Attacking' |'Stunned' |'Crumple' |'Guard';
+  | 'Idle' | 'Walking' | 'Backdashing' | 'Attacking' | 'Stunned' | 'Crumple' |'Guard' | 'Knockdown' | 'WakeupTechRoll' | 'WakeupBackrise' | 'WakeupQuickStand';
+
+// ── Wakeup option buffered during knockdown recovery ─────────────────────────
+export type WakeupOption = 'techRoll' | 'backrise' | 'quickStand' | null;
 
 export interface FighterInput {
   forward: number;
@@ -20,22 +23,22 @@ export interface MoveWindow {
   active: number;
   recovery: number;
   animation: FighterMotionState;
-  /** Frame index within the animation at which the hitbox becomes active */
   hitboxStartFrame?: number;
-  /** Frame index within the animation at which the hitbox deactivates */
   hitboxEndFrame?: number;
-  /** Total animation frames (for frame-data math) */
   totalFrames?: number;
   damage?: number;
   isSpecial?: boolean;
   specialName?: string;
+  /** If true, this move is a throw — cannot be blocked by guard */
+  isThrow?: boolean;
+  /** If true, this move is unblockable — guard does not reduce damage */
+  isUnblockable?: boolean;
 }
 
 // ── Special Move Definitions ──────────────────────────────────────────────────
 export interface SpecialMoveDefinition {
   id: string;
   name: string;
-  /** Sequence of input keys that must be pressed in order within the buffer window */
   sequence: Array<keyof FighterInput>;
   move: MoveWindow;
 }
@@ -116,12 +119,49 @@ interface QueuedAction {
 // ── Hitbox active window result ───────────────────────────────────────────────
 export interface HitboxWindow {
   active: boolean;
-  /** 0-1 progress through the active window */
   progress: number;
   move: MoveWindow | null;
-  /** Current frame index within the animation */
   currentFrame: number;
 }
+
+// ── Guard result when receiving a hit ────────────────────────────────────────
+export interface GuardResult {
+  /** Whether the guard absorbed the hit */
+  blocked: boolean;
+  /** Chip damage dealt through the block (always > 0 even on block) */
+  chipDamage: number;
+  /** Whether the move broke through guard (throw or unblockable) */
+  guardBroken: boolean;
+  /** Full damage if guard broken, chip damage otherwise */
+  finalDamage: number;
+}
+
+// ── Walking velocity state ────────────────────────────────────────────────────
+interface WalkVelocity {
+  forward: number;   // -1..1 current velocity
+  strafe: number;    // -1..1 current velocity
+}
+
+// ── Wakeup timing constants ───────────────────────────────────────────────────
+const KNOCKDOWN_DURATION = 1.2;        // seconds lying on ground before forced stand
+const WAKEUP_BUFFER_WINDOW = 0.8;      // seconds before knockdown ends to accept wakeup input
+const TECH_ROLL_DURATION = 0.45;       // seconds for tech-roll animation
+const BACKRISE_DURATION = 0.55;        // seconds for backrise animation
+const QUICKSTAND_DURATION = 0.30;      // seconds for quick-stand animation
+
+// ── Walking acceleration constants ───────────────────────────────────────────
+const WALK_ACCEL = 8.0;                // velocity units/sec² acceleration
+const WALK_DECEL = 14.0;               // velocity units/sec² deceleration (faster stop)
+const WALK_MAX_SPEED = 1.0;            // max walk velocity magnitude
+const BACKDASH_VELOCITY = -1.0;        // instant backward velocity on backdash
+const BACKDASH_DURATION = 0.28;        // seconds backdash lasts
+const BACKDASH_DECEL = 6.0;            // deceleration after backdash peak
+
+// ── Frame-accurate animation transition thresholds ───────────────────────────
+// Minimum velocity before walk animation triggers (prevents jitter)
+const WALK_ANIM_THRESHOLD = 0.15;
+// Velocity at which we switch from walkBackward to backdash anim
+const BACKDASH_ANIM_THRESHOLD = -0.85;
 
 // ── State machine ─────────────────────────────────────────────────────────────
 export class FighterStateMachine {
@@ -144,10 +184,23 @@ export class FighterStateMachine {
 
   // Input sequence buffer for special move detection
   private inputBuffer: BufferEntry[] = [];
-  private readonly BUFFER_WINDOW_MS = 600; // 600ms window for sequences
+  private readonly BUFFER_WINDOW_MS = 600;
 
   // Stun/crumple timer
   private stunTimer = 0;
+
+  // ── Knockdown / wakeup state ──────────────────────────────────────────────
+  private knockdownTimer = 0;
+  private wakeupBuffered: WakeupOption = null;
+  private wakeupActionTimer = 0;
+  private wakeupActionState: WakeupOption = null;
+
+  // ── Walking velocity (smooth acceleration/deceleration) ───────────────────
+  private walkVelocity: WalkVelocity = { forward: 0, strafe: 0 };
+
+  // ── Backdash state ────────────────────────────────────────────────────────
+  private backdashTimer = 0;
+  private isBackdashing = false;
 
   // Special moves catalog
   private specialMoves: SpecialMoveDefinition[] = [...DEFAULT_SPECIAL_MOVES];
@@ -170,15 +223,13 @@ export class FighterStateMachine {
   get isStunned(): boolean {
     return this.actionState === 'Stunned' || this.actionState === 'Crumple';
   }
+  get isKnockedDown(): boolean { return this.actionState === 'Knockdown'; }
 
   /** Returns the currently queued follow-up action (buffered during recovery), or null */
   getQueuedAction(): { type: string; label: string } | null {
     if (!this.queuedAction) return null;
     const labels: Record<string, string> = {
-      light: 'L',
-      heavy: 'H',
-      guard: 'G',
-      grapple: 'GR',
+      light: 'L', heavy: 'H', guard: 'G', grapple: 'GR',
     };
     return { type: this.queuedAction.type, label: labels[this.queuedAction.type] ?? this.queuedAction.type.toUpperCase() };
   }
@@ -191,6 +242,12 @@ export class FighterStateMachine {
     if (recoveryDuration <= 0) return 1;
     return Math.min(1, (this.moveElapsed - recoveryStart) / recoveryDuration);
   }
+
+  /** Returns buffered wakeup option (visible on HUD during knockdown) */
+  getBufferedWakeup(): WakeupOption { return this.wakeupBuffered; }
+
+  /** Returns current walk velocity for position integration */
+  getWalkVelocity(): WalkVelocity { return { ...this.walkVelocity }; }
 
   // ── Register custom special moves ──────────────────────────────────────────
   registerSpecialMoves(moves: SpecialMoveDefinition[]) {
@@ -206,6 +263,67 @@ export class FighterStateMachine {
     this.moveTimer = 0;
     this.moveElapsed = 0;
     this.queuedAction = null;
+    this.walkVelocity = { forward: 0, strafe: 0 };
+    this.isBackdashing = false;
+  }
+
+  /**
+   * Apply knockdown — fighter falls and enters wakeup buffer window.
+   * During KNOCKDOWN_DURATION - WAKEUP_BUFFER_WINDOW seconds, directional inputs
+   * are buffered as wakeup options (tech-roll, backrise, quick-stand).
+   */
+  applyKnockdown() {
+    this.actionState = 'Knockdown';
+    this.motionState = 'knockdown';
+    this.knockdownTimer = KNOCKDOWN_DURATION;
+    this.wakeupBuffered = null;
+    this.wakeupActionTimer = 0;
+    this.wakeupActionState = null;
+    this.currentMove = null;
+    this.moveTimer = 0;
+    this.moveElapsed = 0;
+    this.queuedAction = null;
+    this.walkVelocity = { forward: 0, strafe: 0 };
+    this.isBackdashing = false;
+    console.log('[FSM] ⬇️ Knockdown — wakeup buffer open in', (KNOCKDOWN_DURATION - WAKEUP_BUFFER_WINDOW).toFixed(2), 's');
+  }
+
+  /**
+   * Process incoming damage through the guard system.
+   * Returns GuardResult with chip damage, guard break info, and final damage.
+   *
+   * Guard rules:
+   *   - Throws (isThrow=true): guard does NOT block — full damage
+   *   - Unblockable (isUnblockable=true): guard does NOT reduce damage — full damage
+   *   - Normal moves while guarding: 50% damage reduction, chip = 5% of original
+   *   - Not guarding: full damage
+   */
+  processIncomingHit(move: MoveWindow): GuardResult {
+    const isGuarding = this.actionState === 'Guard';
+    const rawDamage = move.damage ?? 100;
+
+    // Throws bypass guard entirely
+    if (move.isThrow) {
+      console.log('[FSM] 🤜 Throw — guard bypassed, full damage:', rawDamage);
+      return { blocked: false, chipDamage: 0, guardBroken: true, finalDamage: rawDamage };
+    }
+
+    // Unblockable moves bypass guard entirely
+    if (move.isUnblockable) {
+      console.log('[FSM] 💥 Unblockable — guard bypassed, full damage:', rawDamage);
+      return { blocked: false, chipDamage: 0, guardBroken: true, finalDamage: rawDamage };
+    }
+
+    if (isGuarding) {
+      // 50% damage reduction on block
+      const chipDamage = Math.max(1, Math.floor(rawDamage * 0.05));
+      const finalDamage = chipDamage;
+      console.log(`[FSM] 🛡️ Blocked — chip=${chipDamage} (5% of ${rawDamage}), 50% reduction applied`);
+      return { blocked: true, chipDamage, guardBroken: false, finalDamage };
+    }
+
+    // Not guarding — full damage
+    return { blocked: false, chipDamage: 0, guardBroken: false, finalDamage: rawDamage };
   }
 
   // ── Get current hitbox window state ────────────────────────────────────────
@@ -239,6 +357,11 @@ export class FighterStateMachine {
     const risingGuard = input.guard && !this.prevInput.guard;
     const risingGrapple = (input.grapple ?? false) && !(this.prevInput.grapple ?? false);
 
+    // Directional rising edges for wakeup detection
+    const risingForwardPos = input.forward > 0.5 && this.prevInput.forward <= 0.5;
+    const risingForwardNeg = input.forward < -0.5 && this.prevInput.forward >= -0.5;
+    const risingStrafe = Math.abs(input.strafe) > 0.5 && Math.abs(this.prevInput.strafe) <= 0.5;
+
     // Push rising edges into sequence buffer
     if (risingLight) this.pushBuffer('light', now);
     if (risingHeavy) this.pushBuffer('heavy', now);
@@ -246,6 +369,43 @@ export class FighterStateMachine {
     if (risingGrapple) this.pushBuffer('grapple', now);
 
     this.prevInput = { ...input };
+
+    // ── Knockdown / wakeup tick ──────────────────────────────────────────────
+    if (this.actionState === 'Knockdown') {
+      this.knockdownTimer = Math.max(0, this.knockdownTimer - dt);
+      const inBufferWindow = this.knockdownTimer <= WAKEUP_BUFFER_WINDOW;
+
+      // Accept wakeup inputs during the buffer window
+      if (inBufferWindow && this.wakeupBuffered === null) {
+        if (risingForwardPos) {
+          this.wakeupBuffered = 'quickStand';
+          console.log('[FSM] ⬆️ Wakeup buffered: quickStand');
+        } else if (risingForwardNeg || risingStrafe) {
+          this.wakeupBuffered = 'techRoll';
+          console.log('[FSM] 🔄 Wakeup buffered: techRoll');
+        } else if (risingGuard) {
+          this.wakeupBuffered = 'backrise';
+          console.log('[FSM] ↩️ Wakeup buffered: backrise');
+        }
+      }
+
+      if (this.knockdownTimer <= 0) {
+        return this.executeWakeup(this.wakeupBuffered ?? 'quickStand');
+      }
+      return this.motionState;
+    }
+
+    // ── Wakeup action tick ───────────────────────────────────────────────────
+    if (this.wakeupActionState !== null) {
+      this.wakeupActionTimer = Math.max(0, this.wakeupActionTimer - dt);
+      if (this.wakeupActionTimer <= 0) {
+        this.wakeupActionState = null;
+        this.actionState = 'Idle';
+        this.motionState = 'idle';
+        console.log('[FSM] ✅ Wakeup action complete → Idle');
+      }
+      return this.motionState;
+    }
 
     // ── Stun / Crumple tick ──────────────────────────────────────────────────
     if (this.actionState === 'Stunned' || this.actionState === 'Crumple') {
@@ -271,7 +431,6 @@ export class FighterStateMachine {
       }
 
       if (this.moveTimer <= 0) {
-        // Move finished — check queued action for auto-chain
         this.currentMove = null;
         this.actionState = 'Idle';
         this.moveElapsed = 0;
@@ -286,45 +445,160 @@ export class FighterStateMachine {
       }
     }
 
+    // ── Backdash tick ────────────────────────────────────────────────────────
+    if (this.isBackdashing) {
+      this.backdashTimer = Math.max(0, this.backdashTimer - dt);
+      // Decelerate backdash velocity
+      const decel = BACKDASH_DECEL * dt;
+      if (this.walkVelocity.forward < 0) {
+        this.walkVelocity.forward = Math.min(0, this.walkVelocity.forward + decel);
+      }
+      if (this.backdashTimer <= 0) {
+        this.isBackdashing = false;
+        this.walkVelocity.forward = 0;
+        this.actionState = 'Idle';
+        this.motionState = 'idle';
+      }
+      return this.motionState;
+    }
+
     // ── Idle / Walking — process new inputs ──────────────────────────────────
 
     // Check for special move sequences first (highest priority)
     const special = this.detectSpecialMove(now);
     if (special) {
+      this.walkVelocity = { forward: 0, strafe: 0 };
       return this.beginAttack(special.move.animation, special.move);
     }
 
     // Standard attacks
     if (risingLight) {
+      this.walkVelocity = { forward: 0, strafe: 0 };
       return this.beginAttack('lightAttack', DEFAULT_MOVE_WINDOWS.lightAttack);
     }
     if (risingHeavy) {
+      this.walkVelocity = { forward: 0, strafe: 0 };
       return this.beginAttack('heavyAttack', DEFAULT_MOVE_WINDOWS.heavyAttack);
     }
 
-    // Guard
+    // ── Guard (G button) ─────────────────────────────────────────────────────
+    // Guard is active while button is held. Chip damage and throw/unblockable
+    // detection are handled in processIncomingHit().
     if (input.guard) {
       this.actionState = 'Guard';
       this.motionState = 'guard';
+      this.walkVelocity = { forward: 0, strafe: 0 };
       return this.motionState;
     }
 
-    // Movement
-    const f = Math.abs(input.forward);
-    const s = Math.abs(input.strafe);
-    if (f > s && f > 0.1) {
-      this.actionState = 'Walking';
-      this.motionState = input.forward > 0 ? 'walkForward' : 'walkBackward';
-      return this.motionState;
+    // ── Backdash detection: tap backward twice or hold back + guard ──────────
+    // Backdash triggers when forward input is strongly negative (back direction)
+    // and was neutral the previous frame (tap detection).
+    const backTap = input.forward < -0.7 && this.prevInput.forward >= -0.3;
+    if (backTap && !this.isBackdashing && this.actionState !== 'Attacking') {
+      return this.beginBackdash();
     }
-    if (s > 0.1) {
-      this.actionState = 'Walking';
-      this.motionState = input.strafe > 0 ? 'strafeRight' : 'strafeLeft';
+
+    // ── Walking with acceleration/deceleration curves ─────────────────────
+    return this.updateWalking(input, dt);
+  }
+
+  // ── Walking with smooth acceleration/deceleration ──────────────────────────
+  private updateWalking(input: FighterInput, dt: number): FighterMotionState {
+    const targetForward = Math.abs(input.forward) > 0.1 ? Math.sign(input.forward) * Math.min(1, Math.abs(input.forward)) : 0;
+    const targetStrafe = Math.abs(input.strafe) > 0.1 ? Math.sign(input.strafe) * Math.min(1, Math.abs(input.strafe)) : 0;
+
+    // Accelerate toward target, decelerate when releasing
+    this.walkVelocity.forward = this.smoothVelocity(this.walkVelocity.forward, targetForward, dt);
+    this.walkVelocity.strafe = this.smoothVelocity(this.walkVelocity.strafe, targetStrafe, dt);
+
+    const absForward = Math.abs(this.walkVelocity.forward);
+    const absStrafe = Math.abs(this.walkVelocity.strafe);
+    const moving = absForward > WALK_ANIM_THRESHOLD || absStrafe > WALK_ANIM_THRESHOLD;
+
+    if (!moving) {
+      // Snap velocity to zero when below threshold to prevent drift
+      if (absForward < 0.02) this.walkVelocity.forward = 0;
+      if (absStrafe < 0.02) this.walkVelocity.strafe = 0;
+      this.actionState = 'Idle';
+      this.motionState = 'idle';
       return this.motionState;
     }
 
-    this.actionState = 'Idle';
-    this.motionState = 'idle';
+    this.actionState = 'Walking';
+
+    // Frame-accurate animation selection based on dominant axis and velocity direction
+    if (absForward >= absStrafe) {
+      if (this.walkVelocity.forward > WALK_ANIM_THRESHOLD) {
+        this.motionState = 'walkForward';
+      } else if (this.walkVelocity.forward < -WALK_ANIM_THRESHOLD) {
+        this.motionState = 'walkBackward';
+      }
+    } else {
+      if (this.walkVelocity.strafe > WALK_ANIM_THRESHOLD) {
+        this.motionState = 'strafeRight';
+      } else if (this.walkVelocity.strafe < -WALK_ANIM_THRESHOLD) {
+        this.motionState = 'strafeLeft';
+      }
+    }
+
+    return this.motionState;
+  }
+
+  /** Smooth velocity toward target using acceleration/deceleration curves */
+  private smoothVelocity(current: number, target: number, dt: number): number {
+    if (Math.abs(target) < 0.01) {
+      // Decelerating — apply faster decel rate
+      const decel = WALK_DECEL * dt;
+      if (current > 0) return Math.max(0, current - decel);
+      if (current < 0) return Math.min(0, current + decel);
+      return 0;
+    }
+    // Accelerating toward target
+    const accel = WALK_ACCEL * dt;
+    if (current < target) return Math.min(target, current + accel);
+    if (current > target) return Math.max(target, current - accel);
+    return current;
+  }
+
+  // ── Begin backdash ──────────────────────────────────────────────────────────
+  private beginBackdash(): FighterMotionState {
+    this.isBackdashing = true;
+    this.backdashTimer = BACKDASH_DURATION;
+    this.walkVelocity.forward = BACKDASH_VELOCITY;
+    this.walkVelocity.strafe = 0;
+    this.actionState = 'Backdashing';
+    this.motionState = 'walkBackward';
+    console.log('[FSM] ↩️ Backdash started');
+    return this.motionState;
+  }
+
+  // ── Execute wakeup option ───────────────────────────────────────────────────
+  private executeWakeup(option: NonNullable<WakeupOption>): FighterMotionState {
+    this.wakeupBuffered = null;
+    this.wakeupActionState = option;
+
+    switch (option) {
+      case 'techRoll':
+        this.actionState = 'WakeupTechRoll';
+        this.motionState = 'walkForward'; // use walk forward as tech-roll proxy
+        this.wakeupActionTimer = TECH_ROLL_DURATION;
+        console.log('[FSM] 🔄 Wakeup: techRoll');
+        break;
+      case 'backrise':
+        this.actionState = 'WakeupBackrise';
+        this.motionState = 'walkBackward'; // use walk backward as backrise proxy
+        this.wakeupActionTimer = BACKRISE_DURATION;
+        console.log('[FSM] ↩️ Wakeup: backrise');
+        break;
+      case 'quickStand':
+      default:
+        this.actionState = 'WakeupQuickStand';
+        this.motionState = 'idle';
+        this.wakeupActionTimer = QUICKSTAND_DURATION;
+        console.log('[FSM] ⬆️ Wakeup: quickStand');
+        break;
+    }
     return this.motionState;
   }
 
@@ -360,10 +634,8 @@ export class FighterStateMachine {
   // ── Push to input sequence buffer ──────────────────────────────────────────
   private pushBuffer(key: keyof FighterInput, now: number) {
     this.inputBuffer.push({ key, timestamp: now });
-    // Prune old entries outside the window
     const cutoff = now - this.BUFFER_WINDOW_MS;
     this.inputBuffer = this.inputBuffer.filter(e => e.timestamp >= cutoff);
-    // Cap buffer length
     if (this.inputBuffer.length > 8) this.inputBuffer.shift();
   }
 
@@ -375,15 +647,10 @@ export class FighterStateMachine {
     for (const special of this.specialMoves) {
       const seq = special.sequence;
       if (recent.length < seq.length) continue;
-
-      // Try to match the sequence at the tail of the buffer
       const tail = recent.slice(-seq.length);
       const matches = seq.every((key, i) => tail[i].key === key);
       if (matches) {
-        // Consume matched entries
-        this.inputBuffer = this.inputBuffer.filter(
-          e => !tail.includes(e)
-        );
+        this.inputBuffer = this.inputBuffer.filter(e => !tail.includes(e));
         return special;
       }
     }

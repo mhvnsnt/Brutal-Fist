@@ -83,6 +83,8 @@ const DEFAULT_FADE = 0.10;
 const LOOP_STATES = new Set([
   'idle', 'Neutral', 'walk', 'walkForward', 'walkBackward', 'Walking',
   'strafeLeft', 'strafeRight', 'guard', 'block', 'Blockstun',
+  'Knockdown', 'WakeupTechRoll', 'WakeupBackrise', 'WakeupQuickStand',
+  'Backdashing',
 ]);
 
 const ATTACK_STATES = new Set(['lightAttack', 'heavyAttack', 'light', 'heavy', 'Startup', 'Active']);
@@ -192,23 +194,24 @@ function FighterMeshInner({
     // Compute bounding box on the raw clone
     const box = new THREE.Box3().setFromObject(cloned);
     const size = box.getSize(new THREE.Vector3());
-    const center = box.getCenter(new THREE.Vector3());
 
     // Scale uniformly so total Y height = 1.85 units
     const TARGET_HEIGHT = 1.85;
     const scale = size.y > 0.01 ? TARGET_HEIGHT / size.y : 1;
     cloned.scale.setScalar(scale);
 
-    // Recompute box after scaling to get accurate floor position
+    // Recompute box AFTER scaling — this gives accurate world-space bounds
+    cloned.updateMatrixWorld(true);
     const scaledBox = new THREE.Box3().setFromObject(cloned);
+    const scaledCenter = scaledBox.getCenter(new THREE.Vector3());
 
     // Offset so bottom of bounding box sits exactly at Y=0
-    // Use scaledBox.min.y (not center.y) so ALL characters stand on the floor
-    // regardless of where their root bone is located.
+    // Use scaledBox.min.y so ALL characters stand on the floor regardless of root bone position.
+    // Use scaledCenter.x/z (post-scale) for horizontal centering — NOT pre-scale center * scale.
     cloned.position.set(
-      -center.x * scale,
+      -scaledCenter.x,
       -scaledBox.min.y,
-      -center.z * scale,
+      -scaledCenter.z,
     );
 
     // Clear ONLY the root scene rotation — do NOT reset children.

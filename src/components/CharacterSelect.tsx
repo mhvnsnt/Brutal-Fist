@@ -94,7 +94,7 @@ function FighterPortrait({
           // P1 (left panel): slight inward right angle. P2 (right panel): slight inward left angle.
           // These values NEVER change regardless of which character is selected.
           // In-fight: P1=rotationY:0, P2=rotationY:Math.PI — set in CombatArena3D, not here.
-          rotationY={isP1 ? -0.45 : -0.45}
+          rotationY={isP1 ? -0.45 : Math.PI}
         />
       </div>
 
