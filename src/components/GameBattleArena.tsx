@@ -28,7 +28,7 @@ import {
   type ComboState,
 } from '../engine/combat/ComboSystem';
 import type { DebugOverlaySettings, FighterDebugData, ImpactMarker } from '../engine/debug/DebugOverlay';
-import { DEFAULT_DEBUG_SETTINGS, computeFrameWindowData } from '../engine/debug/DebugOverlay';
+import { DEFAULT_DEBUG_SETTINGS, computeFrameWindowData, computeRigState } from '../engine/debug/DebugOverlay';
 import ComboCounterHUD from './ComboCounterHUD';
 import DebugOverlayHUD from './DebugOverlayHUD';
 import { MatchRecorderHUD, useMatchRecorder } from './MatchRecorder';
@@ -303,7 +303,20 @@ export default function GameBattleArena({
         crouch: bitmask.down ?? false,
         grapple: bitmask.grapple ?? false,
         escape: bitmask.escape ?? false,
+        // Tekken 4-limb inputs from bitmask extensions
+        lp: (bitmask as any).lp ?? false,
+        rp: (bitmask as any).rp ?? false,
+        lk: (bitmask as any).lk ?? false,
+        rk: (bitmask as any).rk ?? false,
+        heatBurst: (bitmask as any).heatBurst ?? false,
+        rageArt: (bitmask as any).rageArt ?? false,
+        leftThrow: (bitmask as any).leftThrow ?? false,
+        rightThrow: (bitmask as any).rightThrow ?? false,
       };
+
+      // ── Update rage art availability based on P1 HP ────────────────────
+      const p1HpPct = prevP1HealthRef.current / p1Fighter.hp;
+      p1SMRef.current.setRageArtAvailable(p1HpPct);
 
       // ── Update P1 state machine ────────────────────────────────────────
       const p1SM = p1SMRef.current;
@@ -558,6 +571,36 @@ export default function GameBattleArena({
         const p1Geom = p1Hb.geometry;
         const p2Geom = p2Hb.geometry;
 
+        // ── Compute rig state for debug overlay ──────────────────────────
+        const p1CrossfadeState = p1SM.getCrossfadeState();
+        const p2CrossfadeState = p2SM.getCrossfadeState();
+
+        // Compute clip duration from current move or default locomotion clip
+        const p1ClipDuration = p1HbWindow.move
+          ? (p1HbWindow.move.startup + p1HbWindow.move.active + p1HbWindow.move.recovery)
+          : 1.0; // default locomotion clip ~1s
+        const p2ClipDuration = p2HbWindow.move
+          ? (p2HbWindow.move.startup + p2HbWindow.move.active + p2HbWindow.move.recovery)
+          : 1.0;
+
+        const p1RigState = computeRigState(
+          p1NextMotion,
+          p1HbWindow.move ? (p1ClipDuration - (p1HbWindow.move.startup + p1HbWindow.move.active + p1HbWindow.move.recovery - (p1HbWindow.currentFrame / 60))) : 0,
+          p1ClipDuration,
+          1.0,
+          p1CrossfadeState.isCrossfading,
+          p1CrossfadeState.progress,
+        );
+
+        const p2RigState = computeRigState(
+          p2NextMotion,
+          p2HbWindow.move ? (p2ClipDuration - (p2HbWindow.move.startup + p2HbWindow.move.active + p2HbWindow.move.recovery - (p2HbWindow.currentFrame / 60))) : 0,
+          p2ClipDuration,
+          1.0,
+          p2CrossfadeState.isCrossfading,
+          p2CrossfadeState.progress,
+        );
+
         setP1DebugData({
           player: 'p1',
           frameWindow: p1Fw,
@@ -570,6 +613,8 @@ export default function GameBattleArena({
           } : null,
           impactMarkers: p1ImpactMarkersRef.current,
           actionState: p1Action,
+          rigState: p1RigState,
+          hurtboxRegions: p1Hb.getHurtboxRegions(),
         });
 
         setP2DebugData({
@@ -584,6 +629,8 @@ export default function GameBattleArena({
           } : null,
           impactMarkers: p2ImpactMarkersRef.current,
           actionState: p2Action,
+          rigState: p2RigState,
+          hurtboxRegions: p2Hb.getHurtboxRegions(),
         });
       }
 
@@ -711,20 +758,26 @@ export default function GameBattleArena({
     return () => window.clearInterval(t);
   }, [ko, onMatchEnd, sfx, settings, cinematicPhase]);
 
-  // Keyboard input — includes Q/E for Z-axis sidestep
+  // Keyboard input — includes Q/E for Z-axis sidestep and Tekken 4-limb keys
   useEffect(() => {
     const Z_STEP = 0.08;
     const Z_MAX = 2.0;
     const onKeyDown = (e: KeyboardEvent) => {
-      const i = inputRef.current;
+      const i = inputRef.current as any;
       if (e.key === 'ArrowLeft') i.left = true;
       if (e.key === 'ArrowRight') i.right = true;
       if (e.key === 'ArrowUp') i.up = true;
       if (e.key === 'ArrowDown') i.down = true;
-      if (e.key === 'z' || e.key === 'Z') i.light = true;
-      if (e.key === 'x' || e.key === 'X') i.heavy = true;
+      // Legacy L/H/G/GR mapping (kept for compatibility)
+      if (e.key === 'z' || e.key === 'Z') { i.light = true; i.lp = true; }
+      if (e.key === 'x' || e.key === 'X') { i.heavy = true; i.rp = true; }
       if (e.key === 'c' || e.key === 'C') i.guard = true;
       if (e.key === 'v' || e.key === 'V') i.grapple = true;
+      // Tekken 4-limb keys: U=1(LP), I=2(RP), J=3(LK), K=4(RK)
+      if (e.key === 'u' || e.key === 'U') i.lp = true;
+      if (e.key === 'i' || e.key === 'I') i.rp = true;
+      if (e.key === 'j' || e.key === 'J') i.lk = true;
+      if (e.key === 'k' || e.key === 'K') i.rk = true;
       // Z-axis sidestep: Q = sidestep into background, E = sidestep into foreground
       if (e.key === 'q' || e.key === 'Q') {
         p1ZRef.current = Math.max(-Z_MAX, p1ZRef.current - Z_STEP * 5);
@@ -736,15 +789,19 @@ export default function GameBattleArena({
       }
     };
     const onKeyUp = (e: KeyboardEvent) => {
-      const i = inputRef.current;
+      const i = inputRef.current as any;
       if (e.key === 'ArrowLeft') i.left = false;
       if (e.key === 'ArrowRight') i.right = false;
       if (e.key === 'ArrowUp') i.up = false;
       if (e.key === 'ArrowDown') i.down = false;
-      if (e.key === 'z' || e.key === 'Z') i.light = false;
-      if (e.key === 'x' || e.key === 'X') i.heavy = false;
+      if (e.key === 'z' || e.key === 'Z') { i.light = false; i.lp = false; }
+      if (e.key === 'x' || e.key === 'X') { i.heavy = false; i.rp = false; }
       if (e.key === 'c' || e.key === 'C') i.guard = false;
       if (e.key === 'v' || e.key === 'V') i.grapple = false;
+      if (e.key === 'u' || e.key === 'U') i.lp = false;
+      if (e.key === 'i' || e.key === 'I') i.rp = false;
+      if (e.key === 'j' || e.key === 'J') i.lk = false;
+      if (e.key === 'k' || e.key === 'K') i.rk = false;
     };
     // Return Z to center gradually
     const zReturnInterval = setInterval(() => {
@@ -1004,8 +1061,8 @@ export default function GameBattleArena({
 
           {/* Controls legend */}
           <div className="absolute bottom-2 left-3 z-30 text-[7px] text-zinc-500 space-y-0.5 pointer-events-none">
-            <div>ARROWS: MOVE · Z: LIGHT · X: HEAVY · C: GUARD · V: GRAPPLE · Q/E: SIDESTEP</div>
-            <div className="text-zinc-600">SPECIAL: L+L+H or H+H+L · CMD THROW: →+C (Forward+Guard)</div>
+            <div>ARROWS: MOVE · Z/U: 1(LP) · X/I: 2(RP) · J: 3(LK) · K: 4(RK) · C: GUARD · V: GRAPPLE · Q/E: SIDESTEP</div>
+            <div className="text-zinc-600">COMBOS: U+J=THROW · I+K=THROW · I+J=HEAT BURST · →+C=CMD THROW · SPECIAL: L+L+H or H+H+L</div>
           </div>
 
           {/* ── Grab Range Visualization ── */}

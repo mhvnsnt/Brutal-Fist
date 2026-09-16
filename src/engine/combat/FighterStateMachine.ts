@@ -17,6 +17,33 @@ export interface FighterInput {
   crouch: boolean;
   grapple?: boolean;
   escape?: boolean;
+  // ── Tekken 4-limb inputs ─────────────────────────────────────────────────
+  /** 1 = Left Punch (LP) */
+  lp?: boolean;
+  /** 2 = Right Punch (RP) */
+  rp?: boolean;
+  /** 3 = Left Kick (LK) */
+  lk?: boolean;
+  /** 4 = Right Kick (RK) */
+  rk?: boolean;
+  // ── Tekken combination inputs ─────────────────────────────────────────────
+  /** Heat Burst: 2+3 (RP+LK) */
+  heatBurst?: boolean;
+  /** Rage Art: d/f + 1+2 */
+  rageArt?: boolean;
+  /** Left Throw: 1+3 (LP+LK) */
+  leftThrow?: boolean;
+  /** Right Throw: 2+4 (RP+RK) */
+  rightThrow?: boolean;
+}
+
+// ── Crossfade state for debug overlay ────────────────────────────────────────
+export interface CrossfadeState {
+  isCrossfading: boolean;
+  fromClip: string;
+  toClip: string;
+  progress: number;
+  duration: number;
 }
 
 export interface MoveWindow {
@@ -72,6 +99,68 @@ export const DEFAULT_MOVE_WINDOWS: Record<'lightAttack' | 'heavyAttack', MoveWin
     totalFrames: 43,
     damage: 150,
   },
+};
+
+// ── Tekken-style move windows ─────────────────────────────────────────────────
+/** Left Throw (1+3): LP+LK */
+export const LEFT_THROW_MOVE: MoveWindow = {
+  startup: 0.08,
+  active: 0.06,
+  recovery: 0.50,
+  animation: 'heavyAttack',
+  hitboxStartFrame: 5,
+  hitboxEndFrame: 9,
+  totalFrames: 38,
+  damage: 180,
+  isThrow: true,
+  isUnblockable: true,
+  specialName: 'Left Throw',
+  throwComboRoute: [],
+};
+
+/** Right Throw (2+4): RP+RK */
+export const RIGHT_THROW_MOVE: MoveWindow = {
+  startup: 0.08,
+  active: 0.06,
+  recovery: 0.50,
+  animation: 'heavyAttack',
+  hitboxStartFrame: 5,
+  hitboxEndFrame: 9,
+  totalFrames: 38,
+  damage: 180,
+  isThrow: true,
+  isUnblockable: true,
+  specialName: 'Right Throw',
+  throwComboRoute: [],
+};
+
+/** Heat Burst (2+3): RP+LK — activates Heat State */
+export const HEAT_BURST_MOVE: MoveWindow = {
+  startup: 0.15,
+  active: 0.20,
+  recovery: 0.40,
+  animation: 'heavyAttack',
+  hitboxStartFrame: 9,
+  hitboxEndFrame: 21,
+  totalFrames: 45,
+  damage: 120,
+  isSpecial: true,
+  specialName: 'Heat Burst',
+};
+
+/** Rage Art (d/f + 1+2): available below 25% HP */
+export const RAGE_ART_MOVE: MoveWindow = {
+  startup: 0.25,
+  active: 0.30,
+  recovery: 0.60,
+  animation: 'heavyAttack',
+  hitboxStartFrame: 15,
+  hitboxEndFrame: 33,
+  totalFrames: 69,
+  damage: 350,
+  isSpecial: true,
+  isUnblockable: true,
+  specialName: 'Rage Art',
 };
 
 // ── Command Throw move definition ─────────────────────────────────────────────
@@ -202,11 +291,25 @@ const BACKDASH_DECEL = 6.0;
 const WALK_ANIM_THRESHOLD = 0.15;
 const BACKDASH_ANIM_THRESHOLD = -0.85;
 
+// ── Crossfade duration constants ──────────────────────────────────────────────
+/** Crossfade duration for walk→idle transition (frames at 60fps) */
+const CROSSFADE_WALK_IDLE_FRAMES = 6;
+/** Crossfade duration for strafe→backdash transition */
+const CROSSFADE_STRAFE_BACKDASH_FRAMES = 4;
+/** Crossfade duration for attack transitions */
+const CROSSFADE_ATTACK_FRAMES = 3;
+/** Crossfade duration for hit/stun transitions */
+const CROSSFADE_HIT_FRAMES = 2;
+
 // ── Command throw input detection ─────────────────────────────────────────────
 /** Forward input threshold to qualify as "forward" for command throw */
 const CMD_THROW_FORWARD_THRESHOLD = 0.5;
 /** Time window (ms) within which forward + guard must be pressed */
 const CMD_THROW_WINDOW_MS = 200;
+
+// ── Tekken combination input window ──────────────────────────────────────────
+/** Time window (ms) for simultaneous button presses to count as a combination */
+const TEKKEN_COMBO_WINDOW_MS = 80;
 
 // ── State machine ─────────────────────────────────────────────────────────────
 export class FighterStateMachine {
@@ -257,11 +360,35 @@ export class FighterStateMachine {
   private grabRangeTimer = 0;
   private readonly GRAB_RANGE_DISPLAY_DURATION = 0.35;
 
+  // ── Crossfade state (for debug overlay) ──────────────────────────────────
+  private crossfadeActive = false;
+  private crossfadeFromClip = 'idle';
+  private crossfadeToClip = 'idle';
+  private crossfadeTimer = 0;
+  private crossfadeDuration = 0;
+
+  // ── Heat state (Tekken 8 mechanic) ────────────────────────────────────────
+  private inHeatState = false;
+  private heatTimer = 0;
+  private readonly HEAT_DURATION = 10.0; // 10 seconds
+
+  // ── Rage Art availability ─────────────────────────────────────────────────
+  /** Set externally by GameBattleArena based on current HP */
+  private rageArtAvailable = false;
+
+  // ── Tekken combination press timestamps ──────────────────────────────────
+  private lpPressTime = 0;
+  private rpPressTime = 0;
+  private lkPressTime = 0;
+  private rkPressTime = 0;
+
   private specialMoves: SpecialMoveDefinition[] = [...DEFAULT_SPECIAL_MOVES];
 
   private prevInput: FighterInput = {
     forward: 0, strafe: 0, light: false, heavy: false,
     guard: false, crouch: false, grapple: false, escape: false,
+    lp: false, rp: false, lk: false, rk: false,
+    heatBurst: false, rageArt: false, leftThrow: false, rightThrow: false,
   };
 
   // ── Forward press timestamp for command throw detection ───────────────────
@@ -282,6 +409,7 @@ export class FighterStateMachine {
   get isKnockedDown(): boolean { return this.actionState === 'Knockdown'; }
   get isInHitStun(): boolean { return this.actionState === 'HitStun'; }
   get isInCommandThrow(): boolean { return this.actionState === 'CommandThrow'; }
+  get isInHeatState(): boolean { return this.inHeatState; }
 
   /** Whether grab range visualization should be shown */
   get showGrabRange(): boolean { return this.grabRangeActive; }
@@ -324,6 +452,22 @@ export class FighterStateMachine {
     };
   }
 
+  /** Returns current crossfade state for debug overlay */
+  getCrossfadeState(): CrossfadeState {
+    return {
+      isCrossfading: this.crossfadeActive,
+      fromClip: this.crossfadeFromClip,
+      toClip: this.crossfadeToClip,
+      progress: this.crossfadeDuration > 0 ? Math.min(1, 1 - this.crossfadeTimer / this.crossfadeDuration) : 0,
+      duration: this.crossfadeDuration,
+    };
+  }
+
+  /** Set rage art availability based on current HP percentage */
+  setRageArtAvailable(hpPercent: number) {
+    this.rageArtAvailable = hpPercent <= 0.25;
+  }
+
   registerSpecialMoves(moves: SpecialMoveDefinition[]) {
     this.specialMoves = [...moves, ...DEFAULT_SPECIAL_MOVES];
   }
@@ -339,6 +483,7 @@ export class FighterStateMachine {
       ? this.computeHitStunDuration(sourceMove)
       : Math.max(HITSTUN_MIN, Math.min(HITSTUN_MAX, fallbackDuration));
 
+    this.beginCrossfade(this.motionState, 'hit', CROSSFADE_HIT_FRAMES / this.FPS);
     this.actionState = 'HitStun';
     this.motionState = 'hit';
     this.hitStunTimer = duration;
@@ -411,11 +556,6 @@ export class FighterStateMachine {
     return { blocked: false, chipDamage: 0, guardBroken: false, finalDamage: rawDamage };
   }
 
-  /**
-   * Check grab range against opponent position.
-   * Returns GrabRangeResult with distance, range, and success flag.
-   * Also activates grab range visualization.
-   */
   checkGrabRange(
     selfX: number,
     opponentX: number,
@@ -468,14 +608,17 @@ export class FighterStateMachine {
   update(input: FighterInput, dt: number): FighterMotionState {
     const now = performance.now();
 
-    const risingLight = input.light && !this.prevInput.light;
-    const risingHeavy = input.heavy && !this.prevInput.heavy;
-    const risingGuard = input.guard && !this.prevInput.guard;
-    const risingGrapple = (input.grapple ?? false) && !(this.prevInput.grapple ?? false);
+    // ── Resolve Tekken 4-limb inputs into light/heavy/throw ──────────────
+    const resolvedInput = this.resolveTekkenInputs(input, now);
 
-    const risingForwardPos = input.forward > 0.5 && this.prevInput.forward <= 0.5;
-    const risingForwardNeg = input.forward < -0.5 && this.prevInput.forward >= -0.5;
-    const risingStrafe = Math.abs(input.strafe) > 0.5 && Math.abs(this.prevInput.strafe) <= 0.5;
+    const risingLight = resolvedInput.light && !this.prevInput.light;
+    const risingHeavy = resolvedInput.heavy && !this.prevInput.heavy;
+    const risingGuard = resolvedInput.guard && !this.prevInput.guard;
+    const risingGrapple = (resolvedInput.grapple ?? false) && !(this.prevInput.grapple ?? false);
+
+    const risingForwardPos = resolvedInput.forward > 0.5 && this.prevInput.forward <= 0.5;
+    const risingForwardNeg = resolvedInput.forward < -0.5 && this.prevInput.forward >= -0.5;
+    const risingStrafe = Math.abs(resolvedInput.strafe) > 0.5 && Math.abs(this.prevInput.strafe) <= 0.5;
 
     // Track forward press time for command throw detection
     if (risingForwardPos) {
@@ -487,7 +630,24 @@ export class FighterStateMachine {
     if (risingGuard) this.pushBuffer('guard', now);
     if (risingGrapple) this.pushBuffer('grapple', now);
 
-    this.prevInput = { ...input };
+    this.prevInput = { ...resolvedInput };
+
+    // ── Crossfade tick ────────────────────────────────────────────────────
+    if (this.crossfadeActive) {
+      this.crossfadeTimer = Math.max(0, this.crossfadeTimer - dt);
+      if (this.crossfadeTimer <= 0) {
+        this.crossfadeActive = false;
+      }
+    }
+
+    // ── Heat state tick ───────────────────────────────────────────────────
+    if (this.inHeatState) {
+      this.heatTimer = Math.max(0, this.heatTimer - dt);
+      if (this.heatTimer <= 0) {
+        this.inHeatState = false;
+        console.log('[FSM] 🔥 Heat State expired');
+      }
+    }
 
     // ── Grab range visualization timer ────────────────────────────────────
     if (this.grabRangeActive) {
@@ -657,6 +817,7 @@ export class FighterStateMachine {
       if (this.backdashTimer <= 0) {
         this.isBackdashing = false;
         this.walkVelocity.forward = 0;
+        this.beginCrossfade('walkBackward', 'idle', CROSSFADE_WALK_IDLE_FRAMES / this.FPS);
         this.actionState = 'Idle';
         this.motionState = 'idle';
       }
@@ -665,8 +826,34 @@ export class FighterStateMachine {
 
     // ── Idle / Walking — process new inputs ──────────────────────────────────
 
+    // ── Rage Art: available below 25% HP ─────────────────────────────────
+    if (resolvedInput.rageArt && this.rageArtAvailable && this.actionState !== 'Attacking') {
+      console.log('[FSM] 💢 Rage Art activated!');
+      return this.beginAttack('heavyAttack', RAGE_ART_MOVE);
+    }
+
+    // ── Heat Burst: 2+3 (RP+LK) ──────────────────────────────────────────
+    if (resolvedInput.heatBurst && !this.inHeatState && this.actionState !== 'Attacking') {
+      console.log('[FSM] 🔥 Heat Burst activated!');
+      this.inHeatState = true;
+      this.heatTimer = this.HEAT_DURATION;
+      return this.beginAttack('heavyAttack', HEAT_BURST_MOVE);
+    }
+
+    // ── Left Throw (1+3): LP+LK ──────────────────────────────────────────
+    if (resolvedInput.leftThrow && this.actionState !== 'Attacking') {
+      console.log('[FSM] 🤜 Left Throw (1+3)');
+      return this.beginCommandThrowWithMove(LEFT_THROW_MOVE);
+    }
+
+    // ── Right Throw (2+4): RP+RK ─────────────────────────────────────────
+    if (resolvedInput.rightThrow && this.actionState !== 'Attacking') {
+      console.log('[FSM] 🤛 Right Throw (2+4)');
+      return this.beginCommandThrowWithMove(RIGHT_THROW_MOVE);
+    }
+
     // ── Command throw detection: Forward + Guard within CMD_THROW_WINDOW_MS ──
-    if (risingGuard && input.forward > CMD_THROW_FORWARD_THRESHOLD) {
+    if (risingGuard && resolvedInput.forward > CMD_THROW_FORWARD_THRESHOLD) {
       const timeSinceForward = now - this.forwardPressTime;
       if (timeSinceForward <= CMD_THROW_WINDOW_MS) {
         console.log('[FSM] 🤲 Command throw input detected (Forward+Guard)');
@@ -689,25 +876,119 @@ export class FighterStateMachine {
       return this.beginAttack('heavyAttack', DEFAULT_MOVE_WINDOWS.heavyAttack);
     }
 
-    if (input.guard) {
+    if (resolvedInput.guard) {
       this.actionState = 'Guard';
       this.motionState = 'guard';
       this.walkVelocity = { forward: 0, strafe: 0 };
       return this.motionState;
     }
 
-    const backTap = input.forward < -0.7 && this.prevInput.forward >= -0.3;
+    const backTap = resolvedInput.forward < -0.7 && this.prevInput.forward >= -0.3;
     if (backTap && !this.isBackdashing && this.actionState !== 'Attacking') {
       return this.beginBackdash();
     }
 
-    return this.updateWalking(input, dt);
+    return this.updateWalking(resolvedInput, dt);
+  }
+
+  // ── Resolve Tekken 4-limb inputs into standard inputs ─────────────────────
+  /**
+   * Maps Tekken's 1/2/3/4 limb buttons and combination inputs to the
+   * existing light/heavy/guard/throw system.
+   *
+   * Tekken mapping:
+   *   1 (LP) → light attack
+   *   2 (RP) → heavy attack
+   *   3 (LK) → light attack (kick variant, same slot)
+   *   4 (RK) → heavy attack (kick variant, same slot)
+   *   1+3 (LP+LK) → left throw
+   *   2+4 (RP+RK) → right throw
+   *   1+2 (LP+RP) → parry / heavy strike
+   *   3+4 (LK+RK) → heavy kick combo
+   *   2+3 (RP+LK) → heat burst
+   */
+  private resolveTekkenInputs(input: FighterInput, now: number): FighterInput {
+    const resolved = { ...input };
+
+    // Track individual limb press times for combination detection
+    if (input.lp && !this.prevInput.lp) this.lpPressTime = now;
+    if (input.rp && !this.prevInput.rp) this.rpPressTime = now;
+    if (input.lk && !this.prevInput.lk) this.lkPressTime = now;
+    if (input.rk && !this.prevInput.rk) this.rkPressTime = now;
+
+    // Detect simultaneous presses within TEKKEN_COMBO_WINDOW_MS
+    const lpActive = input.lp ?? false;
+    const rpActive = input.rp ?? false;
+    const lkActive = input.lk ?? false;
+    const rkActive = input.rk ?? false;
+
+    const lpRpSimult = lpActive && rpActive && Math.abs(this.lpPressTime - this.rpPressTime) <= TEKKEN_COMBO_WINDOW_MS;
+    const lkRkSimult = lkActive && rkActive && Math.abs(this.lkPressTime - this.rkPressTime) <= TEKKEN_COMBO_WINDOW_MS;
+    const lpLkSimult = lpActive && lkActive && Math.abs(this.lpPressTime - this.lkPressTime) <= TEKKEN_COMBO_WINDOW_MS;
+    const rpRkSimult = rpActive && rkActive && Math.abs(this.rpPressTime - this.rkPressTime) <= TEKKEN_COMBO_WINDOW_MS;
+    const rpLkSimult = rpActive && lkActive && Math.abs(this.rpPressTime - this.lkPressTime) <= TEKKEN_COMBO_WINDOW_MS;
+
+    // Combination inputs take priority over single presses
+    if (rpLkSimult || input.heatBurst) {
+      // 2+3 = Heat Burst
+      resolved.heatBurst = true;
+      resolved.light = false;
+      resolved.heavy = false;
+    } else if (lpLkSimult || input.leftThrow) {
+      // 1+3 = Left Throw
+      resolved.leftThrow = true;
+      resolved.light = false;
+    } else if (rpRkSimult || input.rightThrow) {
+      // 2+4 = Right Throw
+      resolved.rightThrow = true;
+      resolved.heavy = false;
+    } else if (lpRpSimult) {
+      // 1+2 = Parry / heavy two-handed strike → maps to heavy
+      resolved.heavy = true;
+      resolved.light = false;
+    } else if (lkRkSimult) {
+      // 3+4 = Heavy kick combo → maps to heavy
+      resolved.heavy = true;
+      resolved.light = false;
+    } else {
+      // Single limb presses
+      if (lpActive || lkActive) resolved.light = true;
+      if (rpActive || rkActive) resolved.heavy = true;
+    }
+
+    return resolved;
   }
 
   // ── Compute HitStun duration from active frames of the source move ─────────
   private computeHitStunDuration(move: MoveWindow): number {
     const activeSeconds = move.active * HITSTUN_ACTIVE_FRAME_MULTIPLIER;
     return Math.max(HITSTUN_MIN, Math.min(HITSTUN_MAX, activeSeconds));
+  }
+
+  // ── Begin crossfade between animation clips ────────────────────────────────
+  private beginCrossfade(fromClip: string, toClip: string, durationSeconds: number) {
+    if (fromClip === toClip) return;
+    this.crossfadeActive = true;
+    this.crossfadeFromClip = fromClip;
+    this.crossfadeToClip = toClip;
+    this.crossfadeDuration = durationSeconds;
+    this.crossfadeTimer = durationSeconds;
+  }
+
+  // ── Begin command throw with a specific move ──────────────────────────────
+  private beginCommandThrowWithMove(move: MoveWindow): FighterMotionState {
+    this.actionState = 'CommandThrow';
+    this.motionState = 'heavyAttack';
+    this.currentMove = move;
+    this.moveTimer = move.startup + move.active + move.recovery;
+    this.moveElapsed = 0;
+    this.queuedAction = null;
+    this.commandThrowSucceeded = false;
+    this.throwComboQueue = [...(move.throwComboRoute ?? [])];
+    this.throwComboIndex = 0;
+    this.grabRangeActive = true;
+    this.grabRangeTimer = move.startup + move.active;
+    return this.motionState;
   }
 
   // ── Begin command throw ────────────────────────────────────────────────────
@@ -749,6 +1030,9 @@ export class FighterStateMachine {
     const targetForward = Math.abs(input.forward) > 0.1 ? Math.sign(input.forward) * Math.min(1, Math.abs(input.forward)) : 0;
     const targetStrafe = Math.abs(input.strafe) > 0.1 ? Math.sign(input.strafe) * Math.min(1, Math.abs(input.strafe)) : 0;
 
+    const prevForward = this.walkVelocity.forward;
+    const prevStrafe = this.walkVelocity.strafe;
+
     this.walkVelocity.forward = this.smoothVelocity(this.walkVelocity.forward, targetForward, dt);
     this.walkVelocity.strafe = this.smoothVelocity(this.walkVelocity.strafe, targetStrafe, dt);
 
@@ -759,6 +1043,13 @@ export class FighterStateMachine {
     if (!moving) {
       if (absForward < 0.02) this.walkVelocity.forward = 0;
       if (absStrafe < 0.02) this.walkVelocity.strafe = 0;
+
+      // Crossfade walk→idle when decelerating to a stop
+      const wasMoving = Math.abs(prevForward) > WALK_ANIM_THRESHOLD || Math.abs(prevStrafe) > WALK_ANIM_THRESHOLD;
+      if (wasMoving && this.motionState !== 'idle') {
+        this.beginCrossfade(this.motionState, 'idle', CROSSFADE_WALK_IDLE_FRAMES / this.FPS);
+      }
+
       this.actionState = 'Idle';
       this.motionState = 'idle';
       return this.motionState;
@@ -766,18 +1057,27 @@ export class FighterStateMachine {
 
     this.actionState = 'Walking';
 
+    let newMotion: FighterMotionState = this.motionState;
     if (absForward >= absStrafe) {
       if (this.walkVelocity.forward > WALK_ANIM_THRESHOLD) {
-        this.motionState = 'walkForward';
+        newMotion = 'walkForward';
       } else if (this.walkVelocity.forward < -WALK_ANIM_THRESHOLD) {
-        this.motionState = 'walkBackward';
+        newMotion = 'walkBackward';
       }
     } else {
       if (this.walkVelocity.strafe > WALK_ANIM_THRESHOLD) {
-        this.motionState = 'strafeRight';
+        newMotion = 'strafeRight';
       } else if (this.walkVelocity.strafe < -WALK_ANIM_THRESHOLD) {
-        this.motionState = 'strafeLeft';
+        newMotion = 'strafeLeft';
       }
+    }
+
+    // Frame-accurate crossfade on direction change
+    if (newMotion !== this.motionState) {
+      const isStrafeToDash = (this.motionState === 'strafeLeft' || this.motionState === 'strafeRight') && newMotion === 'walkBackward';
+      const crossfadeFrames = isStrafeToDash ? CROSSFADE_STRAFE_BACKDASH_FRAMES : CROSSFADE_WALK_IDLE_FRAMES;
+      this.beginCrossfade(this.motionState, newMotion, crossfadeFrames / this.FPS);
+      this.motionState = newMotion;
     }
 
     return this.motionState;
@@ -801,6 +1101,8 @@ export class FighterStateMachine {
     this.backdashTimer = BACKDASH_DURATION;
     this.walkVelocity.forward = BACKDASH_VELOCITY;
     this.walkVelocity.strafe = 0;
+    // Crossfade strafe/walk → backdash
+    this.beginCrossfade(this.motionState, 'walkBackward', CROSSFADE_STRAFE_BACKDASH_FRAMES / this.FPS);
     this.actionState = 'Backdashing';
     this.motionState = 'walkBackward';
     console.log('[FSM] ↩️ Backdash started');
@@ -836,6 +1138,7 @@ export class FighterStateMachine {
   }
 
   private beginAttack(motion: FighterMotionState, move: MoveWindow): FighterMotionState {
+    this.beginCrossfade(this.motionState, motion, CROSSFADE_ATTACK_FRAMES / this.FPS);
     this.actionState = 'Attacking';
     this.motionState = motion;
     this.currentMove = move;

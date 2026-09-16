@@ -249,22 +249,57 @@ export default function PracticeArenaScreen({ onBack }: PracticeArenaScreenProps
                       className="border px-2 py-1 text-[7px] font-black transition-all"
                       style={{ borderColor: debugSettings.showAABB ? '#22c55e' : '#27272a', color: debugSettings.showAABB ? '#22c55e' : '#52525b' }}
                     >
-                      AABB GEOMETRY {debugSettings.showAABB ? '●' : '○'}
+                      AABB {debugSettings.showAABB ? '●' : '○'}
                     </button>
                     <button
                       onClick={() => setDebugSettings(s => ({ ...s, showImpactMarkers: !s.showImpactMarkers }))}
                       className="border px-2 py-1 text-[7px] font-black transition-all"
-                      style={{ borderColor: debugSettings.showImpactMarkers ? '#ef4444' : '#27272a', color: debugSettings.showImpactMarkers ? '#ef4444' : '#52525b' }}
+                      style={{ borderColor: debugSettings.showImpactMarkers ? '#f97316' : '#27272a', color: debugSettings.showImpactMarkers ? '#f97316' : '#52525b' }}
                     >
-                      IMPACT MARKERS {debugSettings.showImpactMarkers ? '●' : '○'}
+                      IMPACT {debugSettings.showImpactMarkers ? '●' : '○'}
+                    </button>
+                    <button
+                      onClick={() => setDebugSettings(s => ({ ...s, showRigState: !s.showRigState }))}
+                      className="border px-2 py-1 text-[7px] font-black transition-all"
+                      style={{ borderColor: debugSettings.showRigState ? '#a3e635' : '#27272a', color: debugSettings.showRigState ? '#a3e635' : '#52525b' }}
+                    >
+                      RIG STATE {debugSettings.showRigState ? '●' : '○'}
+                    </button>
+                    <button
+                      onClick={() => setDebugSettings(s => ({ ...s, showHurtboxRegions: !s.showHurtboxRegions }))}
+                      className="border px-2 py-1 text-[7px] font-black transition-all"
+                      style={{ borderColor: debugSettings.showHurtboxRegions ? '#a78bfa' : '#27272a', color: debugSettings.showHurtboxRegions ? '#a78bfa' : '#52525b' }}
+                    >
+                      HURTBOXES {debugSettings.showHurtboxRegions ? '●' : '○'}
                     </button>
                   </div>
 
-                  <div className="flex gap-3 text-[6px] mt-1">
-                    <span style={{ color: '#facc15' }}>■ STARTUP</span>
-                    <span style={{ color: '#22c55e' }}>■ ACTIVE</span>
-                    <span style={{ color: '#ef4444' }}>■ RECOVERY</span>
-                  </div>
+                  {/* Rig state legend */}
+                  {debugSettings.showRigState && (
+                    <div className="mt-1 p-2 bg-zinc-900/60 border border-zinc-800 space-y-1">
+                      <div className="text-[6px] tracking-widest text-zinc-500">RIG STATE LEGEND</div>
+                      <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[6px]">
+                        <span style={{ color: '#a3e635' }}>● CLIP — active animation</span>
+                        <span style={{ color: '#22d3ee' }}>● FRAME — current/total</span>
+                        <span style={{ color: '#facc15' }}>● SPEED — playback rate</span>
+                        <span style={{ color: '#f97316' }}>● XFADE — crossfade progress</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Hurtbox region legend */}
+                  {debugSettings.showHurtboxRegions && (
+                    <div className="mt-1 p-2 bg-zinc-900/60 border border-zinc-800 space-y-1">
+                      <div className="text-[6px] tracking-widest text-zinc-500">HURTBOX REGIONS</div>
+                      <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[6px]">
+                        <span style={{ color: '#a78bfa' }}>■ HEAD ×1.5</span>
+                        <span style={{ color: '#60a5fa' }}>■ TORSO ×1.0</span>
+                        <span style={{ color: '#34d399' }}>■ ARMS ×0.8</span>
+                        <span style={{ color: '#fbbf24' }}>■ LEGS ×0.7</span>
+                        <span style={{ color: '#ef4444' }}>■ HIT</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

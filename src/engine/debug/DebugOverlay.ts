@@ -10,6 +10,10 @@ export interface DebugOverlaySettings {
   showFrameWindows: boolean;
   showAABB: boolean;
   showImpactMarkers: boolean;
+  /** Show GLB rigging state: active clip, frame number, playback speed */
+  showRigState: boolean;
+  /** Show per-region hurtbox overlay (head, torso, limbs) */
+  showHurtboxRegions: boolean;
 }
 
 export const DEFAULT_DEBUG_SETTINGS: DebugOverlaySettings = {
@@ -19,6 +23,8 @@ export const DEFAULT_DEBUG_SETTINGS: DebugOverlaySettings = {
   showFrameWindows: true,
   showAABB: true,
   showImpactMarkers: true,
+  showRigState: true,
+  showHurtboxRegions: true,
 };
 
 /** Frame phase for color coding */
@@ -55,12 +61,54 @@ export interface ImpactMarker {
   isBlocked: boolean;
 }
 
+/** GLB rig state for verifying animation clip and timing */
+export interface RigStateData {
+  /** Active animation clip name (e.g. "idle", "lightAttack") */
+  activeClip: string;
+  /** Current frame within the clip (0-based) */
+  clipFrame: number;
+  /** Total frames in the clip */
+  clipTotalFrames: number;
+  /** Playback speed multiplier (1.0 = normal) */
+  playbackSpeed: number;
+  /** Whether the clip is currently crossfading */
+  isCrossfading: boolean;
+  /** Crossfade progress 0–1 */
+  crossfadeProgress: number;
+}
+
+/** Per-region hurtbox data for collision visualization */
+export interface HurtboxRegion {
+  region: 'head' | 'torso' | 'leftArm' | 'rightArm' | 'leftLeg' | 'rightLeg';
+  /** Screen-space Y offset from fighter center (0=center, negative=up) */
+  yOffset: number;
+  /** Screen-space height as % of fighter height */
+  height: number;
+  /** Whether this region was hit this frame */
+  wasHit: boolean;
+  /** Damage multiplier for hits to this region */
+  damageMultiplier: number;
+}
+
+export const DEFAULT_HURTBOX_REGIONS: HurtboxRegion[] = [
+  { region: 'head',     yOffset: -0.75, height: 0.18, wasHit: false, damageMultiplier: 1.5 },
+  { region: 'torso',    yOffset: -0.30, height: 0.35, wasHit: false, damageMultiplier: 1.0 },
+  { region: 'leftArm',  yOffset: -0.25, height: 0.30, wasHit: false, damageMultiplier: 0.8 },
+  { region: 'rightArm', yOffset: -0.25, height: 0.30, wasHit: false, damageMultiplier: 0.8 },
+  { region: 'leftLeg',  yOffset:  0.25, height: 0.35, wasHit: false, damageMultiplier: 0.7 },
+  { region: 'rightLeg', yOffset:  0.25, height: 0.35, wasHit: false, damageMultiplier: 0.7 },
+];
+
 export interface FighterDebugData {
   player: 'p1' | 'p2';
   frameWindow: FrameWindowData | null;
   aabb: AABBData | null;
   impactMarkers: ImpactMarker[];
   actionState: string;
+  /** GLB rig state for animation verification */
+  rigState?: RigStateData;
+  /** Per-region hurtbox state */
+  hurtboxRegions?: HurtboxRegion[];
 }
 
 /** Compute frame window data from state machine hitbox window */
@@ -116,6 +164,28 @@ export function computeFrameWindowData(
   };
 }
 
+/** Build rig state data from animation clip name and elapsed time */
+export function computeRigState(
+  activeClip: string,
+  elapsedSeconds: number,
+  totalDurationSeconds: number,
+  playbackSpeed = 1.0,
+  isCrossfading = false,
+  crossfadeProgress = 0,
+): RigStateData {
+  const FPS = 60;
+  const clipTotalFrames = Math.max(1, Math.round(totalDurationSeconds * FPS));
+  const clipFrame = Math.min(clipTotalFrames - 1, Math.round(elapsedSeconds * FPS * playbackSpeed));
+  return {
+    activeClip,
+    clipFrame,
+    clipTotalFrames,
+    playbackSpeed,
+    isCrossfading,
+    crossfadeProgress: Math.min(1, Math.max(0, crossfadeProgress)),
+  };
+}
+
 /** Get CSS color for frame phase */
 export function getPhaseColor(phase: FramePhase): string {
   switch (phase) {
@@ -133,5 +203,16 @@ export function getPhaseName(phase: FramePhase): string {
     case 'active':   return 'ACTIVE';
     case 'recovery': return 'RECOVERY';
     case 'idle':     return 'IDLE';
+  }
+}
+
+/** Get color for hurtbox region */
+export function getRegionColor(region: HurtboxRegion['region'], wasHit: boolean): string {
+  if (wasHit) return '#ef4444';
+  switch (region) {
+    case 'head':     return '#a78bfa';
+    case 'torso':    return '#60a5fa';
+    case 'leftArm': case'rightArm': return '#34d399';
+    case 'leftLeg': case'rightLeg': return '#fbbf24';
   }
 }

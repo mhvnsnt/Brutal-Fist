@@ -5,8 +5,9 @@ import type {
   DebugOverlaySettings,
   FighterDebugData,
   ImpactMarker,
+  HurtboxRegion,
 } from '../engine/debug/DebugOverlay';
-import { getPhaseColor, getPhaseName } from '../engine/debug/DebugOverlay';
+import { getPhaseColor, getPhaseName, getRegionColor } from '../engine/debug/DebugOverlay';
 
 interface DebugOverlayHUDProps {
   settings: DebugOverlaySettings;
@@ -14,7 +15,7 @@ interface DebugOverlayHUDProps {
   p2Debug: FighterDebugData | null;
 }
 
-/** Renders the in-arena debug overlay — frame windows, AABB boxes, impact markers */
+/** Renders the in-arena debug overlay — frame windows, AABB boxes, impact markers, rig state */
 export default function DebugOverlayHUD({ settings, p1Debug, p2Debug }: DebugOverlayHUDProps) {
   if (!settings.enabled) return null;
 
@@ -41,6 +42,11 @@ export default function DebugOverlayHUD({ settings, p1Debug, p2Debug }: DebugOve
       {/* ── AABB Visualization (center arena overlay) ── */}
       {settings.showAABB && (
         <AABBVisualization p1Debug={p1Debug} p2Debug={p2Debug} settings={settings} />
+      )}
+
+      {/* ── Hurtbox Region Visualization ── */}
+      {settings.showHurtboxRegions && (
+        <HurtboxRegionVisualization p1Debug={p1Debug} p2Debug={p2Debug} settings={settings} />
       )}
 
       {/* ── Impact Markers ── */}
@@ -77,24 +83,93 @@ function FighterDebugPanel({ data, settings, side }: FighterDebugPanelProps) {
   const fw = data.frameWindow;
   const phaseColor = fw ? getPhaseColor(fw.phase) : '#52525b';
   const phaseName = fw ? getPhaseName(fw.phase) : 'IDLE';
+  const rig = data.rigState;
 
   return (
     <div
-      className="absolute bottom-24 text-[8px] bg-black/80 border p-2 space-y-1.5 min-w-[140px]"
+      className="absolute bottom-24 text-[8px] bg-black/85 border p-2 space-y-1.5 min-w-[160px] max-w-[200px]"
       style={{
         left: side === 'left' ? '8px' : 'auto',
         right: side === 'right' ? '8px' : 'auto',
         borderColor: phaseColor + '88',
       }}
     >
-      {/* Fighter label */}
+      {/* Fighter label + action state */}
       <div className="text-[7px] tracking-widest" style={{ color: phaseColor }}>
         {data.player.toUpperCase()} · {data.actionState}
       </div>
 
+      {/* ── GLB Rig State Panel ── */}
+      {settings.showRigState && rig && (
+        <div className="border-t border-zinc-800 pt-1.5 space-y-1">
+          <div className="text-[6px] tracking-widest text-zinc-500">GLB RIG STATE</div>
+
+          {/* Active clip */}
+          <div className="flex items-center justify-between gap-1">
+            <span className="text-[7px] text-zinc-400">CLIP</span>
+            <span
+              className="text-[7px] font-black tracking-wide truncate max-w-[100px]"
+              style={{ color: rig.isCrossfading ? '#f97316' : '#a3e635' }}
+              title={rig.activeClip}
+            >
+              {rig.isCrossfading ? `${rig.fromClip}→${rig.toClip}` : rig.activeClip}
+            </span>
+          </div>
+
+          {/* Frame number */}
+          <div className="flex items-center justify-between gap-1">
+            <span className="text-[7px] text-zinc-400">FRAME</span>
+            <span className="text-[7px] font-black text-cyan-400 tabular-nums">
+              {rig.clipFrame}/{rig.clipTotalFrames}
+            </span>
+          </div>
+
+          {/* Playback speed */}
+          <div className="flex items-center justify-between gap-1">
+            <span className="text-[7px] text-zinc-400">SPEED</span>
+            <span
+              className="text-[7px] font-black tabular-nums"
+              style={{ color: rig.playbackSpeed !== 1.0 ? '#facc15' : '#71717a' }}
+            >
+              {rig.playbackSpeed.toFixed(2)}×
+            </span>
+          </div>
+
+          {/* Crossfade progress bar */}
+          {rig.isCrossfading && (
+            <div className="space-y-0.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[6px] text-orange-400">XFADE</span>
+                <span className="text-[6px] text-orange-400 tabular-nums">
+                  {Math.round(rig.crossfadeProgress * 100)}%
+                </span>
+              </div>
+              <div className="h-1.5 bg-zinc-900 border border-zinc-700 overflow-hidden">
+                <div
+                  className="h-full transition-all duration-75"
+                  style={{ width: `${rig.crossfadeProgress * 100}%`, background: '#f97316' }}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Clip progress bar */}
+          <div className="h-1.5 bg-zinc-900 border border-zinc-700 overflow-hidden">
+            <div
+              className="h-full transition-all duration-75"
+              style={{
+                width: `${(rig.clipFrame / Math.max(1, rig.clipTotalFrames)) * 100}%`,
+                background: rig.isCrossfading ? '#f97316' : '#a3e635',
+              }}
+            />
+          </div>
+        </div>
+      )}
+
       {/* Frame window bars */}
       {settings.showFrameWindows && fw && (
-        <div className="space-y-1">
+        <div className="border-t border-zinc-800 pt-1.5 space-y-1">
+          <div className="text-[6px] tracking-widest text-zinc-500">FRAME DATA</div>
           {/* Phase label */}
           <div className="flex items-center justify-between">
             <span className="text-[7px]" style={{ color: phaseColor }}>{phaseName}</span>
@@ -148,7 +223,7 @@ function FighterDebugPanel({ data, settings, side }: FighterDebugPanelProps) {
 
       {/* AABB info */}
       {settings.showAABB && data.aabb && (
-        <div className="text-[7px] text-zinc-400 space-y-0.5">
+        <div className="border-t border-zinc-800 pt-1 text-[7px] text-zinc-400 space-y-0.5">
           <div style={{ color: data.aabb.isActive ? '#22c55e' : '#52525b' }}>
             AABB {data.aabb.isActive ? '● ACTIVE' : '○ INACTIVE'}
           </div>
@@ -172,7 +247,6 @@ interface AABBVisualizationProps {
 }
 
 function AABBVisualization({ p1Debug, p2Debug, settings }: AABBVisualizationProps) {
-  // Map world X (-3 to 3) to screen percentage (10% to 90%)
   const worldToScreenX = (worldX: number) => {
     return ((worldX + 3) / 6) * 80 + 10;
   };
@@ -244,6 +318,66 @@ function AABBVisualization({ p1Debug, p2Debug, settings }: AABBVisualizationProp
           }}
         />
       )}
+    </div>
+  );
+}
+
+// ── Hurtbox region visualization ──────────────────────────────────────────────
+
+interface HurtboxRegionVisualizationProps {
+  p1Debug: FighterDebugData | null;
+  p2Debug: FighterDebugData | null;
+  settings: DebugOverlaySettings;
+}
+
+function HurtboxRegionVisualization({ p1Debug, p2Debug, settings }: HurtboxRegionVisualizationProps) {
+  const worldToScreenX = (worldX: number) => ((worldX + 3) / 6) * 80 + 10;
+
+  const renderRegions = (regions: HurtboxRegion[], worldX: number, playerColor: string) => {
+    const screenX = worldToScreenX(worldX);
+    // Fighter occupies roughly 20% to 80% of vertical space (top=20%, bottom=80%)
+    const fighterTopPct = 18;
+    const fighterHeightPct = 62;
+
+    return regions.map(region => {
+      const regionColor = getRegionColor(region.region, region.wasHit);
+      // yOffset is normalized -1 (top) to +1 (bottom) relative to fighter center
+      // Map to screen: center is at fighterTopPct + fighterHeightPct * 0.5
+      const centerY = fighterTopPct + fighterHeightPct * (0.5 - region.yOffset * 0.5);
+      const heightPct = region.height * fighterHeightPct;
+      const topPct = centerY - heightPct / 2;
+
+      return (
+        <div
+          key={region.region}
+          className="absolute border transition-colors duration-100"
+          style={{
+            left: `${screenX - 3.5}%`,
+            top: `${topPct}%`,
+            width: '7%',
+            height: `${heightPct}%`,
+            borderColor: regionColor + (region.wasHit ? 'ff' : '55'),
+            background: region.wasHit ? regionColor + '30' : regionColor + '08',
+            boxShadow: region.wasHit ? `0 0 6px ${regionColor}88` : 'none',
+          }}
+        >
+          {region.wasHit && (
+            <div
+              className="absolute -top-3 left-1/2 -translate-x-1/2 text-[5px] font-black whitespace-nowrap"
+              style={{ color: regionColor }}
+            >
+              HIT
+            </div>
+          )}
+        </div>
+      );
+    });
+  };
+
+  return (
+    <div className="absolute inset-0 pointer-events-none">
+      {settings.showP1 && p1Debug?.hurtboxRegions && renderRegions(p1Debug.hurtboxRegions, -1.8, '#1d4ed8')}
+      {settings.showP2 && p2Debug?.hurtboxRegions && renderRegions(p2Debug.hurtboxRegions, 1.8, '#dc2626')}
     </div>
   );
 }
