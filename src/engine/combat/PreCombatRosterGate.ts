@@ -12,6 +12,8 @@
  * Full live SkinnedMesh deformation still requires a browser + loaded GLB;
  * this gate FAIL-CLOSES FIGHT when authored preferred clips are missing or
  * when roster GLB is unreachable. Procedural placeholders NEVER unlock FIGHT.
+ * MixamoFightingMotionBank (PLACEHOLDER_TEST_CLIP / TEST_ONLY) is intentionally
+ * NOT consulted here — it must never unlock FIGHT or count as authored PASS.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 

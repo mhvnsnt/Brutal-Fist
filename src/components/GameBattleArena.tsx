@@ -1846,7 +1846,7 @@ export default function GameBattleArena({
           announcerEnabled={settings.soundEnabled}
           damageEvent={damageEvent}
           knockdownEvent={knockdownEvent}
-          stageId={stageId === 'random' ? 'urban_night' : (stageId as 'urban_night' | 'training')}
+          stageId={stageId === 'random' ? 'urban_night' : stageId}
           p1AnimTrigger={p1AnimTrigger}
           p2AnimTrigger={p2AnimTrigger}
           p1LocomotionVelocity={p1LocomotionVelocity}

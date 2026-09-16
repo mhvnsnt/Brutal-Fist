@@ -105,3 +105,17 @@ export const COMBAT_STATE_TO_SEMANTIC: Record<string, string> = {
   taunt:             'taunt',
   intro:             'idle',
 };
+
+/**
+ * Infer a semantic state from a clip name via SEMANTIC_STATE_ALIASES.
+ * Returns null when no alias matches — never invents idle.
+ */
+export function inferSemanticStateFromClipName(clipName: string): string | null {
+  const lower = clipName.toLowerCase();
+  for (const [semanticState, aliases] of Object.entries(SEMANTIC_STATE_ALIASES)) {
+    if (aliases.some((a) => a.toLowerCase() === lower || lower === semanticState.toLowerCase())) {
+      return semanticState;
+    }
+  }
+  return null;
+}

@@ -7,11 +7,15 @@ import { FighterMesh } from './FighterMesh';
 import { type BannonFighterProfile } from '../data/bannonRoster';
 import { TrainingStage } from './TrainingStage';
 import { UrbanNightStage } from './UrbanNightStage';
+import { ProceduralStage } from './ProceduralStage';
+import { type StageId as ConfigStageId } from '../engine/combat/StageConfig';
+import { resolveFighterGlbUrl } from '../data/FighterAssetResolver';
 import { CHARACTER_BLOOM } from './PostMatchScreen';
 import { createHitEffectPool, spawnHitEffect, tickHitEffectPool, getHitEffectRenderData, getActivePointLights, type HitEffectPool, type HitEffectType, type PointLightFlash,  } from '../engine/combat/HitEffectSystem';
 
 // ── Stage IDs ─────────────────────────────────────────────────────────────────
-export type StageId = 'urban_night' | 'training';
+/** Re-export StageConfig StageId so non-training/urban stages can use ProceduralStage. */
+export type StageId = ConfigStageId;
 
 // ── Stage geometry constants ──────────────────────────────────────────────────
 const FLOOR_DEPTH = 10;
@@ -790,11 +794,13 @@ export default function CombatArena3D({
         {/* ── Stage switch ── */}
         {stageId === 'urban_night' ? (
           <UrbanNightStage p1Color={p1Color} p2Color={p2Color} />
-        ) : (
+        ) : stageId === 'training' ? (
           <>
             <TrainingLighting p1Color={p1Color} p2Color={p2Color} />
             <TrainingStage p1Color={p1Color} p2Color={p2Color} />
           </>
+        ) : (
+          <ProceduralStage stageId={stageId} p1Color={p1Color} p2Color={p2Color} />
         )}
 
         {/* Blob shadows */}
@@ -808,7 +814,7 @@ export default function CombatArena3D({
         <FighterMesh
           state={p1State}
           animation={p1Animation}
-          modelUrl={p1Fighter.portraitUrl}
+          modelUrl={resolveFighterGlbUrl(p1Fighter) || p1Fighter.portraitUrl}
           position={[p1FinalX, 0, p1FinalZ]}
           facing={1}
           rotationY={0}
@@ -831,7 +837,7 @@ export default function CombatArena3D({
         <FighterMesh
           state={p2State}
           animation={p2Animation}
-          modelUrl={p2Fighter.portraitUrl}
+          modelUrl={resolveFighterGlbUrl(p2Fighter) || p2Fighter.portraitUrl}
           position={[p2FinalX, 0, p2FinalZ]}
           facing={-1}
           rotationY={p2RotationY}
