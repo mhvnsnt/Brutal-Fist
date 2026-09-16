@@ -329,6 +329,9 @@ export interface CombatArena3DProps {
   /** Locomotion velocity from FighterStateMachine — used for velocity-gated animation blending */
   p1LocomotionVelocity?: { forward: number; strafe: number };
   p2LocomotionVelocity?: { forward: number; strafe: number };
+  /** Callbacks to receive bone hitbox system references from FighterMesh */
+  onP1BoneHitboxReady?: (system: import('../engine/locomotion/BoneHitboxSystem').BoneHitboxSystem) => void;
+  onP2BoneHitboxReady?: (system: import('../engine/locomotion/BoneHitboxSystem').BoneHitboxSystem) => void;
 }
 
 export default function CombatArena3D({
@@ -355,6 +358,8 @@ export default function CombatArena3D({
   p2AnimTrigger = 0,
   p1LocomotionVelocity,
   p2LocomotionVelocity,
+  onP1BoneHitboxReady,
+  onP2BoneHitboxReady,
 }: CombatArena3DProps) {
   const [particles, setParticles] = useState<Particle[]>([]);
   const [screenFlash, setScreenFlash] = useState(0);
@@ -513,6 +518,8 @@ export default function CombatArena3D({
           tint={p1SkinTint ?? p1Color}
           animationTrigger={p1AnimTrigger}
           locomotionVelocity={p1LocomotionVelocity}
+          hitStopActive={hitStopActive}
+          onBoneHitboxReady={onP1BoneHitboxReady}
         />
 
         {/* P2 Fighter — faces -X (toward P1), rotationY=Math.PI for ALL characters */}
@@ -526,6 +533,8 @@ export default function CombatArena3D({
           tint={p2SkinTint ?? p2Color}
           animationTrigger={p2AnimTrigger}
           locomotionVelocity={p2LocomotionVelocity}
+          hitStopActive={hitStopActive}
+          onBoneHitboxReady={onP2BoneHitboxReady}
         />
 
         <CinematicCamera

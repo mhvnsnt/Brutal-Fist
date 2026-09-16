@@ -5,6 +5,9 @@ import { useFrame } from '@react-three/fiber';
 import { useAnimations, useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
 import { DEFAULT_PSX_RENDER } from '../render/psx';
+import { BoneHitboxSystem } from '../engine/locomotion/BoneHitboxSystem';
+import { AutoRigDetector, type RigDiagnosticReport } from '../engine/locomotion/AutoRigDetector';
+import { ATTACK_ROOT_MOTION_PROFILES } from '../engine/locomotion/LocomotionSystem';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props
@@ -40,6 +43,21 @@ export interface FighterMeshProps {
    * Used for velocity-weighted blend gating to prevent jitter on micro-inputs.
    */
   locomotionVelocity?: { forward: number; strafe: number };
+  /**
+   * Hit-stop freeze: when true, the animation mixer is paused.
+   * Set by GameBattleArena when a heavy attack lands.
+   */
+  hitStopActive?: boolean;
+  /**
+   * Callback fired once the rig diagnostic report is ready.
+   * Used by DebugOverlayHUD to show rig quality.
+   */
+  onRigDiagnostic?: (report: RigDiagnosticReport) => void;
+  /**
+   * Callback fired each frame with the bone hitbox system reference.
+   * Used by GameBattleArena for bone-parented collision checks.
+   */
+  onBoneHitboxReady?: (system: BoneHitboxSystem) => void;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -240,6 +258,9 @@ function FighterMeshInner({
   hitboxGeometry = null,
   animationTrigger = 0,
   locomotionVelocity,
+  hitStopActive = false,
+  onRigDiagnostic,
+  onBoneHitboxReady,
 }: {
   gltfUrl: string;
   state: string;
@@ -252,6 +273,9 @@ function FighterMeshInner({
   hitboxGeometry?: FighterMeshProps['hitboxGeometry'];
   animationTrigger?: number;
   locomotionVelocity?: { forward: number; strafe: number };
+  hitStopActive?: boolean;
+  onRigDiagnostic?: (report: RigDiagnosticReport) => void;
+  onBoneHitboxReady?: (system: BoneHitboxSystem) => void;
 }) {
   const groupRef = useRef<THREE.Group>(null);
   const normalizedRef = useRef<THREE.Group | null>(null);
@@ -265,17 +289,35 @@ function FighterMeshInner({
   /** The resolved clip name of the last state we committed to */
   const committedClipRef = useRef<string | null>(null);
 
+  // ── Bone hitbox system ────────────────────────────────────────────────────
+  const boneHitboxRef = useRef<BoneHitboxSystem>(new BoneHitboxSystem());
+
+  // ── Hit-stop mixer time scale ref ────────────────────────────────────────
+  const mixerTimeScaleRef = useRef<number>(1);
+
+  // ── Active attack key for root motion ────────────────────────────────────
+  const activeAttackKeyRef = useRef<string | null>(null);
+
   // useGLTF caches the result — safe to call per-fighter
   const { scene, animations } = useGLTF(gltfUrl);
 
   // useAnimations from @react-three/drei — handles mixer + useFrame update automatically
   const { actions, mixer } = useAnimations(animations, groupRef);
 
-  // ── Universal Box3 normalization — applies to EVERY character, no exceptions ──
+  // ── Universal Box3 normalization + root bone floor-zero ──────────────────
   useEffect(() => {
     if (!scene) return;
 
     const cloned = scene.clone(true);
+
+    // Run rig diagnostic
+    const report = AutoRigDetector.analyze(cloned, animations);
+    onRigDiagnostic?.(report);
+
+    // Normalize root bone to floor zero BEFORE bounding box normalization
+    if (!report.hasRootAtFloor) {
+      AutoRigDetector.normalizeRootToFloor(cloned);
+    }
 
     // Compute bounding box on the raw clone
     const box = new THREE.Box3().setFromObject(cloned);
@@ -286,22 +328,21 @@ function FighterMeshInner({
     const scale = size.y > 0.01 ? TARGET_HEIGHT / size.y : 1;
     cloned.scale.setScalar(scale);
 
-    // Recompute box AFTER scaling — this gives accurate world-space bounds
+    // Recompute box AFTER scaling
     cloned.updateMatrixWorld(true);
     const scaledBox = new THREE.Box3().setFromObject(cloned);
     const scaledCenter = scaledBox.getCenter(new THREE.Vector3());
 
-    // Offset so bottom of bounding box sits exactly at Y=0
+    // Offset so bottom of bounding box sits exactly at Y=0 (root at floor)
     cloned.position.set(
       -scaledCenter.x,
       -scaledBox.min.y,
       -scaledCenter.z,
     );
 
-    // Clear ONLY the root scene rotation
     cloned.rotation.set(0, 0, 0);
 
-    // Apply PSX vertex snapping to all meshes
+    // Apply PSX vertex snapping
     cloned.traverse((child) => {
       if (!(child as THREE.Mesh).isMesh) return;
       const mesh = child as THREE.Mesh;
@@ -329,12 +370,18 @@ function FighterMeshInner({
       });
     });
 
+    // Initialize bone hitbox system from the normalized scene
+    cloned.updateMatrixWorld(true);
+    boneHitboxRef.current.initFromSkeleton(cloned);
+    onBoneHitboxReady?.(boneHitboxRef.current);
+
     normalizedRef.current = cloned;
     setNormalizedScene(cloned);
 
     console.log(
       `[FighterMesh] ✅ Normalized "${gltfUrl.split('/').pop()}" — ` +
-      `originalHeight=${size.y.toFixed(3)} scale=${scale.toFixed(4)} ` +
+      `rigQuality=${report.quality} convention=${report.convention} ` +
+      `bones=${report.totalBones} rootAtFloor=${report.hasRootAtFloor} ` +
       `clips=[${animations.map(a => a.name).join(', ')}]`
     );
   }, [scene, gltfUrl, animations]);
@@ -368,9 +415,28 @@ function FighterMeshInner({
       }
     }
 
+    // ── Root motion: activate for attacks with forward displacement ──────────
+    const isAttack = ATTACK_STATES.has(inputKey);
+    if (isAttack) {
+      const profile = ATTACK_ROOT_MOTION_PROFILES[inputKey];
+      if (profile?.hasRootMotion) {
+        activeAttackKeyRef.current = inputKey;
+        // Activate bone hitboxes for this attack
+        boneHitboxRef.current.activateAttack(inputKey);
+      } else {
+        activeAttackKeyRef.current = null;
+      }
+    } else {
+      // Non-attack state: deactivate hitboxes
+      if (activeAttackKeyRef.current) {
+        boneHitboxRef.current.deactivateAll();
+        activeAttackKeyRef.current = null;
+      }
+    }
+
     // ── CONSOLE TRACE: input → state → clip ──────────────────────────────────
     console.log(
-      `[FighterMesh] 🎬 input="${inputKey}" → state="${state}" → clip="${clipName ?? 'NONE'}" ` +
+      `[FighterMesh] 🎬 input="${inputKey}" → clip="${clipName ?? 'NONE'}" ` +
       `(trigger=${animationTrigger}) vel={fwd=${locomotionVelocity?.forward?.toFixed(2) ?? '?'},str=${locomotionVelocity?.strafe?.toFixed(2) ?? '?'}}`
     );
 
@@ -382,7 +448,7 @@ function FighterMeshInner({
     const nextAction = actions[clipName];
     const fadeDuration = FADE_DURATIONS[inputKey] ?? DEFAULT_FADE;
     const isLoop = LOOP_STATES.has(inputKey);
-    const isAttack = ATTACK_STATES.has(inputKey);
+    // isAttack already declared above
 
     // Find currently playing action
     const currentAction = availableClips
@@ -463,13 +529,24 @@ function FighterMeshInner({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [normalizedScene]);
 
-  // ── useFrame: position + rotation + attack pulse ──────────────────────────
-  useFrame(({ clock }) => {
+  // ── Hit-stop: pause/resume mixer time scale ───────────────────────────────
+  useEffect(() => {
+    if (!mixer) return;
+    if (hitStopActive) {
+      mixerTimeScaleRef.current = mixer.timeScale;
+      mixer.timeScale = 0; // Freeze animation
+    } else {
+      mixer.timeScale = 1; // Resume
+    }
+  }, [hitStopActive, mixer]);
+
+  // ── useFrame: position + rotation + bone hitbox update ───────────────────
+  useFrame((_, delta) => {
     if (!groupRef.current) return;
 
     const attacking = state === 'Startup' || state === 'Active';
     const bob = (state === 'Neutral' || state === 'idle')
-      ? Math.sin(clock.elapsedTime * 5) * 0.025
+      ? Math.sin(performance.now() * 0.005) * 0.025
       : 0;
 
     // Position — driven entirely by props from parent screen
@@ -481,14 +558,23 @@ function FighterMeshInner({
     // Attack pulse — uniform scale, no mirroring
     const attackScale = attacking ? 1.03 : 1.0;
     groupRef.current.scale.set(attackScale, attackScale, attackScale);
+
+    // Update bone hitbox system (tracks bone world positions)
+    if (!hitStopActive) {
+      boneHitboxRef.current.update(delta);
+    }
   });
 
   if (!normalizedScene) return null;
 
+  const activeSpheres = boneHitboxRef.current.getActiveSpheres();
+
   return (
     <group ref={groupRef} position={position}>
       <primitive object={normalizedScene} />
-      {showHitbox && hitboxGeometry && (
+
+      {/* Legacy AABB hitbox (shown when bone hitboxes are unavailable) */}
+      {showHitbox && hitboxGeometry && activeSpheres.length === 0 && (
         <mesh
           position={[
             hitboxGeometry.offsetX * (facing < 0 ? -1 : 1),
@@ -500,6 +586,26 @@ function FighterMeshInner({
           <meshBasicMaterial color="#ff2222" wireframe transparent opacity={0.6} />
         </mesh>
       )}
+
+      {/* Bone-parented hitbox spheres — rendered at bone world positions */}
+      {showHitbox && activeSpheres.map((sphere, i) => (
+        <mesh
+          key={`bone-hitbox-${sphere.boneSlot}-${i}`}
+          position={[
+            sphere.worldCenter.x - position[0],
+            sphere.worldCenter.y - position[1],
+            sphere.worldCenter.z - position[2],
+          ]}
+        >
+          <sphereGeometry args={[sphere.radius, 8, 8]} />
+          <meshBasicMaterial
+            color={sphere.attackLevel === 'high' ? '#ff4400' : sphere.attackLevel === 'low' ? '#ffaa00' : '#ff2222'}
+            wireframe
+            transparent
+            opacity={0.7}
+          />
+        </mesh>
+      ))}
     </group>
   );
 }
@@ -533,6 +639,9 @@ export function FighterMesh({
   hitboxGeometry = null,
   animationTrigger = 0,
   locomotionVelocity,
+  hitStopActive = false,
+  onRigDiagnostic,
+  onBoneHitboxReady,
 }: FighterMeshProps) {
   if (!modelUrl) return <FighterPlaceholder position={position} />;
 
@@ -550,6 +659,9 @@ export function FighterMesh({
         hitboxGeometry={hitboxGeometry}
         animationTrigger={animationTrigger}
         locomotionVelocity={locomotionVelocity}
+        hitStopActive={hitStopActive}
+        onRigDiagnostic={onRigDiagnostic}
+        onBoneHitboxReady={onBoneHitboxReady}
       />
     </Suspense>
   );

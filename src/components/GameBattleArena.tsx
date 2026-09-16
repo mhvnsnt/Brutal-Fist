@@ -33,6 +33,9 @@ import ComboCounterHUD from './ComboCounterHUD';
 import DebugOverlayHUD from './DebugOverlayHUD';
 import { MatchRecorderHUD, useMatchRecorder } from './MatchRecorder';
 import { InputStringRecorder } from './InputStringRecorder';
+// ── Locomotion + bone hitbox systems ─────────────────────────────────────────
+import { LocomotionSystem, ATTACK_ROOT_MOTION_PROFILES } from '../engine/locomotion/LocomotionSystem';
+import { BoneHitboxSystem, HIT_STOP_DURATIONS, HIT_STOP_DEFAULT_MS } from '../engine/locomotion/BoneHitboxSystem';
 
 // ── 3D combat arena — loaded client-side only ─────────────────────────────────
 const CombatArena3D = dynamic(() => import('./CombatArena3D'), {
@@ -139,6 +142,18 @@ export default function GameBattleArena({
   const p2SMRef = useRef<FighterStateMachine>(new FighterStateMachine());
   const p1HitboxRef = useRef<FrameDataHitboxSystem>(new FrameDataHitboxSystem());
   const p2HitboxRef = useRef<FrameDataHitboxSystem>(new FrameDataHitboxSystem());
+
+  // ── Locomotion systems (one per fighter) ─────────────────────────────────
+  const p1LocoRef = useRef<LocomotionSystem>(new LocomotionSystem(-1.8, 0, 1));
+  const p2LocoRef = useRef<LocomotionSystem>(new LocomotionSystem(1.8, 0, -1));
+
+  // ── Bone hitbox systems (populated by FighterMesh callbacks) ─────────────
+  const p1BoneHitboxRef = useRef<BoneHitboxSystem | null>(null);
+  const p2BoneHitboxRef = useRef<BoneHitboxSystem | null>(null);
+
+  // ── Hit-stop state ────────────────────────────────────────────────────────
+  const hitStopTimerRef = useRef<number>(0);
+  const hitStopActiveRef = useRef<boolean>(false);
 
   // ── Special move notification state ──────────────────────────────────────
   const [specialMoveNotice, setSpecialMoveNotice] = useState<{
@@ -414,14 +429,30 @@ export default function GameBattleArena({
         const isCrumple = !guardResult.blocked && p1Hit.launch > 0.3;
         if (isCrumple) {
           p2SMRef.current.applyKnockdown();
+          p2LocoRef.current.halt();
         } else if (!guardResult.blocked) {
           p2SMRef.current.applyStun(p1Hit.hitstun || 0.3, false);
+          // Apply pushback from hit
+          p2LocoRef.current.applyPushback(p1Hit.pushback ?? 0.3);
         }
-        // On guard break (throw/unblockable), apply stun even through guard
         if (guardResult.guardBroken) {
           p2SMRef.current.applyStun(p1Hit.hitstun || 0.3, false);
         }
         p2HitboxRef.current.reset();
+
+        // ── Hit Stop: freeze both fighters' animations ────────────────────
+        // Duration scales with attack weight (heavy = longer freeze)
+        if (!guardResult.blocked) {
+          const attackKey = p1HbWindow.move?.animation ?? 'lightAttack';
+          const isHeavy = p1Hit.damage > 120 || p1HbWindow.move?.isSpecial;
+          const stopMs = isHeavy
+            ? (HIT_STOP_DURATIONS[attackKey] ?? HIT_STOP_DEFAULT_MS)
+            : HIT_STOP_DURATIONS.lightAttack;
+          hitStopTimerRef.current = stopMs / 1000;
+          hitStopActiveRef.current = true;
+          setHitStopActive(true);
+          console.log(`[Arena] ❄️ Hit stop triggered: ${stopMs}ms for "${attackKey}"`);
+        }
 
         const isBlocked = guardResult.blocked;
         const isCounter = prevP2State === FighterState.Startup || prevP2State === FighterState.Active;
@@ -503,13 +534,27 @@ export default function GameBattleArena({
         const isCrumple = !p1GuardResult.blocked && p2Hit.launch > 0.3;
         if (isCrumple) {
           p1SMRef.current.applyKnockdown();
+          p1LocoRef.current.halt();
         } else if (!p1GuardResult.blocked) {
           p1SMRef.current.applyStun(p2Hit.hitstun || 0.3, false);
+          p1LocoRef.current.applyPushback(p2Hit.pushback ?? 0.3);
         }
         if (p1GuardResult.guardBroken) {
           p1SMRef.current.applyStun(p2Hit.hitstun || 0.3, false);
         }
         p1HitboxRef.current.reset();
+
+        // ── Hit Stop for P2 attacks ───────────────────────────────────────
+        if (!p1GuardResult.blocked) {
+          const attackKey = p2HbWindow.move?.animation ?? 'lightAttack';
+          const isHeavy = p2Hit.damage > 120 || p2HbWindow.move?.isSpecial;
+          const stopMs = isHeavy
+            ? (HIT_STOP_DURATIONS[attackKey] ?? HIT_STOP_DEFAULT_MS)
+            : HIT_STOP_DURATIONS.lightAttack;
+          hitStopTimerRef.current = stopMs / 1000;
+          hitStopActiveRef.current = true;
+          setHitStopActive(true);
+        }
 
         const isBlocked = p1GuardResult.blocked;
         const isCounter = prevP1State === FighterState.Startup || prevP1State === FighterState.Active;
@@ -706,24 +751,40 @@ export default function GameBattleArena({
       prevP1AnimRef.current = p1NextMotion;
       prevP2AnimRef.current = p2NextMotion;
 
-      // ── Sync locomotion velocity from FSM → React state for velocity-gated blending ──
-      // Use refs to avoid triggering re-renders every frame; only update state when
-      // velocity changes meaningfully (threshold 0.03) to prevent excessive renders.
-      const p1Vel = p1SM.getWalkVelocity();
-      const p2Vel = p2SM.getWalkVelocity();
-      const p1VelChanged =
-        Math.abs(p1Vel.forward - p1VelRef.current.forward) > 0.03 ||
-        Math.abs(p1Vel.strafe - p1VelRef.current.strafe) > 0.03;
-      const p2VelChanged =
-        Math.abs(p2Vel.forward - p2VelRef.current.forward) > 0.03 ||
-        Math.abs(p2Vel.strafe - p2VelRef.current.strafe) > 0.03;
-      if (p1VelChanged) {
-        p1VelRef.current = p1Vel;
-        setP1LocomotionVelocity({ ...p1Vel });
+      // ── Hit-stop countdown ────────────────────────────────────────────
+      if (hitStopActiveRef.current) {
+        hitStopTimerRef.current -= dt;
+        if (hitStopTimerRef.current <= 0) {
+          hitStopActiveRef.current = false;
+          hitStopTimerRef.current = 0;
+          setHitStopActive(false);
+        }
       }
-      if (p2VelChanged) {
-        p2VelRef.current = p2Vel;
-        setP2LocomotionVelocity({ ...p2Vel });
+
+      // ── Locomotion system update ──────────────────────────────────────
+      // Only update locomotion when not in hit-stop
+      if (!hitStopActiveRef.current) {
+        const p1Vel = p1SMRef.current.getWalkVelocity();
+        const p2Vel = p2SMRef.current.getWalkVelocity();
+        const p1IsDashing = false; // extend: detect double-tap
+        const p1IsBackdashing = p1SMRef.current.action === 'Backdashing';
+        const p2IsBackdashing = p2SMRef.current.action === 'Backdashing';
+
+        // Begin root motion for lunging attacks
+        if (p1SMRef.current.action === 'Attacking' || p1SMRef.current.action === 'CommandThrow') {
+          const attackKey = p1NextMotion;
+          const profile = ATTACK_ROOT_MOTION_PROFILES[attackKey];
+          if (profile?.hasRootMotion && p1LocoRef.current.mode === 'programmatic') {
+            const move = p1HbWindow.move;
+            p1LocoRef.current.beginRootMotionAttack(attackKey, move?.active ?? 0.14);
+          }
+        } else if (p1LocoRef.current.mode === 'rootMotion') {
+          // Attack ended — return to programmatic
+          p1LocoRef.current.endRootMotionAttack();
+        }
+
+        p1LocoRef.current.update(p1Vel.forward, p1Vel.strafe, dt, p1IsDashing, p1IsBackdashing);
+        p2LocoRef.current.update(p2Vel.forward, p2Vel.strafe, dt, false, p2IsBackdashing);
       }
 
       // ── Update queued action HUD display ──────────────────────────────────
@@ -903,6 +964,8 @@ export default function GameBattleArena({
           p2AnimTrigger={p2AnimTrigger}
           p1LocomotionVelocity={p1LocomotionVelocity}
           p2LocomotionVelocity={p2LocomotionVelocity}
+          onP1BoneHitboxReady={(sys) => { p1BoneHitboxRef.current = sys; }}
+          onP2BoneHitboxReady={(sys) => { p2BoneHitboxRef.current = sys; }}
         />
       </div>
 
