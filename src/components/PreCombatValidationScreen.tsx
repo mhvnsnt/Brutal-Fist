@@ -400,10 +400,13 @@ export default function PreCombatValidationScreen({
   const bothPass    = p1Result?.overallStatus === 'PASS'    && p2Result?.overallStatus === 'PASS';
   // FIGHT requires BOTH fighters to be PASS. WARN is NOT PASS.
   // Authoritative source: PreCombatRosterGate.fightAuthorized (both PASS).
-  // Override checkbox only available when BOTH fighters are WARN (not BLOCKED).
+  // TEST_ONLY override: available only when neither fighter is BLOCKED and at least one is WARN.
+  // Override never upgrades WARN→PASS; button label remains TEST MODE.
   const anyWarn     = p1Result?.overallStatus === 'WARN'    || p2Result?.overallStatus === 'WARN';
-  const bothWarnOrPass = !anyBlocked;
-  const canProceed  = fightAuthorized || bothPass || (bothWarnOrPass && overrideEnabled);
+  const neitherBlocked = !anyBlocked;
+  const canProceedAuth = fightAuthorized || bothPass;
+  const canProceedTestOnly = neitherBlocked && anyWarn && overrideEnabled;
+  const canProceed  = canProceedAuth || canProceedTestOnly;
 
   return (
     <div className="fixed inset-0 bg-[#080b10] text-white font-mono overflow-y-auto">
@@ -563,7 +566,7 @@ export default function PreCombatValidationScreen({
               <button
                 onClick={() => {
                   if (canProceed) {
-                    console.log('[PreCombatValidation] Combat approved. P1:', p1Result?.overallStatus, 'P2:', p2Result?.overallStatus);
+                    console.log('[PreCombatValidation] Combat approved.', canProceedAuth ? 'AUTH_PASS' : 'TEST_ONLY_OVERRIDE', 'P1:', p1Result?.overallStatus, 'P2:', p2Result?.overallStatus);
                     onCombatApproved();
                   }
                 }}

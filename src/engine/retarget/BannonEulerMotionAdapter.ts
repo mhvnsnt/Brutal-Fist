@@ -501,6 +501,32 @@ export function coerceToBannonEulerClipJson(
   return null;
 }
 
+
+/**
+ * PR #20-compatible track↔skeleton validation (additive; does not rewrite clips).
+ * Reports which track bone names resolve onto the target Object3D hierarchy.
+ */
+export function validateEulerClipAgainstSkeleton(
+  clip: THREE.AnimationClip,
+  target: THREE.Object3D,
+): { resolved: string[]; unresolved: string[] } {
+  const names = new Set<string>();
+  target.traverse((object) => {
+    if (object.name) names.add(object.name);
+  });
+  const resolved: string[] = [];
+  const unresolved: string[] = [];
+  for (const track of clip.tracks) {
+    const bone = track.name.replace(/\.(quaternion|position|scale)$/, '');
+    if (names.has(bone)) resolved.push(bone);
+    else unresolved.push(bone);
+  }
+  return {
+    resolved: [...new Set(resolved)],
+    unresolved: [...new Set(unresolved)],
+  };
+}
+
 export function convertAndBindEulerClip(
   json: BannonEulerClipJson,
   targetScene: THREE.Object3D,

@@ -24,6 +24,10 @@ import {
 } from '../retarget/BannonMotionBankPreferred';
 import { BANNON_GLB_PLAYABLE_MODELS } from '../../data/bannonGlbRoster';
 import type { BannonFighterProfile } from '../../data/bannonRoster';
+import {
+  resolveFighterGlbUrl,
+  resolveFighterGlbFilename,
+} from '../../data/FighterAssetResolver';
 
 export type GateCheckStatus = 'PASS' | 'FAIL' | 'WARN' | 'PENDING';
 
@@ -71,6 +75,10 @@ export interface PreCombatRosterGateReport {
 const BANNON_MODELS_CDN = 'https://raw.githubusercontent.com/mhvnsnt/Bannon/main/assets/models';
 
 function resolveGlbUrl(fighter: BannonFighterProfile): { file: string; url: string | null } {
+  // Prefer Rocket's canonical FighterAssetResolver (rigged_ready first).
+  const file = resolveFighterGlbFilename(fighter.id);
+  const url = resolveFighterGlbUrl(fighter);
+  if (file !== 'UNKNOWN.glb' && url) return { file, url };
   const entry = BANNON_GLB_PLAYABLE_MODELS.find((e) => e.id === fighter.id);
   if (!entry) return { file: 'UNKNOWN.glb', url: null };
   if (entry.overrideUrl) return { file: entry.model, url: entry.overrideUrl };
@@ -81,16 +89,22 @@ async function resolveGlbUrlWithFallback(
   fighter: BannonFighterProfile,
 ): Promise<{ file: string; url: string | null; reachable: boolean }> {
   const entry = BANNON_GLB_PLAYABLE_MODELS.find((e) => e.id === fighter.id);
-  if (!entry) return { file: 'UNKNOWN.glb', url: null, reachable: false };
-  if (entry.overrideUrl) {
-    const ok = await urlExists(entry.overrideUrl);
-    return { file: entry.model, url: entry.overrideUrl, reachable: ok };
-  }
+  const canonicalFile = resolveFighterGlbFilename(fighter.id);
+  const canonicalUrl = resolveFighterGlbUrl(fighter);
 
-  const candidates: Array<{ file: string; url: string }> = [
-    { file: entry.model, url: `/models/${entry.model}` },
-    { file: entry.model, url: `${BANNON_MODELS_CDN}/${entry.model}` },
-  ];
+  // Candidate order: local mirror of canonical → canonical CDN URL → roster entry → local BANNON_rigged measure mirror
+  const candidates: Array<{ file: string; url: string }> = [];
+  if (canonicalFile !== 'UNKNOWN.glb') {
+    candidates.push({ file: canonicalFile, url: `/models/${canonicalFile}` });
+    if (canonicalUrl) candidates.push({ file: canonicalFile, url: canonicalUrl });
+  }
+  if (entry) {
+    if (entry.overrideUrl) candidates.push({ file: entry.model, url: entry.overrideUrl });
+    candidates.push(
+      { file: entry.model, url: `/models/${entry.model}` },
+      { file: entry.model, url: `${BANNON_MODELS_CDN}/${entry.model}` },
+    );
+  }
   if (fighter.id === 'bannon') {
     candidates.push(
       { file: 'BANNON_rigged.glb', url: '/models/BANNON_rigged.glb' },
@@ -104,12 +118,24 @@ async function resolveGlbUrlWithFallback(
     );
   }
 
+  // Dedupe by URL
+  const seen = new Set<string>();
   for (const c of candidates) {
+    if (seen.has(c.url)) continue;
+    seen.add(c.url);
     if (await urlExists(c.url)) {
       return { file: c.file, url: c.url, reachable: true };
     }
   }
-  return { file: entry.model, url: candidates[1]?.url ?? null, reachable: false };
+
+  if (!entry && canonicalFile === 'UNKNOWN.glb') {
+    return { file: 'UNKNOWN.glb', url: null, reachable: false };
+  }
+  return {
+    file: canonicalFile !== 'UNKNOWN.glb' ? canonicalFile : (entry?.model ?? 'UNKNOWN.glb'),
+    url: canonicalUrl || candidates[0]?.url || null,
+    reachable: false,
+  };
 }
 
 async function urlExists(url: string): Promise<boolean> {
