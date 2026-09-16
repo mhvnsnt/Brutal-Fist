@@ -5,7 +5,6 @@ import { GrappleSystem } from './GrappleSystem';
 import { hitStopFramesForImpact } from './BannonCombatContract';
 import { getMoveById } from './BrutalFistMoveCatalog';
 
-
 // Re-export getMove for backward compat
 export { getMoveById as getMove } from './BrutalFistMoveCatalog';
 
@@ -13,6 +12,7 @@ const EMPTY_INPUT: InputBitmask = { up: false, down: false, left: false, right: 
 const DEFAULT_HURTBOX: Hurtbox = { offsetX: 0, offsetZ: 0, width: 0.82, depth: 0.72 };
 const LIGHT = getMoveById('light');
 const HEAVY = getMoveById('heavy');
+const DEFAULT_FIGHTER_SPAWN_X = 1.8;
 
 export class GameEngine {
   public inputBuffer: InputBitmask[] = [];
@@ -31,9 +31,9 @@ export class GameEngine {
   public p2StateFrameCounter = 0;
   public currentMove: FrameData | null = null;
   public p2Move: FrameData | null = null;
-  public p1X = -2.25;
+  public p1X = -DEFAULT_FIGHTER_SPAWN_X;
   public p1Z = 0;
-  public p2X = 2.25;
+  public p2X = DEFAULT_FIGHTER_SPAWN_X;
   public p2Z = 0;
   public p1Facing: 1 | -1 = 1;
   public p2Facing: 1 | -1 = -1;
