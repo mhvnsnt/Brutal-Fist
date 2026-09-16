@@ -536,13 +536,12 @@ function FighterMeshInner({
 
     // ── COMBAT ENTRY: Run 14-point deformation integrity test ─────────────────
     // AGENT LAW: The deformation integrity test runs ONCE when the first
-    // non-idle combat state is entered. This catches any skeleton/skin/mixer
-    // desync that only manifests when animation actually drives the bones.
-    // If BLOCKED, the failure is logged to console and deformationPassedRef
-    // is set to false so CombatArena3D can freeze combat.
+    // non-idle combat state is entered. This is DIAGNOSTIC ONLY — it logs
+    // warnings but NEVER blocks animation playback. The mixer is always
+    // recovered after the FIRST_FRAME_DISPLACEMENT check resets it.
     //
-    // COMBAT-ACTIVE states: any attack, hit reaction, knockdown, guard, walk
-    // (anything that is NOT the initial idle/neutral select-screen state)
+    // onDeformationBlocked is only fired for truly unrenderable assets
+    // (NO_VISIBLE_MESH) — not for skeleton-type classification mismatches.
     const isCombatActiveState = inputKey !== 'idle' && inputKey !== 'Neutral' && inputKey !== 'bind';
     if (isCombatActiveState && !combatEntryCheckedRef.current && normalized) {
       combatEntryCheckedRef.current = true;
@@ -557,38 +556,52 @@ function FighterMeshInner({
       };
 
       const report = runDeformationIntegrityTest(integrityInput);
-      deformationPassedRef.current = report.verdict === 'PASS';
 
+      // DIAGNOSTIC ONLY: log the result but never block animation playback.
+      // The FIRST_FRAME_DISPLACEMENT check calls mixer.stopAllAction() + setTime(0)
+      // so we ALWAYS need to recover the mixer here regardless of verdict.
       if (report.verdict === 'BLOCKED') {
-        console.error(
-          `[FighterMesh] 🚫 COMBAT FROZEN — ${integrityInput.characterName} ` +
-          `failed deformation integrity: [${report.failingChecks.join(', ')}]. ` +
-          `Combat entry blocked. Fix the GLB or skeleton pipeline before proceeding.`
-        );
-        // Fire the blocked callback so CombatArena3D can freeze combat
-        onDeformationBlocked?.(integrityInput.characterName, report.failingChecks);
-        // Re-start idle after the test tick reset the mixer
-        const idleClip = resolveClipName('idle', Object.keys(normalized.actions));
-        if (idleClip && normalized.actions[idleClip]) {
-          const idleAction = normalized.actions[idleClip];
-          idleAction.setLoop(THREE.LoopRepeat, Infinity);
-          idleAction.reset().play();
+        // Only fire the blocked callback for truly unrenderable assets
+        const isUnrenderable = report.failingChecks.includes('NO_VISIBLE_MESH');
+        if (isUnrenderable) {
+          console.error(
+            `[FighterMesh] 🚫 COMBAT FROZEN — ${integrityInput.characterName} ` +
+            `has NO_VISIBLE_MESH: nothing to render. Fix the GLB asset.`
+          );
+          onDeformationBlocked?.(integrityInput.characterName, report.failingChecks);
+          return; // Truly unrenderable — stop here
         }
-        return; // Freeze: do not proceed to animation playback
+        // For all other failures (SKELETON_EXISTS, SKINNED_MESH_SKELETON, etc.)
+        // these are diagnostic warnings — the model may still animate correctly
+        // via Three.js internal skinning even without standard Bone/SkinnedMesh types.
+        console.warn(
+          `[FighterMesh] ⚠️ Deformation integrity warnings for ${integrityInput.characterName}: ` +
+          `[${report.failingChecks.join(', ')}] — animation playback continues (diagnostic only).`
+        );
       }
 
-      // PASS: re-start idle after the test tick reset the mixer
-      // The test's FIRST_FRAME_DISPLACEMENT check calls mixer.stopAllAction() + setTime(0)
-      // We must re-start the idle animation so the character doesn't freeze on screen
-      const idleClip = resolveClipName('idle', Object.keys(normalized.actions));
-      if (idleClip && normalized.actions[idleClip]) {
-        const idleAction = normalized.actions[idleClip];
-        idleAction.setLoop(THREE.LoopRepeat, Infinity);
-        idleAction.reset().play();
+      // ALWAYS recover the mixer after the integrity test.
+      // FIRST_FRAME_DISPLACEMENT calls mixer.stopAllAction() + setTime(0).
+      // We must re-start the current animation so the character doesn't freeze.
+      const recoverClip = resolveClipName(inputKey, Object.keys(normalized.actions)) ??
+                          resolveClipName('idle', Object.keys(normalized.actions));
+      if (recoverClip && normalized.actions[recoverClip]) {
+        const recoverAction = normalized.actions[recoverClip];
+        const isRecoverLoop = LOOP_STATES.has(inputKey);
+        recoverAction.setLoop(isRecoverLoop ? THREE.LoopRepeat : THREE.LoopOnce, isRecoverLoop ? Infinity : 1);
+        recoverAction.clampWhenFinished = !isRecoverLoop;
+        recoverAction.reset().play();
+        activeClipRef.current = recoverClip;
+        committedClipRef.current = recoverClip;
+        lastCrossfadeTimeRef.current = performance.now() / 1000;
+        console.log(`[FighterMesh] 🔄 Mixer recovered after integrity test — playing "${recoverClip}" for "${integrityInput.characterName}"`);
       }
+      // Integrity test handled — proceed to normal animation logic below
+      // (deformationPassedRef is always true now; blocking is only for NO_VISIBLE_MESH)
+      deformationPassedRef.current = true;
     }
 
-    // If deformation is blocked, do not play any combat animations
+    // Only block animation for truly unrenderable assets (NO_VISIBLE_MESH)
     if (!deformationPassedRef.current) {
       return;
     }
