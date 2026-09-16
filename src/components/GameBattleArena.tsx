@@ -12,6 +12,7 @@ import { useSoundEffects } from '../hooks/useSoundEffects';
 import { type CinematicPhase } from './CombatArena3D';
 import { type TournamentSettings, DEFAULT_TOURNAMENT_SETTINGS } from './TournamentSettingsScreen';
 import dynamic from 'next/dynamic';
+import PostMatchScreen, { type RoundResult } from './PostMatchScreen';
 
 // ── New combat systems ────────────────────────────────────────────────────────
 import {
@@ -81,6 +82,8 @@ const FACTION_COLOR: Record<string, string> = {
 // ── Cinematic timing constants ────────────────────────────────────────────────
 const SWEEP_DURATION_MS = 2000;
 const INTRO_DURATION_MS = 2500;
+// Post-match screen delay after KO/victory cinematic
+const POST_MATCH_DELAY_MS = 3600;
 
 export default function GameBattleArena({
   p1Fighter,
@@ -111,26 +114,15 @@ export default function GameBattleArena({
   const [hitStopActive, setHitStopActive] = useState(false);
   const [arenaReady, setArenaReady] = useState(false);
 
-  // ── Z-axis sidestep state ────────────────────────────────────────────────────
-  const [p1Z, setP1Z] = useState(0);
-  const [p2Z, setP2Z] = useState(0);
-  const p1ZRef = useRef(0);
-  const p2ZRef = useRef(0);
+  // ── Post-match screen state ───────────────────────────────────────────────
+  const [showPostMatch, setShowPostMatch] = useState(false);
+  const [matchCondition, setMatchCondition] = useState<'KO' | 'TIMEOUT' | 'PERFECT'>('KO');
+  const [roundResults, setRoundResults] = useState<RoundResult[]>([]);
+  const roundStartTimeRef = useRef<number>(Date.now());
 
-  // ── Fighter world X positions (driven by LocomotionSystem) ──────────────────
-  const [p1X, setP1X] = useState(-1.8);
-  const [p2X, setP2X] = useState(1.8);
-  const p1XRef = useRef(-1.8);
-  const p2XRef = useRef(1.8);
-
-  // ── Cinematic phase ──────────────────────────────────────────────────────────
-  const [cinematicPhase, setCinematicPhase] = useState<CinematicPhase>('sweep');
-
-  // ── Damage event for VFX ─────────────────────────────────────────────────────
-  const [damageEvent, setDamageEvent] = useState<{
-    count: number; player: 'p1' | 'p2'; damage: number; isCounter: boolean; factionColor: string;
-  } | undefined>(undefined);
-  const damageEventCountRef = useRef(0);
+  // ── Knockdown event for dust VFX ─────────────────────────────────────────
+  const [knockdownEvent, setKnockdownEvent] = useState<{ count: number; player: 'p1' | 'p2' } | undefined>(undefined);
+  const knockdownEventCountRef = useRef(0);
 
   const koHandledRef = useRef(false);
   const roundStartedRef = useRef(false);
@@ -203,6 +195,25 @@ export default function GameBattleArena({
   // ── Match recorder ────────────────────────────────────────────────────────
   const { startRecording, stopRecording, recordFrame, getBuffer, isRecording } = useMatchRecorder();
 
+  // ── Position state (X and Z axes) ────────────────────────────────────────
+  const [p1X, setP1X] = useState(-1.8);
+  const [p2X, setP2X] = useState(1.8);
+  const [p1Z, setP1Z] = useState(0);
+  const [p2Z, setP2Z] = useState(0);
+  const p1XRef = useRef(-1.8);
+  const p2XRef = useRef(1.8);
+  const p1ZRef = useRef(0);
+  const p2ZRef = useRef(0);
+
+  // ── Cinematic phase state ─────────────────────────────────────────────────
+  const [cinematicPhase, setCinematicPhase] = useState<CinematicPhase>('sweep');
+
+  // ── Damage event state ────────────────────────────────────────────────────
+  const [damageEvent, setDamageEvent] = useState<{
+    count: number; player: 'p1' | 'p2'; damage: number; isCounter: boolean; factionColor: string;
+  } | undefined>(undefined);
+  const damageEventCountRef = useRef(0);
+
   // Build engine
   useEffect(() => {
     const p1MoveSet = getCharacterMoveSet(p1Fighter.id);
@@ -223,6 +234,9 @@ export default function GameBattleArena({
     setRoundTimer(99);
     koHandledRef.current = false;
     roundStartedRef.current = false;
+    setShowPostMatch(false);
+    roundStartTimeRef.current = Date.now();
+    setRoundResults([]);
     setP1Z(0); setP2Z(0);
     p1ZRef.current = 0; p2ZRef.current = 0;
     // Reset fighter positions
@@ -437,6 +451,8 @@ export default function GameBattleArena({
         if (isCrumple) {
           p2SMRef.current.applyKnockdown();
           p2LocoRef.current.halt();
+          // Trigger dust VFX on knockdown
+          setKnockdownEvent({ count: ++knockdownEventCountRef.current, player: 'p2' });
         } else if (!guardResult.blocked) {
           p2SMRef.current.applyStun(p1Hit.hitstun || 0.3, false);
           // Apply pushback from hit
@@ -546,6 +562,8 @@ export default function GameBattleArena({
         if (isCrumple) {
           p1SMRef.current.applyKnockdown();
           p1LocoRef.current.halt();
+          // Trigger dust VFX on knockdown
+          setKnockdownEvent({ count: ++knockdownEventCountRef.current, player: 'p1' });
         } else if (!p1GuardResult.blocked) {
           p1SMRef.current.applyStun(p2Hit.hitstun || 0.3, false);
           p1LocoRef.current.applyPushback(p2Hit.pushback ?? 0.3);
@@ -848,15 +866,34 @@ export default function GameBattleArena({
         setWinner(w);
         cancelAnimationFrame(rafRef.current);
         if (settings.soundEnabled) sfx.playKO();
+
+        // Determine condition
+        const isPerfect = (w === 'p1' && engine.p1Health >= p1Fighter.hp * 0.99) ||
+                          (w === 'p2' && engine.p2Health >= p2Fighter.hp * 0.99);
+        const cond: 'KO' | 'TIMEOUT' | 'PERFECT' = isPerfect ? 'PERFECT' : 'KO';
+        setMatchCondition(cond);
+
+        // Build round result
+        const elapsed = Math.round((Date.now() - roundStartTimeRef.current) / 1000);
+        const roundResult: RoundResult = {
+          round: 1,
+          winner: w,
+          condition: cond,
+          p1HealthRemaining: Math.max(0, engine.p1Health),
+          p2HealthRemaining: Math.max(0, engine.p2Health),
+          durationSeconds: elapsed,
+        };
+        setRoundResults([roundResult]);
+
         // Switch to victory cinematic
-        const winnerFighter = w === 'p1' ? p1Fighter : w === 'p2' ? p2Fighter : null;
         setTimeout(() => {
           setCinematicPhase('victory');
           if (w !== 'draw' && settings.soundEnabled) sfx.playVictory();
         }, 800);
         setTimeout(() => {
           onMatchEnd?.(w);
-        }, 3500);
+          setShowPostMatch(true);
+        }, POST_MATCH_DELAY_MS);
       }
     };
 
@@ -879,11 +916,24 @@ export default function GameBattleArena({
             setWinner(w);
             cancelAnimationFrame(rafRef.current);
             if (settings.soundEnabled) sfx.playKO();
+            setMatchCondition('TIMEOUT');
+            const elapsed = Math.round((Date.now() - roundStartTimeRef.current) / 1000);
+            setRoundResults([{
+              round: 1,
+              winner: w,
+              condition: 'TIMEOUT',
+              p1HealthRemaining: Math.max(0, engine.p1Health),
+              p2HealthRemaining: Math.max(0, engine.p2Health),
+              durationSeconds: elapsed,
+            }]);
             setTimeout(() => {
               setCinematicPhase('victory');
               if (w !== 'draw' && settings.soundEnabled) sfx.playVictory();
             }, 800);
-            setTimeout(() => { onMatchEnd?.(w); }, 3500);
+            setTimeout(() => {
+              onMatchEnd?.(w);
+              setShowPostMatch(true);
+            }, POST_MATCH_DELAY_MS);
           }
           return 0;
         }
@@ -1007,6 +1057,7 @@ export default function GameBattleArena({
           cameraFov={settings.cameraFov}
           announcerEnabled={settings.soundEnabled}
           damageEvent={damageEvent}
+          knockdownEvent={knockdownEvent}
           stageId={stageId === 'random' ? 'urban_night' : (stageId as 'urban_night' | 'training')}
           p1AnimTrigger={p1AnimTrigger}
           p2AnimTrigger={p2AnimTrigger}
@@ -1254,6 +1305,67 @@ export default function GameBattleArena({
         >
           ← BACK
         </button>
+      )}
+
+      {/* ── Post-Match Screen ── */}
+      {showPostMatch && winner && (
+        <div className="absolute inset-0 z-50">
+          <PostMatchScreen
+            p1Fighter={p1Fighter}
+            p2Fighter={p2Fighter}
+            winner={winner}
+            condition={matchCondition}
+            roundResults={roundResults}
+            p1Color={p1Color}
+            p2Color={p2Color}
+            onRematch={() => {
+              setShowPostMatch(false);
+              // Reset match state
+              const engine = engineRef.current;
+              if (engine) {
+                setP1Health(p1Fighter.hp);
+                setP2Health(p2Fighter.hp);
+                setKo(false);
+                setWinner(null);
+                setRoundTimer(99);
+                koHandledRef.current = false;
+                roundStartedRef.current = false;
+                setRoundResults([]);
+                roundStartTimeRef.current = Date.now();
+                setP1X(-1.8); setP2X(1.8);
+                p1XRef.current = -1.8; p2XRef.current = 1.8;
+                p1LocoRef.current = new LocomotionSystem(-1.8, 0, 1);
+                p2LocoRef.current = new LocomotionSystem(1.8, 0, -1);
+                p1SMRef.current = new FighterStateMachine();
+                p2SMRef.current = new FighterStateMachine();
+                p1SMRef.current.registerSpecialMoves(DEFAULT_SPECIAL_MOVES);
+                p2SMRef.current.registerSpecialMoves(DEFAULT_SPECIAL_MOVES);
+                p1HitboxRef.current.reset();
+                p2HitboxRef.current.reset();
+                const freshP1Combo = createComboState('p1');
+                const freshP2Combo = createComboState('p2');
+                p1ComboRef.current = freshP1Combo;
+                p2ComboRef.current = freshP2Combo;
+                setP1Combo(freshP1Combo);
+                setP2Combo(freshP2Combo);
+              }
+              setCinematicPhase('sweep');
+              setArenaReady(false);
+              const t1 = window.setTimeout(() => setCinematicPhase('intro'), SWEEP_DURATION_MS);
+              const t2 = window.setTimeout(() => { setCinematicPhase('fight'); setArenaReady(true); }, SWEEP_DURATION_MS + INTRO_DURATION_MS);
+              // cleanup handled by component unmount
+              void t1; void t2;
+            }}
+            onCharacterSelect={() => {
+              setShowPostMatch(false);
+              onBack?.();
+            }}
+            onExit={() => {
+              setShowPostMatch(false);
+              onBack?.();
+            }}
+          />
+        </div>
       )}
     </div>
   );

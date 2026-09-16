@@ -7,6 +7,7 @@ import { FighterMesh } from './FighterMesh';
 import { type BannonFighterProfile } from '../data/bannonRoster';
 import { TrainingStage } from './TrainingStage';
 import { UrbanNightStage } from './UrbanNightStage';
+import { CHARACTER_BLOOM } from './PostMatchScreen';
 
 // ── Stage IDs ─────────────────────────────────────────────────────────────────
 export type StageId = 'urban_night' | 'training';
@@ -301,6 +302,128 @@ function VictoryOverlay({
   );
 }
 
+// ── Per-character hit bloom config ────────────────────────────────────────────
+// Each fighter emits their own color/style on impact — Tekken-style
+function getCharacterHitBloom(fighterId: string, factionColor: string) {
+  const bloom = CHARACTER_BLOOM[fighterId] ?? CHARACTER_BLOOM.default;
+  return bloom.primary ?? factionColor;
+}
+
+// ── Dust particle burst on knockdown ─────────────────────────────────────────
+function spawnKnockdownDust(
+  screenX: number,
+  screenY: number,
+  particleIdRef: React.MutableRefObject<number>,
+): Particle[] {
+  const dust: Particle[] = [];
+  // Ground-level dust cloud — 16 particles spreading outward
+  for (let i = 0; i < 16; i++) {
+    const angle = (Math.PI * i) / 8; // spread in semicircle upward
+    const speed = 2 + Math.random() * 5;
+    dust.push({
+      id: ++particleIdRef.current,
+      x: screenX + (Math.random() - 0.5) * 30,
+      y: screenY,
+      vx: Math.cos(angle) * speed,
+      vy: -Math.abs(Math.sin(angle) * speed) - 1, // always upward
+      life: 0.8 + Math.random() * 0.5,
+      maxLife: 0.8 + Math.random() * 0.5,
+      color: '#c4a882', // dust/sand color
+      size: 5 + Math.random() * 8,
+      type: 'impact',
+    });
+  }
+  // Larger slow-rising dust puffs
+  for (let i = 0; i < 5; i++) {
+    dust.push({
+      id: ++particleIdRef.current,
+      x: screenX + (Math.random() - 0.5) * 50,
+      y: screenY,
+      vx: (Math.random() - 0.5) * 2,
+      vy: -0.5 - Math.random() * 1.5,
+      life: 1.2 + Math.random() * 0.6,
+      maxLife: 1.2 + Math.random() * 0.6,
+      color: '#a89070',
+      size: 14 + Math.random() * 12,
+      type: 'burst',
+    });
+  }
+  return dust;
+}
+
+// ── Per-character bloom burst on hit ─────────────────────────────────────────
+function spawnCharacterBloom(
+  screenX: number,
+  screenY: number,
+  bloomColor: string,
+  damage: number,
+  isCounter: boolean,
+  particleIdRef: React.MutableRefObject<number>,
+): Particle[] {
+  const particles: Particle[] = [];
+  const isHeavy = damage > 150;
+
+  // Core impact sparks — character-colored
+  const sparkCount = isHeavy ? 18 : 10;
+  for (let i = 0; i < sparkCount; i++) {
+    particles.push({
+      id: ++particleIdRef.current,
+      x: screenX, y: screenY,
+      vx: (Math.random() - 0.5) * (isHeavy ? 12 : 7),
+      vy: (Math.random() - 0.5) * (isHeavy ? 12 : 7) - 2,
+      life: 0.5 + Math.random() * 0.4,
+      maxLife: 0.5 + Math.random() * 0.4,
+      color: bloomColor,
+      size: isHeavy ? 4 + Math.random() * 5 : 2 + Math.random() * 3,
+      type: 'impact',
+    });
+  }
+
+  // Bloom ring — character's unique color
+  particles.push({
+    id: ++particleIdRef.current,
+    x: screenX, y: screenY,
+    vx: 0, vy: 0,
+    life: 0.45, maxLife: 0.45,
+    color: bloomColor,
+    size: isHeavy ? 40 : 22,
+    type: 'burst',
+  });
+
+  // Counter hit: extra white flash ring
+  if (isCounter) {
+    particles.push({
+      id: ++particleIdRef.current,
+      x: screenX, y: screenY,
+      vx: 0, vy: 0,
+      life: 0.3, maxLife: 0.3,
+      color: '#ffffff',
+      size: 55,
+      type: 'burst',
+    });
+  }
+
+  // Heavy hit: trailing sparks
+  if (isHeavy) {
+    for (let i = 0; i < 8; i++) {
+      particles.push({
+        id: ++particleIdRef.current,
+        x: screenX + (Math.random() - 0.5) * 20,
+        y: screenY + (Math.random() - 0.5) * 20,
+        vx: (Math.random() - 0.5) * 3,
+        vy: -1 - Math.random() * 2,
+        life: 0.6 + Math.random() * 0.3,
+        maxLife: 0.6 + Math.random() * 0.3,
+        color: bloomColor,
+        size: 3 + Math.random() * 3,
+        type: 'trail',
+      });
+    }
+  }
+
+  return particles;
+}
+
 // ── Main export ───────────────────────────────────────────────────────────────
 export interface CombatArena3DProps {
   p1Fighter: BannonFighterProfile;
@@ -324,6 +447,8 @@ export interface CombatArena3DProps {
   cameraFov?: number;
   announcerEnabled?: boolean;
   damageEvent?: { count: number; player: 'p1' | 'p2'; damage: number; isCounter: boolean; factionColor: string };
+  /** Knockdown event — triggers dust particle burst */
+  knockdownEvent?: { count: number; player: 'p1' | 'p2' };
   /** Stage selection — defaults to 'urban_night' */
   stageId?: StageId;
   /** Animation trigger counters — increment to force re-trigger on repeated same-key attacks */
@@ -358,6 +483,7 @@ export default function CombatArena3D({
   cameraFov = 55,
   announcerEnabled = true,
   damageEvent,
+  knockdownEvent,
   stageId = 'urban_night',
   p1AnimTrigger = 0,
   p2AnimTrigger = 0,
@@ -371,6 +497,7 @@ export default function CombatArena3D({
   const particleIdRef = useRef(0);
   const flashRafRef = useRef<number>(0);
   const prevDamageEventRef = useRef<typeof damageEvent>(undefined);
+  const prevKnockdownEventRef = useRef<typeof knockdownEvent>(undefined);
 
   const { speak } = useAnnouncer(announcerEnabled);
 
@@ -386,6 +513,22 @@ export default function CombatArena3D({
     }
   }, [cinematicPhase, winnerName, speak]);
 
+  // ── Knockdown dust effect ─────────────────────────────────────────────────
+  useEffect(() => {
+    if (!knockdownEvent) return;
+    if (prevKnockdownEventRef.current?.count === knockdownEvent.count) return;
+    prevKnockdownEventRef.current = knockdownEvent;
+
+    const { player } = knockdownEvent;
+    const baseX = player === 'p1' ? 0.3 : 0.7;
+    const screenX = baseX * 800;
+    const screenY = 340; // near floor level
+
+    const dustParticles = spawnKnockdownDust(screenX, screenY, particleIdRef);
+    setParticles(prev => [...prev.slice(-50), ...dustParticles]);
+  }, [knockdownEvent]);
+
+  // ── Per-character bloom on hit ────────────────────────────────────────────
   useEffect(() => {
     if (!damageEvent) return;
     if (prevDamageEventRef.current?.count === damageEvent.count) return;
@@ -396,49 +539,14 @@ export default function CombatArena3D({
     const screenX = baseX * 800 + (Math.random() - 0.5) * 80;
     const screenY = 200 + Math.random() * 120;
 
-    const newParticles: Particle[] = [];
+    // Determine which fighter is the attacker (the one dealing damage)
+    const attackerFighter = player === 'p2' ? p1Fighter : p2Fighter;
+    const bloomColor = getCharacterHitBloom(attackerFighter.id, factionColor);
 
-    for (let i = 0; i < 12; i++) {
-      newParticles.push({
-        id: ++particleIdRef.current,
-        x: screenX, y: screenY,
-        vx: (Math.random() - 0.5) * 8,
-        vy: (Math.random() - 0.5) * 8 - 3,
-        life: 0.6 + Math.random() * 0.4,
-        maxLife: 0.6 + Math.random() * 0.4,
-        color: isCounter ? '#ff6600' : '#ffffff',
-        size: 3 + Math.random() * 4,
-        type: 'impact',
-      });
-    }
+    // Use per-character bloom particles instead of generic white
+    const newParticles = spawnCharacterBloom(screenX, screenY, bloomColor, damage, isCounter, particleIdRef);
 
-    newParticles.push({
-      id: ++particleIdRef.current,
-      x: screenX, y: screenY,
-      vx: 0, vy: 0,
-      life: 0.5, maxLife: 0.5,
-      color: factionColor,
-      size: damage > 300 ? 30 : 18,
-      type: 'burst',
-    });
-
-    if (damage > 200) {
-      for (let i = 0; i < 6; i++) {
-        newParticles.push({
-          id: ++particleIdRef.current,
-          x: screenX + (player === 'p2' ? i * 12 : -i * 12),
-          y: screenY + i * 4,
-          vx: player === 'p2' ? 2 : -2,
-          vy: -1,
-          life: 0.4, maxLife: 0.4,
-          color: factionColor,
-          size: 4 - i * 0.5,
-          type: 'trail',
-        });
-      }
-    }
-
-    setParticles(prev => [...prev.slice(-40), ...newParticles]);
+    setParticles(prev => [...prev.slice(-50), ...newParticles]);
     setScreenFlash(damage > 300 ? 0.8 : 0.4);
     cancelAnimationFrame(flashRafRef.current);
     const fadeFlash = () => {
@@ -451,7 +559,7 @@ export default function CombatArena3D({
     flashRafRef.current = requestAnimationFrame(fadeFlash);
 
     if (isCounter) speak('Counter hit!', 0.75, 1.1);
-  }, [damageEvent, speak]);
+  }, [damageEvent, speak, p1Fighter, p2Fighter]);
 
   useEffect(() => {
     if (particles.length === 0) return;
