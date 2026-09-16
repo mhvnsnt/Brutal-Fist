@@ -316,5 +316,124 @@ setTimeout(() => transitionToIdle(), 500); // hardcoded
 
 ---
 
-*Last updated: Brutal-Fist v7 — GLB normalization + animation binding cycle.*
+### LAW 13 — Synthetic Rig for Bone-Less Models
+
+**The mistake**: AI skips bone-less models entirely or crashes when `report.quality === 'none'`. This leaves characters invisible or broken in the arena.
+
+**The law**:
+- When `AutoRigDetector.analyze()` returns `quality === 'none'` or `totalBones === 0`, call `AutoRigDetector.buildSyntheticRig(clonedScene)` to generate a procedural Mixamo-compatible skeleton from the mesh AABB.
+- The synthetic rig uses standard humanoid proportions (hips at 52% height, head at 90%, etc.) and Mixamo bone names so animation clips can be retargeted.
+- After building the synthetic rig, register the new bones in the clone map so UUID-based mixer binding works.
+- The synthetic rig provides AABB-level hitboxes and basic animation support. For full bone-parented hitboxes, the model should be re-rigged with Mixamo.
+- NEVER skip normalization or mixer creation for bone-less models — always run the full pipeline.
+
+```typescript
+// CORRECT
+if (report.quality === 'none' || report.totalBones === 0) {
+  const syntheticResult = AutoRigDetector.buildSyntheticRig(cloned);
+  // Register synthetic bones in clone map for UUID binding
+  cloned.traverse(obj => {
+    if ((obj as THREE.Bone).isBone && obj.name.startsWith('mixamorig')) {
+      cloneMap.set(obj.name, obj);
+    }
+  });
+}
+
+// WRONG — skipping bone-less models
+if (report.quality === 'none') return null; // ❌ breaks combat
+```
+
+---
+
+### LAW 14 — Animation Alias Coverage Must Include All Source Repos
+
+**The mistake**: AI only maps generic clip names (idle, walk, attack) and misses clips from Schwarzerblitz, Tekken, Bannon, and Mixamo repos. Characters with source-specific clip names appear frozen.
+
+**The law**:
+- `ANIMATION_ALIASES` in `FighterMesh.tsx` MUST include aliases for all four sources:
+  - Schwarzerblitz: `SBW_idle`, `SBW_walk_fwd`, `SBW_lightAttack`, etc.
+  - Tekken: `T_1`, `T_2`, `T_3`, `T_4`, `T_jab`, `T_cross`, `T_1_3`, `T_2_4`, etc.
+  - Bannon: `bf_jab`, `bf_cross`, `bf_elbow`, `bf_walk_fwd`, etc.
+  - Mixamo: `Jab`, `Cross`, `Hook`, `Uppercut`, `Walking`, `Punching`, `Kicking`, etc.
+- `AnimationStateMap.ts` MUST have the same coverage.
+- `MoveLibrary.ts` MUST have separate alias maps for each source (`SBW_ALIASES`, `TEKKEN_ALIASES`, `BANNON_ALIASES`, `MIXAMO_ALIASES`).
+- When adding a new clip source, add it to ALL THREE files simultaneously.
+
+---
+
+### LAW 15 — All Combat States Must Have Frame Data
+
+**The mistake**: AI adds new `FighterMotionState` values but forgets to add them to `DEFAULT_FRAME_DATA` in `MoveLibrary.ts`. This causes TypeScript errors and missing hitbox timing.
+
+**The law**:
+- Every value in the `FighterMotionState` union type MUST have a corresponding entry in `DEFAULT_FRAME_DATA`.
+- When adding a new state, add it to: (1) the union type in `AnimationController.ts`, (2) `DEFAULT_FRAME_DATA` in `MoveLibrary.ts`, (3) `ANIMATION_ALIASES` in `FighterMesh.tsx`, (4) `aliases` in `AnimationStateMap.ts`.
+- States without hitboxes (locomotion, post-match) use `hitboxStartFrame: 0, hitboxEndFrame: 0, damage: 0`.
+
+---
+
+### LAW 16 — Loop vs One-Shot Animation Modes Must Be Set Correctly
+
+**The mistake**: AI sets all animations to `LoopRepeat` or all to `LoopOnce`. Attacks that loop never return to idle; locomotion that plays once freezes after one cycle.
+
+**The law**:
+- **Loop states** (`LoopRepeat, Infinity`): idle, walk, run, crouch, guard, strafe, sidestep, backdash, knockdown (ground hold)
+- **One-shot states** (`LoopOnce, 1` + `clampWhenFinished = true`): all attacks, hit reactions, knockdown fall, wakeup, victory, defeat, taunt, intro, throws
+- Set the loop mode on `nextAction` BEFORE calling `crossFadeTo()` or `play()`.
+- For one-shot attacks, listen to the mixer's `finished` event to transition back to idle.
+
+---
+
+### LAW 17 — Announcer System Must Be Wired to Match State, Not Timers
+
+**The mistake**: AI fires announcer lines on arbitrary timers or in useEffect cleanup functions, causing double-fires, missed calls, or calls during wrong game phases.
+
+**The law**:
+- `AnnouncerSystem` (`src/engine/announcer/AnnouncerSystem.ts`) is the single source of truth for all voice lines.
+- Every announcer line MUST be fired from a specific game state transition, not a generic timer:
+  - `getReady` → pre-match mount (200ms after component mounts)
+  - `round1/2/3` → SWEEP_DURATION_MS + 300ms (intro cinematic start)
+  - `fight` → SWEEP_DURATION_MS + INTRO_DURATION_MS + 600ms (player control unlocked)
+  - `ko` / `doubleKo` → exact frame `engine.isMatchOver()` returns true
+  - `perfect` / `great` → 800ms after KO, based on winner HP percentage
+  - `timeUp` → exact frame `roundTimer` hits 0
+  - `draw` → 1200ms after timeUp or doubleKo
+  - `p1Wins` / `p2Wins` → 2200ms after KO (during victory cinematic)
+  - `kiCharge` → exact frame `isKiChargeInput()` returns true
+- Use `announcerFiredRef` to prevent double-firing per round.
+- Reset `announcerFiredRef` on every new match/rematch.
+
+---
+
+### LAW 18 — Ki Charge Blocks Blocking and Consumes on First Hit
+
+**The mistake**: AI implements Ki Charge as a pure buff without the blocking penalty, or forgets to consume the charge when the attack lands.
+
+**The law**:
+- Ki Charge (`KiChargeSystem.ts`) is triggered by `lp && rp && lk && rk` simultaneously (1+2+3+4).
+- While active: `blockingDisabled = true` — the fighter CANNOT block. Guard input is ignored.
+- On hit: `nextAttackIsCounter = true` — apply `applyKiChargeCounterHit()` (1.25x damage).
+- On blocked hit: apply `chipDamageMultiplier` (15%) instead of full guard reduction.
+- Charge is consumed (reset to `createKiChargeState()`) the moment the first attack lands.
+- Charge expires after 120 frames (2 seconds) if no attack lands.
+- `p2IsBlocking` check in `GameBattleArena.tsx` MUST check `!p2KiChargeRef.current.blockingDisabled`.
+
+---
+
+### LAW 19 — Combat State Tick Must Be Decoupled from R3F Render Loop
+
+**The mistake**: AI puts hit math, health updates, and position calculations inside `useFrame()` or the R3F Canvas render loop. Frame drops on mobile break combat math.
+
+**The law**:
+- `CombatStateTick.ts` contains the pure combat state machine (health, stun, airborne, Ki Charge).
+- `tickCombatState()` is a pure function — no Three.js references, no side effects.
+- The R3F Canvas (`CombatArena3D.tsx`) ONLY reads state from refs — it NEVER writes to combat state.
+- `GameBattleArena.tsx` runs the combat tick in `requestAnimationFrame` at fixed 60fps, separate from R3F.
+- Juggle gravity uses exponential fall acceleration (`JUGGLE_GRAVITY_EXPONENT = 1.08`) — not linear.
+- Z-axis sidestep whiff: if `|attackerZ - defenderZ| >= SIDESTEP_WHIFF_THRESHOLD (0.6)`, linear attacks miss.
+- Block stun is shorter than hit stun — defender recovers before attacker on most normals.
+
+---
+
+*Last updated: Brutal-Fist v9 — Announcer system + Ki Charge + decoupled combat tick + juggle gravity + sidestep whiff.*
 *These laws are derived from real recurring failures observed across multiple AI agent sessions.*

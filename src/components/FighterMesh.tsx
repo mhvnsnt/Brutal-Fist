@@ -62,45 +62,79 @@ export interface FighterMeshProps {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Animation alias table — maps FighterStateMachine states → GLB clip names
+// Sources: Schwarzerblitz engine, mhvnsnt/BrutalfistbaseofTekken3Recompiled,
+//          mhvnsnt/Bannon, Mixamo standard names, Blender defaults
 // ─────────────────────────────────────────────────────────────────────────────
 const ANIMATION_ALIASES: Record<string, string[]> = {
-  idle:              ['idle', 'Idle', 'neutral', 'Neutral', 'standing', 'Standing', 'bind', 'T-pose', 'TPose', 'tpose', 'rest', 'Rest'],
-  Neutral:           ['idle', 'Idle', 'neutral', 'Neutral', 'standing', 'Standing'],
-  walk:              ['walk', 'Walk', 'walking', 'Walking', 'run', 'Run'],
-  Walking:           ['walk', 'Walk', 'walking', 'Walking', 'run', 'Run'],
-  walkForward:       ['walkForward', 'WalkForward', 'walk', 'Walk', 'walking', 'Walking', 'forward', 'Forward', 'run', 'Run'],
-  walkBackward:      ['walkBack', 'WalkBack', 'walkBackward', 'WalkBackward', 'walk', 'Walk', 'backward', 'Backward'],
-  strafeLeft:        ['strafeLeft', 'StrafeLeft', 'walk', 'Walk'],
-  strafeRight:       ['strafeRight', 'StrafeRight', 'walk', 'Walk'],
-  // Backdash maps to walkBackward clip — fastest available retreat animation
-  Backdashing:       ['backdash', 'Backdash', 'backDash', 'BackDash', 'walkBack', 'WalkBack', 'walkBackward', 'WalkBackward', 'walk', 'Walk'],
-  light:             ['light', 'Light', 'punch', 'Punch', 'attack', 'Attack', 'jab', 'Jab', 'lightAttack', 'LightAttack'],
-  lightAttack:       ['lightAttack', 'LightAttack', 'light', 'Light', 'punch', 'Punch', 'jab', 'Jab', 'attack', 'Attack', 'hit', 'Hit', 'strike', 'Strike'],
+  // ── Idle / Neutral ──────────────────────────────────────────────────────────
+  idle:              ['idle', 'Idle', 'neutral', 'Neutral', 'standing', 'Standing', 'stance', 'Stance', 'bind', 'T-pose', 'TPose', 'tpose', 'rest', 'Rest', 'combatIdle', 'CombatIdle', 'fightingStance', 'FightingStance', 'readyStance', 'ReadyStance'],
+  Neutral:           ['idle', 'Idle', 'neutral', 'Neutral', 'standing', 'Standing', 'stance', 'Stance'],
+  // ── Walk Forward ────────────────────────────────────────────────────────────
+  walk:              ['walk', 'Walk', 'walking', 'Walking', 'run', 'Run', 'walkForward', 'WalkForward', 'walk_fwd', 'SBW_walk_fwd', 'T_walk_fwd', 'bf_walk_fwd'],
+  Walking:           ['walk', 'Walk', 'walking', 'Walking', 'run', 'Run', 'walkForward', 'WalkForward'],
+  walkForward:       ['walkForward', 'WalkForward', 'walk', 'Walk', 'walking', 'Walking', 'forward', 'Forward', 'run', 'Run', 'walk_fwd', 'walk_forward', 'SBW_walk_fwd', 'T_walk_fwd', 'bf_walk_fwd', 'advance', 'approach', 'movingForward'],
+  // ── Walk Backward ───────────────────────────────────────────────────────────
+  walkBackward:      ['walkBack', 'WalkBack', 'walkBackward', 'WalkBackward', 'walk', 'Walk', 'backward', 'Backward', 'retreat', 'Retreat', 'walk_back', 'walk_bwd', 'SBW_walk_back', 'T_walk_back', 'bf_walk_back', 'movingBackward'],
+  // ── Strafe ──────────────────────────────────────────────────────────────────
+  strafeLeft:        ['strafeLeft', 'StrafeLeft', 'sidestepLeft', 'SidestepLeft', 'walk', 'Walk', 'moveLeft', 'MoveLeft', 'stepLeft', 'StepLeft', 'SBW_strafe_left', 'T_sidestep_left'],
+  strafeRight:       ['strafeRight', 'StrafeRight', 'sidestepRight', 'SidestepRight', 'walk', 'Walk', 'moveRight', 'MoveRight', 'stepRight', 'StepRight', 'SBW_strafe_right', 'T_sidestep_right'],
+  sidestepLeft:      ['sidestepLeft', 'SidestepLeft', 'strafeLeft', 'StrafeLeft', 'T_sidestep_left', 'T_ssl'],
+  sidestepRight:     ['sidestepRight', 'SidestepRight', 'strafeRight', 'StrafeRight', 'T_sidestep_right', 'T_ssr'],
+  // ── Backdash ────────────────────────────────────────────────────────────────
+  Backdashing:       ['backdash', 'Backdash', 'backDash', 'BackDash', 'walkBack', 'WalkBack', 'walkBackward', 'WalkBackward', 'walk', 'Walk', 'backstep', 'Backstep', 'quickRetreat', 'QuickRetreat', 'SBW_backdash', 'T_backdash'],
+  // ── Crouch ──────────────────────────────────────────────────────────────────
+  crouch:            ['crouch', 'Crouch', 'duck', 'Duck', 'lowStance', 'LowStance', 'crouching', 'Crouching', 'crouchStance', 'CrouchStance', 'lowGuard', 'LowGuard', 'SBW_crouch', 'T_crouch', 'bf_crouch'],
+  crouchWalk:        ['crouchWalk', 'CrouchWalk', 'crouchForward', 'CrouchForward', 'crouch', 'Crouch'],
+  // ── Guard / Block ───────────────────────────────────────────────────────────
+  guard:             ['guard', 'Guard', 'block', 'Block', 'defend', 'Defend', 'parry', 'Parry', 'blocking', 'Blocking', 'highBlock', 'HighBlock', 'standingBlock', 'StandingBlock', 'SBW_guard', 'T_guard', 'bf_guard'],
+  Guard:             ['guard', 'Guard', 'block', 'Block', 'defend', 'Defend'],
+  Blockstun:         ['block', 'Block', 'guard', 'Guard', 'blockstun', 'Blockstun'],
+  guardLow:          ['guardLow', 'GuardLow', 'lowBlock', 'LowBlock', 'crouchBlock', 'CrouchBlock', 'guard', 'Guard', 'block', 'Block'],
+  // ── Light Attack ────────────────────────────────────────────────────────────
+  light:             ['light', 'Light', 'punch', 'Punch', 'attack', 'Attack', 'jab', 'Jab', 'lightAttack', 'LightAttack', 'LP', 'lp'],
+  lightAttack:       ['lightAttack', 'LightAttack', 'light', 'Light', 'punch', 'Punch', 'jab', 'Jab', 'attack', 'Attack', 'hit', 'Hit', 'strike', 'Strike', 'quickPunch', 'QuickPunch', 'punch1', 'Punch1', 'LP', 'lp', 'SBW_lightAttack', 'SBW_jab', 'T_jab', 'T_1', 'bf_jab', 'bf_chop', 'punchingLeft', 'punchingRight'],
+  Startup:           ['lightAttack', 'LightAttack', 'attack', 'Attack', 'punch', 'Punch', 'jab', 'Jab'],
+  Active:            ['lightAttack', 'LightAttack', 'attack', 'Attack', 'punch', 'Punch', 'kick', 'Kick'],
+  crouchLightAttack: ['crouchLightAttack', 'CrouchLightAttack', 'crouchPunch', 'CrouchPunch', 'lowPunch', 'LowPunch', 'lightAttack', 'LightAttack', 'jab', 'Jab'],
+  // ── Heavy Attack ────────────────────────────────────────────────────────────
   heavy:             ['heavy', 'Heavy', 'strong', 'Strong', 'heavyAttack', 'HeavyAttack', 'cross', 'Cross'],
-  heavyAttack:       ['heavyAttack', 'HeavyAttack', 'heavy', 'Heavy', 'strong', 'Strong', 'cross', 'Cross', 'kick', 'Kick', 'attack', 'Attack', 'strike', 'Strike'],
-  guard:             ['guard', 'Guard', 'block', 'Block', 'defend', 'Defend'],
-  block:             ['block', 'Block', 'guard', 'Guard'],
-  Blockstun:         ['block', 'Block', 'guard', 'Guard'],
-  hit:               ['hit', 'Hit', 'hurt', 'Hurt', 'flinch', 'Flinch', 'hitstun', 'Hitstun', 'damage', 'Damage', 'react', 'React'],
-  Hitstun:           ['hit', 'Hit', 'hurt', 'Hurt', 'flinch', 'Flinch', 'damage', 'Damage'],
+  heavyAttack:       ['heavyAttack', 'HeavyAttack', 'heavy', 'Heavy', 'strong', 'Strong', 'cross', 'Cross', 'kick', 'Kick', 'attack', 'Attack', 'strike', 'Strike', 'hook', 'Hook', 'uppercut', 'Uppercut', 'roundhouse', 'Roundhouse', 'highKick', 'HighKick', 'spinningKick', 'SpinningKick', 'RP', 'rp', 'LK', 'lk', 'RK', 'rk', 'SBW_heavyAttack', 'SBW_cross', 'T_cross', 'T_2', 'T_3', 'T_4', 'bf_cross', 'bf_elbow', 'bf_uppercut', 'kickingLeft', 'kickingRight', 'kickingForward'],
+  crouchHeavyAttack: ['crouchHeavyAttack', 'CrouchHeavyAttack', 'crouchKick', 'CrouchKick', 'lowKick', 'LowKick', 'heavyAttack', 'HeavyAttack', 'kick', 'Kick'],
+  jumpAttack:        ['jumpAttack', 'JumpAttack', 'airAttack', 'AirAttack', 'jumpingPunch', 'JumpingPunch', 'heavyAttack', 'HeavyAttack'],
+  runAttack:         ['runAttack', 'RunAttack', 'dashAttack', 'DashAttack', 'runningAttack', 'RunningAttack', 'heavyAttack', 'HeavyAttack'],
+  // ── Tekken Specials ─────────────────────────────────────────────────────────
+  heatBurst:         ['heatBurst', 'HeatBurst', 'heat_burst', 'Heat_Burst', 'heavyAttack', 'HeavyAttack', 'special', 'Special'],
+  rageArt:           ['rageArt', 'RageArt', 'rage_art', 'Rage_Art', 'finisher', 'Finisher', 'heavyAttack', 'HeavyAttack'],
+  powerCrush:        ['powerCrush', 'PowerCrush', 'power_crush', 'armorMove', 'ArmorMove', 'heavyAttack', 'HeavyAttack'],
+  // ── Command Throw ───────────────────────────────────────────────────────────
+  CommandThrow:      ['heavyAttack', 'HeavyAttack', 'heavy', 'Heavy', 'grab', 'Grab', 'throw', 'Throw', 'grapple', 'Grapple', 'suplex', 'Suplex', 'slam', 'Slam', 'SBW_throw', 'T_1_3', 'T_2_4', 'bf_grab', 'bf_beastMode'],
+  ThrowWhiff:        ['idle', 'Idle', 'neutral', 'Neutral'],
+  // ── Hit Reactions ───────────────────────────────────────────────────────────
+  hit:               ['hit', 'Hit', 'hurt', 'Hurt', 'flinch', 'Flinch', 'hitstun', 'Hitstun', 'damage', 'Damage', 'react', 'React', 'stagger', 'Stagger', 'recoil', 'Recoil', 'SBW_hit', 'T_hit', 'bf_hit_reaction', 'gettingHit', 'hitImpact'],
+  Hitstun:           ['hit', 'Hit', 'hurt', 'Hurt', 'flinch', 'Flinch', 'damage', 'Damage', 'hitstun', 'Hitstun'],
   HitStun:           ['hit', 'Hit', 'hurt', 'Hurt', 'flinch', 'Flinch', 'damage', 'Damage'],
   Stunned:           ['hit', 'Hit', 'hurt', 'Hurt', 'flinch', 'Flinch', 'damage', 'Damage'],
-  knockdown:         ['knockdown', 'Knockdown', 'ko', 'KO', 'knockout', 'Knockout', 'death', 'Death', 'fall', 'Fall', 'down', 'Down'],
+  hitLow:            ['hitLow', 'HitLow', 'lowHit', 'LowHit', 'hit', 'Hit', 'hurt', 'Hurt'],
+  hitHigh:           ['hitHigh', 'HitHigh', 'highHit', 'HighHit', 'hit', 'Hit', 'hurt', 'Hurt'],
+  // ── Knockdown ───────────────────────────────────────────────────────────────
+  knockdown:         ['knockdown', 'Knockdown', 'ko', 'KO', 'knockout', 'Knockout', 'death', 'Death', 'fall', 'Fall', 'down', 'Down', 'fallingBack', 'FallingBack', 'fallingForward', 'FallingForward', 'knockedDown', 'KnockedDown', 'SBW_knockdown', 'T_knockdown', 'bf_knockdown', 'bf_hard_knockdown'],
   Knockdown:         ['knockdown', 'Knockdown', 'ko', 'KO', 'fall', 'Fall', 'down', 'Down'],
   ko:                ['ko', 'KO', 'knockout', 'Knockout', 'death', 'Death', 'fall', 'Fall', 'knockdown', 'Knockdown'],
   KO:                ['ko', 'KO', 'knockout', 'Knockout', 'death', 'Death', 'fall', 'Fall', 'knockdown', 'Knockdown'],
-  Crumple:           ['ko', 'KO', 'knockdown', 'Knockdown', 'fall', 'Fall', 'death', 'Death'],
-  Startup:           ['lightAttack', 'LightAttack', 'attack', 'Attack', 'punch', 'Punch', 'jab', 'Jab'],
-  Active:            ['lightAttack', 'LightAttack', 'attack', 'Attack', 'punch', 'Punch', 'kick', 'Kick'],
-  // Wakeup states — map to available locomotion clips
-  WakeupTechRoll:    ['techRoll', 'TechRoll', 'roll', 'Roll', 'walkForward', 'WalkForward', 'walk', 'Walk'],
-  WakeupBackrise:    ['backrise', 'Backrise', 'getUp', 'GetUp', 'walkBackward', 'WalkBackward', 'walk', 'Walk'],
-  WakeupQuickStand:  ['quickStand', 'QuickStand', 'getUp', 'GetUp', 'idle', 'Idle', 'standing', 'Standing'],
-  // Guard state
-  Guard:             ['guard', 'Guard', 'block', 'Block', 'defend', 'Defend'],
-  // CommandThrow / ThrowWhiff
-  CommandThrow:      ['heavyAttack', 'HeavyAttack', 'heavy', 'Heavy', 'grab', 'Grab', 'throw', 'Throw'],
-  ThrowWhiff:        ['idle', 'Idle', 'neutral', 'Neutral'],
+  Crumple:           ['ko', 'KO', 'knockdown', 'Knockdown', 'fall', 'Fall', 'death', 'Death', 'crumple', 'Crumple'],
+  // ── Wakeup ──────────────────────────────────────────────────────────────────
+  WakeupTechRoll:    ['techRoll', 'TechRoll', 'roll', 'Roll', 'rollForward', 'RollForward', 'forwardRoll', 'ForwardRoll', 'walkForward', 'WalkForward', 'walk', 'Walk', 'SBW_techroll', 'T_techroll'],
+  WakeupBackrise:    ['backrise', 'Backrise', 'getUp', 'GetUp', 'rollBack', 'RollBack', 'walkBackward', 'WalkBackward', 'walk', 'Walk', 'T_backrise'],
+  WakeupQuickStand:  ['quickStand', 'QuickStand', 'getUp', 'GetUp', 'gettingUp', 'GettingUp', 'idle', 'Idle', 'standing', 'Standing', 'T_quickstand'],
+  // ── Post-match ──────────────────────────────────────────────────────────────
+  victory:           ['victory', 'Victory', 'win', 'Win', 'celebrate', 'Celebrate', 'taunt_win', 'TauntWin', 'victoryPose', 'VictoryPose', 'winPose', 'WinPose'],
+  defeat:            ['defeat', 'Defeat', 'lose', 'Lose', 'knockdown', 'Knockdown', 'ko', 'KO', 'fall', 'Fall'],
+  taunt:             ['taunt', 'Taunt', 'idle', 'Idle', 'victory', 'Victory'],
+  intro:             ['intro', 'Intro', 'entrance', 'Entrance', 'idle', 'Idle'],
+  // ── Run / Dash ──────────────────────────────────────────────────────────────
+  run:               ['run', 'Run', 'running', 'Running', 'sprint', 'Sprint', 'dash', 'Dash', 'walkForward', 'WalkForward', 'walk', 'Walk'],
+  dash:              ['dash', 'Dash', 'dashForward', 'DashForward', 'run', 'Run', 'walkForward', 'WalkForward'],
+  dashForward:       ['dashForward', 'DashForward', 'dash', 'Dash', 'run', 'Run', 'walkForward', 'WalkForward'],
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -320,6 +354,8 @@ interface NormalizedResult {
 //   7. Create AnimationMixer on the CLONED scene (not the outer group)
 //      so clips drive the actual visible mesh bones
 //   8. Retarget animation clips from original scene to cloned scene
+//   9. If model has NO bones (quality='none'), build a synthetic rig from AABB
+//      so hitboxes and basic animation still work
 //
 // NEVER use per-character manual Y offsets.
 // NEVER hardcode rotation corrections per character.
@@ -336,6 +372,17 @@ function normalizeGLB(
   // Step 1: Normalize root bone to floor BEFORE Box3 (fixes skeleton-offset models)
   if (!report.hasRootAtFloor) {
     AutoRigDetector.normalizeRootToFloor(cloned);
+  }
+
+  // Step 1b: If no rig at all, build a synthetic skeleton from the mesh AABB
+  // AGENT LAW: Bone-less models get a procedural Mixamo-compatible skeleton
+  // so animation clips can be retargeted and hitboxes still work.
+  if (report.quality === 'none' || report.totalBones === 0) {
+    const syntheticResult = AutoRigDetector.buildSyntheticRig(cloned);
+    console.log(
+      `[FighterMesh] 🦴 Synthetic rig applied to "${gltfUrl.split('/').pop()}" — ` +
+      `${syntheticResult.bones.size} bones generated`
+    );
   }
 
   // Step 2: Compute bounding box on raw clone
@@ -444,6 +491,17 @@ function normalizeGLB(
     const retargetedClip = new THREE.AnimationClip(clip.name, clip.duration, retargetedTracks);
     const action = mixer.clipAction(retargetedClip);
     actions[clip.name] = action;
+  }
+
+  // Step 12: For synthetic-rigged models, also try to bind synthetic bone actions
+  // so the procedural skeleton can be driven by retargeted Mixamo clips
+  if (report.quality === 'none' || report.totalBones === 0) {
+    cloned.traverse((obj) => {
+      if ((obj as THREE.Bone).isBone && obj.name.startsWith('mixamorig')) {
+        // Register synthetic bones in the clone map so future clip retargeting works
+        cloneMap.set(obj.name, obj);
+      }
+    });
   }
 
   console.log(

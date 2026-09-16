@@ -37,6 +37,28 @@ import { InputStringRecorder } from './InputStringRecorder';
 // ── Locomotion + bone hitbox systems ─────────────────────────────────────────
 import { LocomotionSystem, ATTACK_ROOT_MOTION_PROFILES } from '../engine/locomotion/LocomotionSystem';
 import { BoneHitboxSystem, HIT_STOP_DURATIONS, HIT_STOP_DEFAULT_MS } from '../engine/locomotion/BoneHitboxSystem';
+// ── Announcer system ──────────────────────────────────────────────────────────
+import { getAnnouncerSystem } from '../engine/announcer/AnnouncerSystem';
+// ── Ki Charge system ──────────────────────────────────────────────────────────
+import { createKiChargeState, tickKiCharge, applyKiChargeCounterHit, type KiChargeState,  } from '../engine/combat/KiChargeSystem';
+// ── Decoupled combat state tick ───────────────────────────────────────────────
+import { createCombatMatchState, tickCombatState, checkSidestepWhiff, type CombatMatchState,  } from '../engine/combat/CombatStateTick';
+// ── Wall system ───────────────────────────────────────────────────────────────
+// ── Stage config & arena state ────────────────────────────────────────────────
+import {
+  resolveStageConfig,
+  createArenaCombatState,
+  tickArenaState,
+  type ArenaCombatState,
+} from '../engine/combat/StageConfig';
+// ── Heat Burst / Power Crush / Rage Art ──────────────────────────────────────
+import { type HeatState, type PowerCrushState, type RageArtState,  } from '../engine/combat/HeatBurstSystem';
+// ── Directional throw system ──────────────────────────────────────────────────
+import { checkThrowRange, detectThrowInput, getThrowDamage, THROW_CATALOG,  } from '../engine/combat/DirectionalThrowSystem';
+// ── Global Audio Manager ──────────────────────────────────────────────────────
+import { getGlobalAudioManager } from '../engine/audio/GlobalAudioManager';
+// ── Hit Effect System ─────────────────────────────────────────────────────────
+import { type HitEffectPool } from '../engine/combat/HitEffectSystem';
 
 // ── 3D combat arena — loaded client-side only ─────────────────────────────────
 const CombatArena3D = dynamic(() => import('./CombatArena3D'), {
@@ -153,6 +175,45 @@ export default function GameBattleArena({
   const hitStopTimerRef = useRef<number>(0);
   const hitStopActiveRef = useRef<boolean>(false);
 
+  // ── Ki Charge state (one per fighter) ────────────────────────────────────
+  const [p1KiCharge, setP1KiCharge] = useState<KiChargeState>(createKiChargeState());
+  const [p2KiCharge, setP2KiCharge] = useState<KiChargeState>(createKiChargeState());
+  const p1KiChargeRef = useRef<KiChargeState>(createKiChargeState());
+  const p2KiChargeRef = useRef<KiChargeState>(createKiChargeState());
+
+  // ── Decoupled combat state (Night Sky Engine pattern) ────────────────────
+  const combatStateRef = useRef<CombatMatchState>(
+    createCombatMatchState(p1Fighter.hp, p2Fighter.hp)
+  );
+
+  // ── Arena combat state — wiped and rebuilt on every stage load ────────────
+  const arenaCombatStateRef = useRef<ArenaCombatState>(createArenaCombatState(stageId));
+  const [arenaState, setArenaState] = useState<ArenaCombatState>(() => createArenaCombatState(stageId));
+  const [ringOutNotice, setRingOutNotice] = useState<{ player: 'p1' | 'p2'; count: number } | null>(null);
+  const ringOutNoticeCountRef = useRef(0);
+  const [floorBreakNotice, setFloorBreakNotice] = useState<{ player: 'p1' | 'p2'; level: string; count: number } | null>(null);
+  const floorBreakNoticeCountRef = useRef(0);
+  const [hazardNotice, setHazardNotice] = useState<string>('');
+
+  // ── Announcer system ──────────────────────────────────────────────────────
+  const announcerRef = useRef(getAnnouncerSystem({
+    p1Name: p1Fighter.name,
+    p2Name: p2Fighter.name,
+    enabled: settings.soundEnabled,
+  }));
+
+  // Track announcer state to avoid double-firing
+  const announcerFiredRef = useRef({
+    getReady: false,
+    round: false,
+    fight: false,
+    ko: false,
+  });
+
+  // ── Z-axis sidestep state ─────────────────────────────────────────────────
+  const p1SidestepZRef = useRef(0);
+  const p2SidestepZRef = useRef(0);
+
   // ── Special move notification state ──────────────────────────────────────
   const [specialMoveNotice, setSpecialMoveNotice] = useState<{
     name: string; player: 'p1' | 'p2'; id: number;
@@ -214,6 +275,38 @@ export default function GameBattleArena({
   } | undefined>(undefined);
   const damageEventCountRef = useRef(0);
 
+  // ── Wall-splat event state ────────────────────────────────────────────────
+  const [wallSplatEvent, setWallSplatEvent] = useState<{
+    count: number; player: 'p1' | 'p2'; wall: 'left' | 'right';
+  } | undefined>(undefined);
+  const wallSplatEventCountRef = useRef(0);
+
+  // ── Heat Burst event state ────────────────────────────────────────────────
+  const [heatBurstEvent, setHeatBurstEvent] = useState<{
+    count: number; player: 'p1' | 'p2';
+  } | undefined>(undefined);
+  const heatBurstEventCountRef = useRef(0);
+
+  // ── Rage Art event state ──────────────────────────────────────────────────
+  const [rageArtEvent, setRageArtEvent] = useState<{
+    count: number; player: 'p1' | 'p2';
+  } | undefined>(undefined);
+  const rageArtEventCountRef = useRef(0);
+
+  // ── Camera shake offset from hit effect system ────────────────────────────
+  const [cameraShakeOffset, setCameraShakeOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+
+  // ── Heat / Power Crush / Rage Art HUD state ───────────────────────────────
+  const [p1HeatActive, setP1HeatActive] = useState(false);
+  const [p2HeatActive, setP2HeatActive] = useState(false);
+  const [p1RageArtAvailable, setP1RageArtAvailable] = useState(false);
+  const [p2RageArtAvailable, setP2RageArtAvailable] = useState(false);
+  const [p1PowerCrushActive, setP1PowerCrushActive] = useState(false);
+  const [p2PowerCrushActive, setP2PowerCrushActive] = useState(false);
+
+  // ── Global Audio Manager ──────────────────────────────────────────────────
+  const audioManagerRef = useRef(getGlobalAudioManager());
+
   // Build engine
   useEffect(() => {
     const p1MoveSet = getCharacterMoveSet(p1Fighter.id);
@@ -265,6 +358,21 @@ export default function GameBattleArena({
     p1ImpactMarkersRef.current = [];
     p2ImpactMarkersRef.current = [];
 
+    // ── Wipe and rebuild arena combat state for this stage ─────────────────
+    const freshArenaState = createArenaCombatState(stageId);
+    arenaCombatStateRef.current = freshArenaState;
+    setArenaState(freshArenaState);
+    setRingOutNotice(null);
+    setFloorBreakNotice(null);
+    setHazardNotice(freshArenaState.config.hazardLabel);
+
+    // ── Init Global Audio Manager ──────────────────────────────────────────
+    const audioManager = audioManagerRef.current;
+    audioManager.init({ enabled: settings.soundEnabled }).then(() => {
+      // Play character select BGM during sweep/intro
+      audioManager.playBGM('character_select', 800);
+    });
+
     // ── Cinematic sequence: sweep → intro → fight ──────────────────────────────
     setCinematicPhase('sweep');
     setArenaReady(false);
@@ -276,11 +384,16 @@ export default function GameBattleArena({
 
     const t1 = window.setTimeout(() => {
       setCinematicPhase('intro');
+      // Preload combat audio during VS/intro screen
+      audioManager.preloadCombatAudio(stageId);
     }, SWEEP_DURATION_MS);
 
     const t2 = window.setTimeout(() => {
       setCinematicPhase('fight');
       setArenaReady(true);
+      // Crossfade to stage BGM — use stage config track key
+      const stageCfg = resolveStageConfig(stageId);
+      audioManager.playBGM(`stage_${stageCfg.bgmTrack}`, 1200);
     }, SWEEP_DURATION_MS + INTRO_DURATION_MS);
 
     return () => {
@@ -289,6 +402,7 @@ export default function GameBattleArena({
       window.clearTimeout(t2);
       window.clearTimeout(tRecord);
       stopRecording();
+      audioManager.stopBGM(500);
     };
   }, [p1Fighter, p2Fighter]);
 
@@ -301,6 +415,45 @@ export default function GameBattleArena({
     }, SWEEP_DURATION_MS + INTRO_DURATION_MS + 300);
     return () => window.clearTimeout(t);
   }, [sfx, settings.soundEnabled]);
+
+  // ── Announcer: fire "Get Ready" on mount, "Round X" on intro, "Fight!" on fight ──
+  useEffect(() => {
+    const announcer = announcerRef.current;
+    announcer.updateConfig({ enabled: settings.soundEnabled, p1Name: p1Fighter.name, p2Name: p2Fighter.name });
+
+    // Reset fired flags on new match
+    announcerFiredRef.current = { getReady: false, round: false, fight: false, ko: false };
+
+    // "Get ready for the next battle." — fires immediately on VS/loading screen
+    const tGetReady = window.setTimeout(() => {
+      if (!announcerFiredRef.current.getReady) {
+        announcerFiredRef.current.getReady = true;
+        announcer.fire('getReady');
+      }
+    }, 200);
+
+    // "Round 1!" — fires when intro cinematic starts
+    const tRound = window.setTimeout(() => {
+      if (!announcerFiredRef.current.round) {
+        announcerFiredRef.current.round = true;
+        announcer.fire('round1');
+      }
+    }, SWEEP_DURATION_MS + 300);
+
+    // "Fight!" — fires when player control is unlocked
+    const tFight = window.setTimeout(() => {
+      if (!announcerFiredRef.current.fight) {
+        announcerFiredRef.current.fight = true;
+        announcer.fire('fight');
+      }
+    }, SWEEP_DURATION_MS + INTRO_DURATION_MS + 600);
+
+    return () => {
+      window.clearTimeout(tGetReady);
+      window.clearTimeout(tRound);
+      window.clearTimeout(tFight);
+    };
+  }, [p1Fighter, p2Fighter, settings.soundEnabled]);
 
   const prevP1StateRef = useRef<string>('Neutral');
   const prevP2StateRef = useRef<string>('Neutral');
@@ -355,6 +508,87 @@ export default function GameBattleArena({
         leftThrow: (bitmask as any).leftThrow ?? false,
         rightThrow: (bitmask as any).rightThrow ?? false,
       };
+
+      // ── Ki Charge detection (1+2+3+4 = all four limbs) ────────────────
+      const p1KiInput = {
+        lp: smInput.lp, rp: smInput.rp, lk: smInput.lk, rk: smInput.rk,
+      };
+      const prevP1KiActive = p1KiChargeRef.current.active;
+      const newP1KiCharge = tickKiCharge(
+        p1KiChargeRef.current,
+        p1KiInput,
+        false, // attackLanded resolved below
+        dt,
+      );
+      if (!prevP1KiActive && newP1KiCharge.active) {
+        // Just activated Ki Charge — fire announcer
+        announcerRef.current.fire('kiCharge');
+        setSpecialMoveNotice({ name: 'Ki Charge!', player: 'p1', id: ++specialNoticeIdRef.current });
+        setTimeout(() => setSpecialMoveNotice(null), 2000);
+        console.log('[Arena] ⚡ P1 Ki Charge activated');
+      }
+      p1KiChargeRef.current = newP1KiCharge;
+      setP1KiCharge({ ...newP1KiCharge });
+
+      // ── Tick decoupled combat state (Night Sky Engine pattern) ─────────
+      combatStateRef.current = tickCombatState(
+        combatStateRef.current,
+        p1KiInput,
+        {},
+        dt,
+      );
+
+      // ── Tick arena combat state (stage boundaries, ring-out, floor-break, hazard) ──
+      const p1X = p1XRef.current;
+      const p2X = p2XRef.current;
+      const prevArena = arenaCombatStateRef.current;
+      const newArena = tickArenaState(
+        prevArena,
+        p1X,
+        p2X,
+        0, // hit damage passed per-hit below
+        0,
+        false,
+        false,
+      );
+      arenaCombatStateRef.current = newArena;
+
+      // Ring-out KO detection
+      if (newArena.p1RingOut && !prevArena.p1RingOut) {
+        setRingOutNotice({ player: 'p1', count: ++ringOutNoticeCountRef.current });
+        // Treat ring-out as instant KO for P1
+        setP1Health(0);
+      }
+      if (newArena.p2RingOut && !prevArena.p2RingOut) {
+        setRingOutNotice({ player: 'p2', count: ++ringOutNoticeCountRef.current });
+        setP2Health(0);
+      }
+
+      // Floor-break notification
+      if (newArena.p1FloorBreakPending && !prevArena.p1FloorBreakPending) {
+        const lvl = newArena.config.levels[newArena.p1LevelIndex];
+        setFloorBreakNotice({ player: 'p1', level: lvl?.label ?? 'LOWER LEVEL', count: ++floorBreakNoticeCountRef.current });
+        arenaCombatStateRef.current = { ...newArena, p1FloorBreakPending: false };
+      }
+      if (newArena.p2FloorBreakPending && !prevArena.p2FloorBreakPending) {
+        const lvl = newArena.config.levels[newArena.p2LevelIndex];
+        setFloorBreakNotice({ player: 'p2', level: lvl?.label ?? 'LOWER LEVEL', count: ++floorBreakNoticeCountRef.current });
+        arenaCombatStateRef.current = { ...newArena, p2FloorBreakPending: false };
+      }
+
+      // Hazard damage (applied per second)
+      if (newArena.p1InHazard) {
+        const hazardDmg = newArena.config.levels[newArena.p1LevelIndex]?.hazardDamagePerSec ?? 0;
+        if (hazardDmg > 0) {
+          setP1Health(h => Math.max(0, h - hazardDmg * dt));
+        }
+      }
+      if (newArena.p2InHazard) {
+        const hazardDmg = newArena.config.levels[newArena.p2LevelIndex]?.hazardDamagePerSec ?? 0;
+        if (hazardDmg > 0) {
+          setP2Health(h => Math.max(0, h - hazardDmg * dt));
+        }
+      }
 
       // ── Update rage art availability based on P1 HP ────────────────────
       const p1HpPct = prevP1HealthRef.current / p1Fighter.hp;
@@ -417,13 +651,83 @@ export default function GameBattleArena({
             id: ++specialNoticeIdRef.current,
           });
           setTimeout(() => setSpecialMoveNotice(null), 1800);
+
+          // ── Heat Burst activation ─────────────────────────────────────
+          if (move.specialName === 'Heat Burst') {
+            const audioMgrHeat = audioManagerRef.current;
+            audioMgrHeat.playSFX('heat_burst_activate');
+            audioMgrHeat.playVOX('heat_burst_yell');
+            setHeatBurstEvent({ count: ++heatBurstEventCountRef.current, player: 'p1' });
+            setP1HeatActive(true);
+            // Heat expires after ~5 seconds
+            setTimeout(() => setP1HeatActive(false), 5000);
+          }
+
+          // ── Rage Art activation ───────────────────────────────────────
+          if (move.specialName === 'Rage Art') {
+            const audioMgrRage = audioManagerRef.current;
+            audioMgrRage.playSFX('rage_art_activate');
+            audioMgrRage.playVOX('rage_art_yell');
+            audioMgrRage.playAnnouncer('ki_charge'); // announcer reacts to Rage Art
+            setRageArtEvent({ count: ++rageArtEventCountRef.current, player: 'p1' });
+            setP1RageArtAvailable(false);
+          }
         }
       }
 
+      // ── Directional throw input detection ─────────────────────────────
+      const throwInput = {
+        lp: smInput.lp ?? false,
+        rp: smInput.rp ?? false,
+        lk: smInput.lk ?? false,
+        rk: smInput.rk ?? false,
+        forward: smInput.forward > 0,
+        backward: smInput.forward < 0,
+      };
+      const detectedThrowId = detectThrowInput(throwInput);
+      if (detectedThrowId && p1SM.action === 'Idle') {
+        const inRange = checkThrowRange(p1XRef.current, p1ZRef.current, p2XRef.current, p2ZRef.current);
+        if (inRange) {
+          // Throw connects — apply damage and knockdown
+          const throwDef = THROW_CATALOG[detectedThrowId];
+          if (throwDef) {
+            const throwDmg = getThrowDamage(detectedThrowId, false);
+            p2SMRef.current.applyKnockdown();
+            p2LocoRef.current.halt();
+            audioManagerRef.current.playSFX('throw_connect');
+            audioManagerRef.current.playVOX('attack_grunt');
+            setDamageEvent({
+              count: ++damageEventCountRef.current,
+              player: 'p2',
+              damage: throwDmg,
+              isCounter: false,
+              factionColor: p2Color,
+            });
+            setSpecialMoveNotice({ name: throwDef.name, player: 'p1', id: ++specialNoticeIdRef.current });
+            setTimeout(() => setSpecialMoveNotice(null), 1500);
+            setKnockdownEvent({ count: ++knockdownEventCountRef.current, player: 'p2' });
+          }
+        } else {
+          // Throw whiffed — play whiff sound
+          audioManagerRef.current.playSFX('whiff');
+        }
+      }
+
+      // ── Update Rage Art availability HUD ──────────────────────────────
+      const p1HpPctForRage = prevP1HealthRef.current / p1Fighter.hp;
+      const p2HpPctForRage = prevP2HealthRef.current / p2Fighter.hp;
+      setP1RageArtAvailable(p1HpPctForRage <= 0.25);
+      setP2RageArtAvailable(p2HpPctForRage <= 0.25);
+
       // ── Check P1 hitbox vs P2 ──────────────────────────────────────────
       const p2SM = p2SMRef.current;
-      const p2IsBlocking = p2SM.action === 'Guard';
-      const p1Hit = p1Hb.checkCollision(
+      const p2IsBlocking = p2SM.action === 'Guard' && !p2KiChargeRef.current.blockingDisabled;
+
+      // ── Z-axis sidestep whiff check ────────────────────────────────────
+      const p1AttackIsLinear = !(p1HbWindow.move?.isSpecial); // specials track
+      const p1HitWhiffs = checkSidestepWhiff(p1ZRef.current, p2ZRef.current, !p1AttackIsLinear);
+
+      const p1Hit = p1HitWhiffs ? null : p1Hb.checkCollision(
         p1XRef.current, p1ZRef.current, 1,
         p2XRef.current, p2ZRef.current,
         p2IsBlocking,
@@ -431,13 +735,32 @@ export default function GameBattleArena({
       );
 
       if (p1Hit) {
+        // ── Ki Charge: apply counter-hit bonus and consume charge ─────────
+        const p1KiActive = p1KiChargeRef.current.active;
+        const isKiCounter = p1KiActive;
+        if (p1KiActive) {
+          // Consume the Ki Charge
+          p1KiChargeRef.current = { ...p1KiChargeRef.current, active: false, framesRemaining: 0, nextAttackIsCounter: false, blockingDisabled: false };
+          setP1KiCharge({ ...p1KiChargeRef.current });
+        }
+
         // ── Guard system: check if P2 blocks, apply chip damage or full damage ──
         const p1HitMove = p1HbWindow.move;
         const guardResult = p1HitMove
           ? p2SMRef.current.processIncomingHit(p1HitMove)
           : { blocked: false, chipDamage: 0, guardBroken: false, finalDamage: p1Hit.damage };
 
-        const effectiveDamage = guardResult.blocked ? guardResult.finalDamage : p1Hit.damage;
+        // Ki Charge chip damage on block
+        let effectiveDamage = guardResult.blocked
+          ? (p1KiActive
+              ? Math.round(p1Hit.damage * p1KiChargeRef.current.chipDamageMultiplier)
+              : guardResult.finalDamage)
+          : p1Hit.damage;
+
+        // Ki Charge counter-hit bonus
+        if (p1KiActive && !guardResult.blocked) {
+          effectiveDamage = applyKiChargeCounterHit(effectiveDamage);
+        }
 
         // ── Combo system: register hit and apply damage scaling ──────────
         const { scaledDamage: p1ScaledDmg, newState: newP1Combo } = registerHit(
@@ -453,6 +776,18 @@ export default function GameBattleArena({
           p2LocoRef.current.halt();
           // Trigger dust VFX on knockdown
           setKnockdownEvent({ count: ++knockdownEventCountRef.current, player: 'p2' });
+
+          // ── Floor-break: slam sends P2 crashing through to next level ──
+          const slamDmg = p1Hit.damage ?? 0;
+          const prevArenaSnap = arenaCombatStateRef.current;
+          const afterSlam = tickArenaState(prevArenaSnap, p1XRef.current, p2XRef.current, 0, slamDmg, false, true);
+          arenaCombatStateRef.current = afterSlam;
+          if (afterSlam.p2FloorBreakPending && !prevArenaSnap.p2FloorBreakPending) {
+            const lvl = afterSlam.config.levels[afterSlam.p2LevelIndex];
+            setFloorBreakNotice({ player: 'p2', level: lvl?.label ?? 'LOWER LEVEL', count: ++floorBreakNoticeCountRef.current });
+            arenaCombatStateRef.current = { ...afterSlam, p2FloorBreakPending: false };
+            audioManagerRef.current.playSFX('floor_slam');
+          }
         } else if (!guardResult.blocked) {
           p2SMRef.current.applyStun(p1Hit.hitstun || 0.3, false);
           // Apply pushback from hit
@@ -484,6 +819,25 @@ export default function GameBattleArena({
           else if (isCounter) sfx.playCounter();
           else if (p1Hit.damage > 200) sfx.playHeavyHit();
           else sfx.playLightHit();
+        }
+        // ── Global Audio Manager SFX ──────────────────────────────────────
+        const audioMgr = audioManagerRef.current;
+        if (isBlocked) audioMgr.playSFX('block');
+        else if (isCounter) { audioMgr.playSFX('counter_hit'); audioMgr.playVOX('pain_grunt'); }
+        else if (p1Hit.damage > 200) { audioMgr.playSFX('heavy_hit'); audioMgr.playVOX('pain_grunt'); }
+        else audioMgr.playSFX('light_hit');
+        if (p1Hit.damage > 100 && !isBlocked) audioMgr.playVOX('attack_grunt');
+
+        // ── Wall-splat detection: check if P2 is in hit-stun near a wall ─
+        const p2CombatState = combatStateRef.current.p2;
+        if (p2CombatState.wallSplat.isSplatted && !p2CombatState.wallSplat.chainedDuringWindow) {
+          const wall = p2CombatState.wallSplat.wall;
+          if (wall) {
+            setWallSplatEvent({ count: ++wallSplatEventCountRef.current, player: 'p2', wall });
+            audioMgr.playSFX('wall_splat');
+            setSpecialMoveNotice({ name: 'WALL SPLAT!', player: 'p1', id: ++specialNoticeIdRef.current });
+            setTimeout(() => setSpecialMoveNotice(null), 1500);
+          }
         }
         setDamageEvent({
           count: ++damageEventCountRef.current,
@@ -564,6 +918,18 @@ export default function GameBattleArena({
           p1LocoRef.current.halt();
           // Trigger dust VFX on knockdown
           setKnockdownEvent({ count: ++knockdownEventCountRef.current, player: 'p1' });
+
+          // ── Floor-break: slam sends P1 crashing through to next level ──
+          const slamDmg = p2Hit.damage ?? 0;
+          const prevArenaSnap = arenaCombatStateRef.current;
+          const afterSlam = tickArenaState(prevArenaSnap, p1XRef.current, p2XRef.current, slamDmg, 0, true, false);
+          arenaCombatStateRef.current = afterSlam;
+          if (afterSlam.p1FloorBreakPending && !prevArenaSnap.p1FloorBreakPending) {
+            const lvl = afterSlam.config.levels[afterSlam.p1LevelIndex];
+            setFloorBreakNotice({ player: 'p1', level: lvl?.label ?? 'LOWER LEVEL', count: ++floorBreakNoticeCountRef.current });
+            arenaCombatStateRef.current = { ...afterSlam, p1FloorBreakPending: false };
+            audioManagerRef.current.playSFX('floor_slam');
+          }
         } else if (!p1GuardResult.blocked) {
           p1SMRef.current.applyStun(p2Hit.hitstun || 0.3, false);
           p1LocoRef.current.applyPushback(p2Hit.pushback ?? 0.3);
@@ -593,6 +959,24 @@ export default function GameBattleArena({
           else if (p2Hit.damage > 200) sfx.playHeavyHit();
           else sfx.playLightHit();
         }
+        // ── Global Audio Manager SFX (P2 hits P1) ────────────────────────
+        const audioMgr2 = audioManagerRef.current;
+        if (isBlocked) audioMgr2.playSFX('block');
+        else if (isCounter) { audioMgr2.playSFX('counter_hit'); audioMgr2.playVOX('pain_grunt'); }
+        else if (p2Hit.damage > 200) { audioMgr2.playSFX('heavy_hit'); audioMgr2.playVOX('pain_grunt'); }
+        else audioMgr2.playSFX('light_hit');
+        if (p2Hit.damage > 100 && !isBlocked) audioMgr2.playVOX('attack_grunt');
+
+        // ── Wall-splat detection for P1 ───────────────────────────────────
+        const p1CombatState = combatStateRef.current.p1;
+        if (p1CombatState.wallSplat.isSplatted && !p1CombatState.wallSplat.chainedDuringWindow) {
+          const wall = p1CombatState.wallSplat.wall;
+          if (wall) {
+            setWallSplatEvent({ count: ++wallSplatEventCountRef.current, player: 'p1', wall });
+            audioMgr2.playSFX('wall_splat');
+          }
+        }
+
         setDamageEvent({
           count: ++damageEventCountRef.current,
           player: 'p1',
@@ -867,6 +1251,40 @@ export default function GameBattleArena({
         cancelAnimationFrame(rafRef.current);
         if (settings.soundEnabled) sfx.playKO();
 
+        // ── Announcer: K.O. / Double K.O. / Perfect / Great ──────────────
+        const announcer = announcerRef.current;
+        if (!announcerFiredRef.current.ko) {
+          announcerFiredRef.current.ko = true;
+          const isDoubleKo = engine.p1Health <= 0 && engine.p2Health <= 0;
+          const winnerHealth = w === 'p1' ? engine.p1Health : engine.p2Health;
+          const winnerMaxHp = w === 'p1' ? p1Fighter.hp : p2Fighter.hp;
+          const winnerHpPct = winnerHealth / winnerMaxHp;
+
+          if (isDoubleKo) {
+            // Double K.O. fires first, then Draw
+            announcer.fire('doubleKo');
+            setTimeout(() => announcer.fire('draw'), 1200);
+          } else if (winnerHpPct >= 0.99) {
+            // Perfect — winner took no damage
+            announcer.fire('ko');
+            setTimeout(() => announcer.fire('perfect'), 800);
+          } else if (winnerHpPct <= 0.05) {
+            // Great — pixel health comeback
+            announcer.fire('ko');
+            setTimeout(() => announcer.fire('great'), 800);
+          } else {
+            announcer.fire('ko');
+          }
+
+          // "[Name] Wins!" fires during victory cinematic
+          if (!isDoubleKo) {
+            setTimeout(() => {
+              const winnerName = w === 'p1' ? p1Fighter.name : p2Fighter.name;
+              announcer.fire(w === 'p1' ? 'p1Wins' : 'p2Wins', winnerName);
+            }, 2200);
+          }
+        }
+
         // Determine condition
         const isPerfect = (w === 'p1' && engine.p1Health >= p1Fighter.hp * 0.99) ||
                           (w === 'p2' && engine.p2Health >= p2Fighter.hp * 0.99);
@@ -916,6 +1334,19 @@ export default function GameBattleArena({
             setWinner(w);
             cancelAnimationFrame(rafRef.current);
             if (settings.soundEnabled) sfx.playKO();
+
+            // ── Announcer: Time Up! + Draw/Winner ─────────────────────────
+            const announcer = announcerRef.current;
+            announcer.fire('timeUp');
+            setTimeout(() => {
+              if (w === 'draw') {
+                announcer.fire('draw');
+              } else {
+                const winnerName = w === 'p1' ? p1Fighter.name : p2Fighter.name;
+                announcer.fire(w === 'p1' ? 'p1Wins' : 'p2Wins', winnerName);
+              }
+            }, 1200);
+
             setMatchCondition('TIMEOUT');
             const elapsed = Math.round((Date.now() - roundStartTimeRef.current) / 1000);
             setRoundResults([{
@@ -1067,6 +1498,10 @@ export default function GameBattleArena({
           p2X={p2X}
           onP1BoneHitboxReady={(sys) => { p1BoneHitboxRef.current = sys; }}
           onP2BoneHitboxReady={(sys) => { p2BoneHitboxRef.current = sys; }}
+          wallSplatEvent={wallSplatEvent}
+          heatBurstEvent={heatBurstEvent}
+          rageArtEvent={rageArtEvent}
+          cameraShakeOffset={cameraShakeOffset}
         />
       </div>
 
@@ -1133,6 +1568,167 @@ export default function GameBattleArena({
             p1Color={p1Color}
             p2Color={p2Color}
           />
+
+          {/* ── Ki Charge HUD — glowing aura indicator ── */}
+          {p1KiCharge.active && (
+            <div className="absolute z-40 pointer-events-none" style={{ bottom: '28%', left: '12%' }}>
+              <div
+                className="px-3 py-1 text-[9px] font-black tracking-widest uppercase animate-pulse"
+                style={{
+                  color: '#a78bfa',
+                  textShadow: '0 0 16px #a78bfa, 0 0 32px #a78bfa88',
+                  border: '1px solid #a78bfa44',
+                  background: 'rgba(0,0,0,0.75)',
+                }}
+              >
+                ⚡ KI CHARGE · {Math.ceil(p1KiCharge.framesRemaining / 60 * 10) / 10}s
+              </div>
+              <div className="text-[6px] text-purple-300/70 tracking-widest mt-0.5 text-center">
+                NEXT HIT = COUNTER · NO BLOCK
+              </div>
+            </div>
+          )}
+
+          {/* ── Heat Burst HUD — stance mode indicator ── */}
+          {p1HeatActive && (
+            <div className="absolute z-40 pointer-events-none" style={{ bottom: '22%', left: '8%' }}>
+              <div
+                className="px-3 py-1 text-[9px] font-black tracking-widest uppercase animate-pulse"
+                style={{
+                  color: '#f97316',
+                  textShadow: '0 0 16px #f97316, 0 0 32px #f9731688',
+                  border: '1px solid #f9731644',
+                  background: 'rgba(0,0,0,0.75)',
+                }}
+              >
+                🔥 HEAT STATE
+              </div>
+            </div>
+          )}
+          {p2HeatActive && (
+            <div className="absolute z-40 pointer-events-none" style={{ bottom: '22%', right: '8%' }}>
+              <div
+                className="px-3 py-1 text-[9px] font-black tracking-widest uppercase animate-pulse"
+                style={{
+                  color: '#f97316',
+                  textShadow: '0 0 16px #f97316, 0 0 32px #f9731688',
+                  border: '1px solid #f9731644',
+                  background: 'rgba(0,0,0,0.75)',
+                }}
+              >
+                🔥 HEAT STATE
+              </div>
+            </div>
+          )}
+
+          {/* ── Rage Art available indicator ── */}
+          {p1RageArtAvailable && (
+            <div className="absolute z-40 pointer-events-none" style={{ bottom: '16%', left: '8%' }}>
+              <div
+                className="px-3 py-1 text-[9px] font-black tracking-widest uppercase animate-pulse"
+                style={{
+                  color: '#ef4444',
+                  textShadow: '0 0 16px #ef4444, 0 0 32px #ef444488',
+                  border: '1px solid #ef444444',
+                  background: 'rgba(0,0,0,0.75)',
+                }}
+              >
+                💢 RAGE ART READY
+              </div>
+            </div>
+          )}
+          {p2RageArtAvailable && (
+            <div className="absolute z-40 pointer-events-none" style={{ bottom: '16%', right: '8%' }}>
+              <div
+                className="px-3 py-1 text-[9px] font-black tracking-widest uppercase animate-pulse"
+                style={{
+                  color: '#ef4444',
+                  textShadow: '0 0 16px #ef4444, 0 0 32px #ef444488',
+                  border: '1px solid #ef444444',
+                  background: 'rgba(0,0,0,0.75)',
+                }}
+              >
+                💢 RAGE ART READY
+              </div>
+            </div>
+          )}
+
+          {/* ── Ring-Out Notice ── */}
+          {ringOutNotice && (
+            <div
+              key={ringOutNotice.count}
+              className="absolute z-50 pointer-events-none inset-0 flex items-center justify-center"
+            >
+              <div
+                className="px-6 py-3 text-2xl font-black tracking-[0.3em] uppercase animate-bounce"
+                style={{
+                  color: '#facc15',
+                  textShadow: '0 0 30px #facc15, 0 0 60px #facc1588',
+                  border: '2px solid #facc1566',
+                  background: 'rgba(0,0,0,0.85)',
+                }}
+              >
+                {ringOutNotice.player === 'p1' ? 'P1' : 'P2'} RING OUT!
+              </div>
+            </div>
+          )}
+
+          {/* ── Floor Break Notice ── */}
+          {floorBreakNotice && (
+            <div
+              key={floorBreakNotice.count}
+              className="absolute z-50 pointer-events-none inset-0 flex items-center justify-center"
+            >
+              <div
+                className="px-6 py-3 text-xl font-black tracking-[0.25em] uppercase"
+                style={{
+                  color: '#f97316',
+                  textShadow: '0 0 24px #f97316, 0 0 48px #f9731688',
+                  border: '2px solid #f9731666',
+                  background: 'rgba(0,0,0,0.85)',
+                  animation: 'ping 0.4s ease-out',
+                }}
+              >
+                💥 FLOOR BREAK → {floorBreakNotice.level}
+              </div>
+            </div>
+          )}
+
+          {/* ── Hazard Warning ── */}
+          {hazardNotice && arenaState.config.hazardDamagePerSec > 0 && (
+            <div className="absolute z-40 pointer-events-none top-[18%] left-1/2 -translate-x-1/2">
+              <div
+                className="px-3 py-1 text-[8px] font-black tracking-widest uppercase animate-pulse"
+                style={{
+                  color: '#ef4444',
+                  textShadow: '0 0 12px #ef4444',
+                  border: '1px solid #ef444466',
+                  background: 'rgba(0,0,0,0.75)',
+                }}
+              >
+                {hazardNotice}
+              </div>
+            </div>
+          )}
+
+          {/* ── Stage Level Indicator ── */}
+          {arenaState.config.levels.length > 1 && (
+            <div className="absolute z-40 pointer-events-none top-[22%] left-1/2 -translate-x-1/2 flex gap-3">
+              <span
+                className="text-[7px] tracking-widest font-black"
+                style={{ color: arenaState.config.accentColor, opacity: 0.7 }}
+              >
+                P1: {arenaState.config.levels[arenaState.p1LevelIndex]?.label ?? 'LEVEL 1'}
+              </span>
+              <span className="text-[7px] text-zinc-600">|</span>
+              <span
+                className="text-[7px] tracking-widest font-black"
+                style={{ color: arenaState.config.accentColor, opacity: 0.7 }}
+              >
+                P2: {arenaState.config.levels[arenaState.p2LevelIndex]?.label ?? 'LEVEL 1'}
+              </span>
+            </div>
+          )}
 
           {/* ── Debug Overlay HUD (practice mode only) ── */}
           <DebugOverlayHUD
@@ -1255,6 +1851,7 @@ export default function GameBattleArena({
           <div className="absolute bottom-2 left-3 z-30 text-[7px] text-zinc-500 space-y-0.5 pointer-events-none">
             <div>ARROWS: MOVE · Z/U: 1(LP) · X/I: 2(RP) · J: 3(LK) · K: 4(RK) · C: GUARD · V: GRAPPLE · Q/E: SIDESTEP</div>
             <div className="text-zinc-600">COMBOS: U+J=THROW · I+K=THROW · I+J=HEAT BURST · →+C=CMD THROW · SPECIAL: L+L+H or H+H+L</div>
+            <div className="text-purple-500/60">KI CHARGE: U+X+J+K (1+2+3+4) — NEXT HIT = COUNTER · NO BLOCK</div>
           </div>
 
           {/* ── Grab Range Visualization ── */}
