@@ -5,7 +5,20 @@
  */
 
 export type StageId =
-  | 'urban_night' |'training' |'dojo' |'wrestling_ring' |'mma_octagon' |'steel_cage' |'industrial' |'ghetto_streets' |'junkyard' |'sky_crane' |'spike_pit' |'acid_pit' |'grinder_pit' |'gang_brawl' |'random';
+  | 'urban_night' |'training' |'dojo' |'wrestling_ring' |'mma_octagon' |'steel_cage' |'industrial' |'ghetto_streets' |'junkyard' |'sky_crane' |'spike_pit' |'acid_pit' |'grinder_pit' |'gang_brawl' |'subway' |'random';
+
+/** Whether a stage has a destructible wall (glass, cage door, etc.) */
+export type WallType = 'solid' | 'destructible' | 'none';
+
+/** Hazard volume definition for crowd/fence bounce zones */
+export interface HazardVolume {
+  /** X distance from center where hazard volume begins */
+  triggerX: number;
+  /** Chip damage as fraction of max HP (0.05 = 5%) */
+  chipDamage: number;
+  /** Label for HUD */
+  label: string;
+}
 
 export interface LevelZone {
   /** Y-world position of this floor */
@@ -76,6 +89,22 @@ export interface StageConfig {
   // ── Wall-splat rules ──────────────────────────────────────────────────────
   /** If false (cage/ring), walls exist but no ring-out — wall splats still apply */
   hasWalls: boolean;
+
+  // ── Destructible walls ────────────────────────────────────────────────────
+  /** Whether stage walls can be broken through with high knockback force */
+  hasDestructibleWalls: boolean;
+
+  // ── Crowd / fence hazard volume ───────────────────────────────────────────
+  /** If defined, fighters knocked near the edge get bounced back with chip damage */
+  hazardVolume?: HazardVolume;
+
+  // ── Train hazard (Subway stage) ───────────────────────────────────────────
+  /** Whether this stage has an independent RNG train hazard */
+  hasTrainHazard: boolean;
+
+  // ── Edge zone for proximity ledge-throw overrides ─────────────────────────
+  /** Distance from boundary where ledge-throw override activates */
+  edgeZoneDistance: number;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -103,6 +132,10 @@ export const STAGE_CONFIGS: Record<Exclude<StageId, 'random'>, StageConfig> = {
     hazardDamagePerSec: 0,
     hazardLabel: '',
     hasWalls: true,
+    hasDestructibleWalls: false,
+    hazardVolume: undefined,
+    hasTrainHazard: false,
+    edgeZoneDistance: 1.5,
   },
 
   training: {
@@ -125,6 +158,10 @@ export const STAGE_CONFIGS: Record<Exclude<StageId, 'random'>, StageConfig> = {
     hazardDamagePerSec: 0,
     hazardLabel: '',
     hasWalls: true,
+    hasDestructibleWalls: false,
+    hazardVolume: undefined,
+    hasTrainHazard: false,
+    edgeZoneDistance: 1.5,
   },
 
   dojo: {
@@ -150,6 +187,10 @@ export const STAGE_CONFIGS: Record<Exclude<StageId, 'random'>, StageConfig> = {
     hazardDamagePerSec: 0,
     hazardLabel: '',
     hasWalls: true,
+    hasDestructibleWalls: true,
+    hazardVolume: undefined,
+    hasTrainHazard: false,
+    edgeZoneDistance: 1.5,
   },
 
   wrestling_ring: {
@@ -172,6 +213,10 @@ export const STAGE_CONFIGS: Record<Exclude<StageId, 'random'>, StageConfig> = {
     hazardDamagePerSec: 0,
     hazardLabel: '',
     hasWalls: false,
+    hasDestructibleWalls: false,
+    hazardVolume: { triggerX: 3.5, chipDamage: 0.05, label: 'CROWD SHOVE' },
+    hasTrainHazard: false,
+    edgeZoneDistance: 1.5,
   },
 
   mma_octagon: {
@@ -194,6 +239,10 @@ export const STAGE_CONFIGS: Record<Exclude<StageId, 'random'>, StageConfig> = {
     hazardDamagePerSec: 0,
     hazardLabel: '',
     hasWalls: true,
+    hasDestructibleWalls: false,
+    hazardVolume: undefined,
+    hasTrainHazard: false,
+    edgeZoneDistance: 1.5,
   },
 
   steel_cage: {
@@ -216,6 +265,10 @@ export const STAGE_CONFIGS: Record<Exclude<StageId, 'random'>, StageConfig> = {
     hazardDamagePerSec: 0,
     hazardLabel: '',
     hasWalls: true,
+    hasDestructibleWalls: false,
+    hazardVolume: undefined,
+    hasTrainHazard: false,
+    edgeZoneDistance: 1.5,
   },
 
   industrial: {
@@ -241,6 +294,10 @@ export const STAGE_CONFIGS: Record<Exclude<StageId, 'random'>, StageConfig> = {
     hazardDamagePerSec: 5,
     hazardLabel: 'MOLTEN METAL',
     hasWalls: true,
+    hasDestructibleWalls: true,
+    hazardVolume: undefined,
+    hasTrainHazard: false,
+    edgeZoneDistance: 1.5,
   },
 
   ghetto_streets: {
@@ -263,6 +320,10 @@ export const STAGE_CONFIGS: Record<Exclude<StageId, 'random'>, StageConfig> = {
     hazardDamagePerSec: 0,
     hazardLabel: '',
     hasWalls: false,
+    hasDestructibleWalls: false,
+    hazardVolume: { triggerX: 8.0, chipDamage: 0.05, label: 'CROWD SHOVE' },
+    hasTrainHazard: false,
+    edgeZoneDistance: 1.5,
   },
 
   junkyard: {
@@ -288,6 +349,10 @@ export const STAGE_CONFIGS: Record<Exclude<StageId, 'random'>, StageConfig> = {
     hazardDamagePerSec: 0,
     hazardLabel: '',
     hasWalls: false,
+    hasDestructibleWalls: false,
+    hazardVolume: undefined,
+    hasTrainHazard: false,
+    edgeZoneDistance: 1.5,
   },
 
   sky_crane: {
@@ -313,6 +378,10 @@ export const STAGE_CONFIGS: Record<Exclude<StageId, 'random'>, StageConfig> = {
     hazardDamagePerSec: 0,
     hazardLabel: '',
     hasWalls: false,
+    hasDestructibleWalls: false,
+    hazardVolume: undefined,
+    hasTrainHazard: false,
+    edgeZoneDistance: 1.5,
   },
 
   spike_pit: {
@@ -338,6 +407,10 @@ export const STAGE_CONFIGS: Record<Exclude<StageId, 'random'>, StageConfig> = {
     hazardDamagePerSec: 30,
     hazardLabel: '⚠ SPIKE PIT',
     hasWalls: true,
+    hasDestructibleWalls: false,
+    hazardVolume: undefined,
+    hasTrainHazard: false,
+    edgeZoneDistance: 1.5,
   },
 
   acid_pit: {
@@ -363,6 +436,10 @@ export const STAGE_CONFIGS: Record<Exclude<StageId, 'random'>, StageConfig> = {
     hazardDamagePerSec: 25,
     hazardLabel: '☣ ACID PIT',
     hasWalls: true,
+    hasDestructibleWalls: false,
+    hazardVolume: undefined,
+    hasTrainHazard: false,
+    edgeZoneDistance: 1.5,
   },
 
   grinder_pit: {
@@ -388,6 +465,10 @@ export const STAGE_CONFIGS: Record<Exclude<StageId, 'random'>, StageConfig> = {
     hazardDamagePerSec: 40,
     hazardLabel: '⚙ GRINDER',
     hasWalls: true,
+    hasDestructibleWalls: false,
+    hazardVolume: undefined,
+    hasTrainHazard: false,
+    edgeZoneDistance: 1.5,
   },
 
   gang_brawl: {
@@ -413,6 +494,39 @@ export const STAGE_CONFIGS: Record<Exclude<StageId, 'random'>, StageConfig> = {
     hazardDamagePerSec: 0,
     hazardLabel: '',
     hasWalls: false,
+    hasDestructibleWalls: false,
+    hazardVolume: { triggerX: 8.0, chipDamage: 0.05, label: 'CROWD SHOVE' },
+    hasTrainHazard: false,
+    edgeZoneDistance: 1.5,
+  },
+
+  subway: {
+    id: 'subway' as StageId,
+    name: 'SUBWAY',
+    subtitle: 'UNDERGROUND TRANSIT — WATCH THE TRACKS',
+    accentColor: '#f59e0b',
+    bgColor: '#0a0800',
+    ringOutEnabled: false,
+    boundaryX: 4.5,
+    boundaryZ: 3.0,
+    levels: [
+      { floorY: 0, boundaryX: 4.5, boundaryZ: 3.0, hazardDamagePerSec: 0, label: 'PLATFORM' },
+      { floorY: -1.5, boundaryX: 4.5, boundaryZ: 3.0, hazardDamagePerSec: 0, label: 'TRACKS' },
+    ],
+    breakableFloor: false,
+    floorBreakThreshold: 0,
+    ambientIntensity: 0.15,
+    ambientColor: '#1a1200',
+    primaryLightColor: '#fbbf24',
+    fillLightColor: '#78350f',
+    bgmTrack: 'subway',
+    hazardDamagePerSec: 0,
+    hazardLabel: '🚇 TRAIN INCOMING',
+    hasWalls: true,
+    hasDestructibleWalls: false,
+    hazardVolume: undefined,
+    hasTrainHazard: true,
+    edgeZoneDistance: 1.5,
   },
 };
 

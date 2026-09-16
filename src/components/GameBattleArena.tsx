@@ -51,6 +51,8 @@ import {
   tickArenaState,
   type ArenaCombatState,
 } from '../engine/combat/StageConfig';
+// ── Stage Manager — multi-tier transitions, train hazard, ledge throws, wall breaks ──
+import { createStageManagerState, tickTrainHazard, tickFloorBreak, tickLedgeThrow, tickDestructibleWalls, tickHazardBounce, triggerFloorBreak, executeLedgeThrow, applyWallBreak, applyHazardBounce, checkLedgeThrowOverride, checkWallBreak, checkHazardVolume, TRAIN_HIT_DAMAGE, TRAIN_PLATFORM_Y, type StageManagerState,  } from '../engine/combat/StageManager';
 // ── Heat Burst / Power Crush / Rage Art ──────────────────────────────────────
 import { type HeatState, type PowerCrushState, type RageArtState,  } from '../engine/combat/HeatBurstSystem';
 // ── Directional throw system ──────────────────────────────────────────────────
@@ -194,6 +196,28 @@ export default function GameBattleArena({
   const [floorBreakNotice, setFloorBreakNotice] = useState<{ player: 'p1' | 'p2'; level: string; count: number } | null>(null);
   const floorBreakNoticeCountRef = useRef(0);
   const [hazardNotice, setHazardNotice] = useState<string>('');
+
+  // ── Stage Manager — multi-tier, train, ledge throws, wall breaks ──────────
+  const stageManagerRef = useRef<StageManagerState>(
+    createStageManagerState(stageId, p1Fighter.hp, p2Fighter.hp)
+  );
+  const [trainWarningActive, setTrainWarningActive] = useState(false);
+  const [trainCrossing, setTrainCrossing] = useState(false);
+  const [trainX, setTrainX] = useState(-20);
+  const [p1OnTracks, setP1OnTracks] = useState(false);
+  const [p2OnTracks, setP2OnTracks] = useState(false);
+  const [p1VaultPrompt, setP1VaultPrompt] = useState(false);
+  const [p2VaultPrompt, setP2VaultPrompt] = useState(false);
+  const [floorBreakPhase, setFloorBreakPhase] = useState<string>('idle');
+  const [debrisPositions, setDebrisPositions] = useState<Array<{ x: number; y: number; z: number }>>([]);
+  const [ledgeThrowActive, setLedgeThrowActive] = useState(false);
+  const [wallShatterLeft, setWallShatterLeft] = useState(false);
+  const [wallShatterRight, setWallShatterRight] = useState(false);
+  const [hazardBounceNotice, setHazardBounceNotice] = useState<string>('');
+  const hazardBounceNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // P1 Y position for track detection (subway stage)
+  const p1YRef = useRef(0);
+  const p2YRef = useRef(0);
 
   // ── Announcer system ──────────────────────────────────────────────────────
   const announcerRef = useRef(getAnnouncerSystem({
@@ -365,6 +389,23 @@ export default function GameBattleArena({
     setRingOutNotice(null);
     setFloorBreakNotice(null);
     setHazardNotice(freshArenaState.config.hazardLabel);
+
+    // ── Wipe and rebuild Stage Manager state ──────────────────────────────
+    const freshStageManager = createStageManagerState(stageId, p1Fighter.hp, p2Fighter.hp);
+    stageManagerRef.current = freshStageManager;
+    setTrainWarningActive(false);
+    setTrainCrossing(false);
+    setTrainX(-20);
+    setP1OnTracks(false);
+    setP2OnTracks(false);
+    setP1VaultPrompt(false);
+    setP2VaultPrompt(false);
+    setFloorBreakPhase('idle');
+    setDebrisPositions([]);
+    setLedgeThrowActive(false);
+    setWallShatterLeft(false);
+    setWallShatterRight(false);
+    setHazardBounceNotice('');
 
     // ── Init Global Audio Manager ──────────────────────────────────────────
     const audioManager = audioManagerRef.current;
@@ -590,6 +631,237 @@ export default function GameBattleArena({
         }
       }
 
+      // ── Stage Manager tick — train hazard, floor break, ledge throw, wall breaks ──
+      const sm = stageManagerRef.current;
+      const stageCfg = sm.config;
+
+      // ── Train hazard tick (Subway stage — MDickie-style independent RNG) ──
+      if (sm.trainHazard.enabled) {
+        const p1InputUp = (inputRef.current as any).up ?? false;
+        const trainResult = tickTrainHazard(
+          sm.trainHazard,
+          dt,
+          p1YRef.current,
+          p2YRef.current,
+          p1InputUp,
+          false, // P2 AI vault handled below
+        );
+        stageManagerRef.current = { ...sm, trainHazard: trainResult.state };
+
+        // Sync HUD state
+        setTrainWarningActive(trainResult.state.warningActive);
+        setTrainCrossing(trainResult.state.trainCrossing);
+        setTrainX(trainResult.state.trainX);
+        setP1OnTracks(trainResult.state.p1OnTracks);
+        setP2OnTracks(trainResult.state.p2OnTracks);
+        setP1VaultPrompt(trainResult.state.p1OnTracks && !trainResult.state.p1VaultActive);
+        setP2VaultPrompt(trainResult.state.p2OnTracks && !trainResult.state.p2VaultActive);
+
+        // Fire warning audio/visual
+        if (trainResult.fireWarning) {
+          audioManagerRef.current.playSFX('train_horn');
+          console.log('[Train] 🚇 WARNING — train incoming in 2 seconds!');
+        }
+
+        // Train hit — apply massive unblockable damage
+        if (trainResult.p1TrainHit) {
+          const trainDmg = Math.round(p1Fighter.hp * TRAIN_HIT_DAMAGE);
+          setP1Health(h => Math.max(0, h - trainDmg));
+          audioManagerRef.current.playSFX('heavy_hit');
+          audioManagerRef.current.playVOX('pain_grunt');
+          setDamageEvent({
+            count: ++damageEventCountRef.current,
+            player: 'p1',
+            damage: trainDmg,
+            isCounter: false,
+            factionColor: '#f59e0b',
+          });
+          // Force P1 back to platform
+          p1YRef.current = TRAIN_PLATFORM_Y;
+          p1SMRef.current.applyKnockdown();
+          console.log('[Train] 🚇 P1 HIT BY TRAIN — damage:', trainDmg);
+        }
+        if (trainResult.p2TrainHit) {
+          const trainDmg = Math.round(p2Fighter.hp * TRAIN_HIT_DAMAGE);
+          setP2Health(h => Math.max(0, h - trainDmg));
+          audioManagerRef.current.playSFX('heavy_hit');
+          audioManagerRef.current.playVOX('pain_grunt');
+          setDamageEvent({
+            count: ++damageEventCountRef.current,
+            player: 'p2',
+            damage: trainDmg,
+            isCounter: false,
+            factionColor: '#f59e0b',
+          });
+          p2YRef.current = TRAIN_PLATFORM_Y;
+          p2SMRef.current.applyKnockdown();
+          console.log('[Train] 🚇 P2 HIT BY TRAIN — damage:', trainDmg);
+        }
+
+        if (trainResult.crossingEnded) {
+          console.log('[Train] 🚇 Train passed. Next crossing in', Math.round(trainResult.state.nextCrossingInterval), 's');
+        }
+      }
+
+      // ── Floor break tick ──────────────────────────────────────────────────
+      if (sm.floorBreak.phase !== 'idle') {
+        const fbResult = tickFloorBreak(sm.floorBreak, dt);
+        stageManagerRef.current = { ...stageManagerRef.current, floorBreak: fbResult.state };
+        setFloorBreakPhase(fbResult.state.phase);
+        setDebrisPositions(fbResult.state.debrisPositions.map(d => ({ x: d.x, y: d.y, z: d.z })));
+
+        if (fbResult.applyLandingDamage && sm.floorBreak.triggerFighter) {
+          const victim = sm.floorBreak.triggerFighter;
+          const landDmg = fbResult.state.landingDamage;
+          if (victim === 'p1') {
+            setP1Health(h => Math.max(0, h - landDmg));
+            setDamageEvent({ count: ++damageEventCountRef.current, player: 'p1', damage: landDmg, isCounter: false, factionColor: '#f97316' });
+          } else {
+            setP2Health(h => Math.max(0, h - landDmg));
+            setDamageEvent({ count: ++damageEventCountRef.current, player: 'p2', damage: landDmg, isCounter: false, factionColor: '#f97316' });
+          }
+          audioManagerRef.current.playSFX('floor_slam');
+          console.log('[FloorBreak] 💥 Landing damage applied to', victim, ':', landDmg);
+        }
+
+        if (fbResult.transitionComplete) {
+          console.log('[FloorBreak] ✅ Stage transition complete — input restored');
+        }
+      }
+
+      // ── Ledge throw tick ──────────────────────────────────────────────────
+      if (sm.ledgeThrow.active) {
+        const ltResult = tickLedgeThrow(sm.ledgeThrow);
+        stageManagerRef.current = { ...stageManagerRef.current, ledgeThrow: ltResult.state };
+        setLedgeThrowActive(ltResult.state.active);
+
+        if (ltResult.koVictim) {
+          // Ledge throw KO — instant ring-out
+          if (ltResult.koVictim === 'p1') {
+            setP1Health(0);
+            setRingOutNotice({ player: 'p1', count: ++ringOutNoticeCountRef.current });
+          } else {
+            setP2Health(0);
+            setRingOutNotice({ player: 'p2', count: ++ringOutNoticeCountRef.current });
+          }
+          audioManagerRef.current.playSFX('floor_slam');
+          announcerRef.current.fire('ko');
+          console.log('[LedgeThrow] 🎯 Ring-out KO:', ltResult.koVictim);
+        }
+      }
+
+      // ── Destructible wall tick ────────────────────────────────────────────
+      {
+        const newWalls = tickDestructibleWalls(sm.destructibleWalls);
+        stageManagerRef.current = { ...stageManagerRef.current, destructibleWalls: newWalls };
+        setWallShatterLeft(newWalls.leftShatterActive);
+        setWallShatterRight(newWalls.rightShatterActive);
+      }
+
+      // ── Hazard bounce tick ────────────────────────────────────────────────
+      {
+        const newBounce = tickHazardBounce(sm.hazardBounce);
+        stageManagerRef.current = { ...stageManagerRef.current, hazardBounce: newBounce };
+
+        // Apply bounce position correction — shove fighters back to center
+        if (newBounce.p1BounceActive && newBounce.p1BounceFrames > 0) {
+          const lerpSpeed = 0.15;
+          const newX = p1XRef.current + (newBounce.p1TargetX - p1XRef.current) * lerpSpeed;
+          p1XRef.current = newX;
+          p1LocoRef.current.clampX(newX);
+          setP1X(newX);
+        }
+        if (newBounce.p2BounceActive && newBounce.p2BounceFrames > 0) {
+          const lerpSpeed = 0.15;
+          const newX = p2XRef.current + (newBounce.p2TargetX - p2XRef.current) * lerpSpeed;
+          p2XRef.current = newX;
+          p2LocoRef.current.clampX(newX);
+          setP2X(newX);
+        }
+      }
+
+      // ── Proximity ledge-throw override check ──────────────────────────────
+      // Before executing a standard throw, check if attacker is near the ring-out edge
+      if (!sm.ledgeThrow.active && stageCfg.ringOutEnabled && isFinite(stageCfg.boundaryX)) {
+        const throwInputDetected = (inputRef.current as any).grapple ?? false;
+        if (throwInputDetected && p1SMRef.current.action === 'Idle') {
+          const isLedgeOverride = checkLedgeThrowOverride(
+            p1XRef.current, p2XRef.current,
+            stageCfg.boundaryX, stageCfg.ringOutEnabled,
+          );
+          if (isLedgeOverride) {
+            const ledgeState = executeLedgeThrow('p2');
+            stageManagerRef.current = { ...stageManagerRef.current, ledgeThrow: ledgeState };
+            setLedgeThrowActive(true);
+            setSpecialMoveNotice({ name: 'LEDGE THROW!', player: 'p1', id: ++specialNoticeIdRef.current });
+            setTimeout(() => setSpecialMoveNotice(null), 2000);
+            audioManagerRef.current.playSFX('throw_connect');
+            console.log('[LedgeThrow] 🎯 Ledge throw override activated!');
+          }
+        }
+      }
+
+      // ── Destructible wall break check ─────────────────────────────────────
+      if (stageCfg.hasDestructibleWalls) {
+        const smSnap = stageManagerRef.current;
+        // Check if P2 was just knocked into a wall with high force
+        const p2WallState = combatStateRef.current.p2.wallSplat;
+        if (p2WallState.isSplatted && p2WallState.wall) {
+          const knockbackForce = Math.abs(combatStateRef.current.p2.velocityX ?? 0) * 1000;
+          if (checkWallBreak(knockbackForce, p2WallState.wall, smSnap.destructibleWalls, true)) {
+            const newWalls = applyWallBreak(smSnap.destructibleWalls, p2WallState.wall);
+            stageManagerRef.current = { ...stageManagerRef.current, destructibleWalls: newWalls };
+            setSpecialMoveNotice({ name: 'WALL BREAK!', player: 'p1', id: ++specialNoticeIdRef.current });
+            setTimeout(() => setSpecialMoveNotice(null), 2000);
+            audioManagerRef.current.playSFX('wall_splat');
+            console.log('[WallBreak] 💥 Wall broken:', p2WallState.wall);
+          }
+        }
+        // Same for P1
+        const p1WallState = combatStateRef.current.p1.wallSplat;
+        if (p1WallState.isSplatted && p1WallState.wall) {
+          const knockbackForce = Math.abs(combatStateRef.current.p1.velocityX ?? 0) * 1000;
+          if (checkWallBreak(knockbackForce, p1WallState.wall, smSnap.destructibleWalls, true)) {
+            const newWalls = applyWallBreak(smSnap.destructibleWalls, p1WallState.wall);
+            stageManagerRef.current = { ...stageManagerRef.current, destructibleWalls: newWalls };
+            setSpecialMoveNotice({ name: 'WALL BREAK!', player: 'p2', id: ++specialNoticeIdRef.current });
+            setTimeout(() => setSpecialMoveNotice(null), 2000);
+            audioManagerRef.current.playSFX('wall_splat');
+          }
+        }
+      }
+
+      // ── Crowd / fence hazard bounce check ─────────────────────────────────
+      if (stageCfg.hazardVolume) {
+        const smSnap = stageManagerRef.current;
+        const hv = stageCfg.hazardVolume;
+        const p1InKnockback = combatStateRef.current.p1.stun.isHitStun;
+        const p2InKnockback = combatStateRef.current.p2.stun.isHitStun;
+
+        if (!smSnap.hazardBounce.p1BounceActive && checkHazardVolume(p1XRef.current, hv.triggerX, p1InKnockback)) {
+          const newBounce = applyHazardBounce(smSnap.hazardBounce, 'p1', p1XRef.current);
+          stageManagerRef.current = { ...stageManagerRef.current, hazardBounce: newBounce };
+          const chipDmg = Math.round(p1Fighter.hp * hv.chipDamage);
+          setP1Health(h => Math.max(0, h - chipDmg));
+          setHazardBounceNotice(hv.label);
+          if (hazardBounceNoticeTimerRef.current) clearTimeout(hazardBounceNoticeTimerRef.current);
+          hazardBounceNoticeTimerRef.current = setTimeout(() => setHazardBounceNotice(''), 1500);
+          audioManagerRef.current.playSFX('wall_splat');
+          console.log('[HazardBounce] 🔥 P1 bounced by hazard volume:', hv.label);
+        }
+        if (!smSnap.hazardBounce.p2BounceActive && checkHazardVolume(p2XRef.current, hv.triggerX, p2InKnockback)) {
+          const newBounce = applyHazardBounce(smSnap.hazardBounce, 'p2', p2XRef.current);
+          stageManagerRef.current = { ...stageManagerRef.current, hazardBounce: newBounce };
+          const chipDmg = Math.round(p2Fighter.hp * hv.chipDamage);
+          setP2Health(h => Math.max(0, h - chipDmg));
+          setHazardBounceNotice(hv.label);
+          if (hazardBounceNoticeTimerRef.current) clearTimeout(hazardBounceNoticeTimerRef.current);
+          hazardBounceNoticeTimerRef.current = setTimeout(() => setHazardBounceNotice(''), 1500);
+          audioManagerRef.current.playSFX('wall_splat');
+          console.log('[HazardBounce] 🔥 P2 bounced by hazard volume:', hv.label);
+        }
+      }
+
       // ── Update rage art availability based on P1 HP ────────────────────
       const p1HpPct = prevP1HealthRef.current / p1Fighter.hp;
       p1SMRef.current.setRageArtAvailable(p1HpPct);
@@ -787,6 +1059,10 @@ export default function GameBattleArena({
             setFloorBreakNotice({ player: 'p2', level: lvl?.label ?? 'LOWER LEVEL', count: ++floorBreakNoticeCountRef.current });
             arenaCombatStateRef.current = { ...afterSlam, p2FloorBreakPending: false };
             audioManagerRef.current.playSFX('floor_slam');
+            // ── Trigger StageManager floor break transition ──────────────
+            const fbState = triggerFloorBreak('p2', afterSlam.p2LevelIndex, slamDmg);
+            stageManagerRef.current = { ...stageManagerRef.current, floorBreak: fbState };
+            setFloorBreakPhase('floor_break_debris');
           }
         } else if (!guardResult.blocked) {
           p2SMRef.current.applyStun(p1Hit.hitstun || 0.3, false);
@@ -929,6 +1205,10 @@ export default function GameBattleArena({
             setFloorBreakNotice({ player: 'p1', level: lvl?.label ?? 'LOWER LEVEL', count: ++floorBreakNoticeCountRef.current });
             arenaCombatStateRef.current = { ...afterSlam, p1FloorBreakPending: false };
             audioManagerRef.current.playSFX('floor_slam');
+            // ── Trigger StageManager floor break transition ──────────────
+            const fbState = triggerFloorBreak('p1', afterSlam.p1LevelIndex, slamDmg);
+            stageManagerRef.current = { ...stageManagerRef.current, floorBreak: fbState };
+            setFloorBreakPhase('floor_break_debris');
           }
         } else if (!p1GuardResult.blocked) {
           p1SMRef.current.applyStun(p2Hit.hitstun || 0.3, false);
@@ -1707,6 +1987,106 @@ export default function GameBattleArena({
                 }}
               >
                 {hazardNotice}
+              </div>
+            </div>
+          )}
+
+          {/* ── Train Warning HUD (Subway stage) ── */}
+          {trainWarningActive && (
+            <div className="absolute z-50 pointer-events-none inset-0 flex items-center justify-center">
+              <div
+                className="px-8 py-4 text-2xl font-black tracking-[0.3em] uppercase animate-pulse"
+                style={{
+                  color: '#f59e0b',
+                  textShadow: '0 0 30px #f59e0b, 0 0 60px #f59e0b88',
+                  border: '2px solid #f59e0b66',
+                  background: 'rgba(0,0,0,0.9)',
+                }}
+              >
+                🚇 TRAIN INCOMING!
+              </div>
+            </div>
+          )}
+
+          {/* ── Train Crossing Flash ── */}
+          {trainCrossing && (
+            <div
+              className="absolute z-50 pointer-events-none inset-0"
+              style={{ background: 'rgba(245,158,11,0.08)', boxShadow: 'inset 0 0 80px rgba(245,158,11,0.3)' }}
+            />
+          )}
+
+          {/* ── Vault Prompt (P1 on tracks) ── */}
+          {p1OnTracks && !trainCrossing && (
+            <div className="absolute z-40 pointer-events-none" style={{ bottom: '35%', left: '10%' }}>
+              <div
+                className="px-3 py-1.5 text-[9px] font-black tracking-widest uppercase animate-bounce"
+                style={{
+                  color: '#22d3ee',
+                  textShadow: '0 0 16px #22d3ee',
+                  border: '1px solid #22d3ee66',
+                  background: 'rgba(0,0,0,0.85)',
+                }}
+              >
+                ↑ VAULT UP!
+              </div>
+              <div className="text-[6px] text-cyan-400/60 tracking-widest text-center mt-0.5">PRESS UP TO ESCAPE TRACKS</div>
+            </div>
+          )}
+
+          {/* ── Hazard Bounce Notice ── */}
+          {hazardBounceNotice && (
+            <div className="absolute z-50 pointer-events-none top-[30%] left-1/2 -translate-x-1/2">
+              <div
+                className="px-4 py-2 text-sm font-black tracking-widest uppercase animate-pulse"
+                style={{
+                  color: '#f97316',
+                  textShadow: '0 0 20px #f97316',
+                  border: '1px solid #f9731666',
+                  background: 'rgba(0,0,0,0.85)',
+                }}
+              >
+                {hazardBounceNotice}
+              </div>
+            </div>
+          )}
+
+          {/* ── Floor Break Phase Indicator ── */}
+          {floorBreakPhase === 'floor_break_fall' && (
+            <div
+              className="absolute z-50 pointer-events-none inset-0"
+              style={{ background: 'rgba(249,115,22,0.06)', boxShadow: 'inset 0 0 60px rgba(249,115,22,0.2)' }}
+            />
+          )}
+
+          {/* ── Wall Shatter VFX (left/right) ── */}
+          {wallShatterLeft && (
+            <div
+              className="absolute z-40 pointer-events-none left-0 top-0 bottom-0 w-16 animate-pulse"
+              style={{ background: 'linear-gradient(to right, rgba(148,163,184,0.3), transparent)' }}
+            />
+          )}
+          {wallShatterRight && (
+            <div
+              className="absolute z-40 pointer-events-none right-0 top-0 bottom-0 w-16 animate-pulse"
+              style={{ background: 'linear-gradient(to left, rgba(148,163,184,0.3), transparent)' }}
+            />
+          )}
+
+          {/* ── Ledge Throw Active Indicator ── */}
+          {ledgeThrowActive && (
+            <div className="absolute z-50 pointer-events-none inset-0 flex items-center justify-center">
+              <div
+                className="px-6 py-3 text-xl font-black tracking-[0.3em] uppercase"
+                style={{
+                  color: '#ef4444',
+                  textShadow: '0 0 24px #ef4444, 0 0 48px #ef444488',
+                  border: '2px solid #ef444466',
+                  background: 'rgba(0,0,0,0.9)',
+                  animation: 'pulse 0.5s ease-in-out infinite',
+                }}
+              >
+                🎯 LEDGE THROW!
               </div>
             </div>
           )}

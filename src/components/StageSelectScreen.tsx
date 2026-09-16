@@ -160,6 +160,15 @@ const STAGES: StageEntry[] = [
     badges: ['2 LEVELS', 'BREAKABLE', 'RING OUT', 'NO WALLS'],
     description: 'Open streets, multi-level chaos. Anything goes.',
   },
+  {
+    id: 'subway',
+    name: 'SUBWAY',
+    subtitle: 'UNDERGROUND TRANSIT',
+    accentColor: '#f59e0b',
+    bgColor: '#0a0800',
+    badges: ['2 LEVELS', '🚇 TRAIN', 'VAULT ESCAPE'],
+    description: 'Fight on the platform or the tracks. The train runs on its own schedule — no warnings, just chaos.',
+  },
 ];
 
 const REAL_STAGES: StageId[] = STAGES.filter(s => s.id !== 'random').map(s => s.id);
