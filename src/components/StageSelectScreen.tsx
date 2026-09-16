@@ -6,16 +6,22 @@ import * as THREE from 'three';
 import { type BannonFighterProfile } from '../data/bannonRoster';
 import { TrainingStage } from './TrainingStage';
 import { UrbanNightStage } from './UrbanNightStage';
+import { type StageId, STAGE_CONFIGS } from '../engine/combat/StageConfig';
 
-// ── Stage definitions ─────────────────────────────────────────────────────────
-export type StageId = 'urban_night' | 'training' | 'random';
+// Re-export StageId so existing imports from this file still work
+export type { StageId };
 
+// ── Stage UI entry (extends StageConfig with display-only fields) ─────────────
 interface StageEntry {
   id: StageId;
   name: string;
   subtitle: string;
   accentColor: string;
   bgColor: string;
+  /** Feature badges shown on the card */
+  badges: string[];
+  /** Short flavour description */
+  description: string;
 }
 
 const STAGES: StageEntry[] = [
@@ -25,6 +31,8 @@ const STAGES: StageEntry[] = [
     subtitle: 'FATE DECIDES',
     accentColor: '#f59e0b',
     bgColor: '#1c1400',
+    badges: [],
+    description: 'Let the arena choose your fate.',
   },
   {
     id: 'urban_night',
@@ -32,6 +40,8 @@ const STAGES: StageEntry[] = [
     subtitle: 'UNDERGROUND DISTRICT',
     accentColor: '#a855f7',
     bgColor: '#0d0014',
+    badges: ['WALLS'],
+    description: 'Neon-lit back alleys. Wall splats welcome.',
   },
   {
     id: 'training',
@@ -39,10 +49,120 @@ const STAGES: StageEntry[] = [
     subtitle: 'VOID ARENA',
     accentColor: '#22d3ee',
     bgColor: '#001418',
+    badges: ['WALLS'],
+    description: 'Infinite void. Perfect for practice.',
+  },
+  {
+    id: 'dojo',
+    name: 'DOJO',
+    subtitle: 'ANCIENT TRAINING HALL',
+    accentColor: '#f97316',
+    bgColor: '#1a0800',
+    badges: ['2 LEVELS', 'BREAKABLE'],
+    description: 'Slam opponents through the wooden floor to the lower dojo.',
+  },
+  {
+    id: 'wrestling_ring',
+    name: 'WRESTLING RING',
+    subtitle: 'THE SQUARED CIRCLE',
+    accentColor: '#ef4444',
+    bgColor: '#1a0000',
+    badges: ['RING OUT', 'NO WALLS'],
+    description: 'Throw them over the ropes for a ring-out KO.',
+  },
+  {
+    id: 'mma_octagon',
+    name: 'MMA OCTAGON',
+    subtitle: 'THE CAGE',
+    accentColor: '#facc15',
+    bgColor: '#0f0f00',
+    badges: ['WALLS', 'CAGE'],
+    description: 'Eight-sided cage. No escape from wall splats.',
+  },
+  {
+    id: 'steel_cage',
+    name: 'STEEL CAGE',
+    subtitle: 'NO ESCAPE',
+    accentColor: '#94a3b8',
+    bgColor: '#0a0a0a',
+    badges: ['WALLS', 'CAGE'],
+    description: 'Cold steel walls. Every slam echoes.',
+  },
+  {
+    id: 'industrial',
+    name: 'INDUSTRIAL',
+    subtitle: 'FACTORY FLOOR',
+    accentColor: '#f59e0b',
+    bgColor: '#0f0800',
+    badges: ['2 LEVELS', 'BREAKABLE', 'HAZARD'],
+    description: 'Break through the catwalk into molten metal below.',
+  },
+  {
+    id: 'ghetto_streets',
+    name: 'GHETTO STREETS',
+    subtitle: 'BACK ALLEY BRAWL',
+    accentColor: '#84cc16',
+    bgColor: '#0a0f00',
+    badges: ['RING OUT', 'NO WALLS', 'OPEN'],
+    description: 'Open streets. No boundaries. Ring-out anywhere.',
+  },
+  {
+    id: 'junkyard',
+    name: 'JUNKYARD',
+    subtitle: 'SCRAP METAL GRAVEYARD',
+    accentColor: '#78716c',
+    bgColor: '#0c0a08',
+    badges: ['2 LEVELS', 'BREAKABLE', 'RING OUT'],
+    description: 'Crash through scrap piles to the lower yard.',
+  },
+  {
+    id: 'sky_crane',
+    name: 'SKY CRANE',
+    subtitle: 'HIGH ALTITUDE PLATFORM',
+    accentColor: '#38bdf8',
+    bgColor: '#00080f',
+    badges: ['2 LEVELS', 'BREAKABLE', 'RING OUT'],
+    description: 'Narrow crane platform high above the city. One slip = ring-out.',
+  },
+  {
+    id: 'spike_pit',
+    name: 'SPIKE PIT',
+    subtitle: 'MORTAL HAZARD',
+    accentColor: '#dc2626',
+    bgColor: '#0f0000',
+    badges: ['2 LEVELS', 'BREAKABLE', '⚠ SPIKES'],
+    description: 'Slam them through the floor into the spike pit below.',
+  },
+  {
+    id: 'acid_pit',
+    name: 'ACID PIT',
+    subtitle: 'CORROSIVE DEPTHS',
+    accentColor: '#a3e635',
+    bgColor: '#030f00',
+    badges: ['2 LEVELS', 'BREAKABLE', '☣ ACID'],
+    description: 'Break the bridge. Watch them dissolve in the acid pool.',
+  },
+  {
+    id: 'grinder_pit',
+    name: 'GRINDER PIT',
+    subtitle: 'INDUSTRIAL DEATH TRAP',
+    accentColor: '#f97316',
+    bgColor: '#0f0500',
+    badges: ['2 LEVELS', 'BREAKABLE', '⚙ GRINDER'],
+    description: 'Catwalk above spinning industrial grinders. One slam ends it.',
+  },
+  {
+    id: 'gang_brawl',
+    name: 'GANG BRAWL',
+    subtitle: 'NO RULES — NO WALLS',
+    accentColor: '#e879f9',
+    bgColor: '#0f0014',
+    badges: ['2 LEVELS', 'BREAKABLE', 'RING OUT', 'NO WALLS'],
+    description: 'Open streets, multi-level chaos. Anything goes.',
   },
 ];
 
-const REAL_STAGES: StageId[] = ['urban_night', 'training'];
+const REAL_STAGES: StageId[] = STAGES.filter(s => s.id !== 'random').map(s => s.id);
 
 // ── Cinematic background camera ───────────────────────────────────────────────
 function CinematicCamera() {
@@ -52,18 +172,16 @@ function CinematicCamera() {
     const t = state.clock.elapsedTime;
     const cam = camera as THREE.PerspectiveCamera;
 
-    // Orbit around center + Y oscillation (drone-style)
     const orbitRadius = 9;
     const orbitSpeed = 0.18;
     const angle = t * orbitSpeed;
 
     cam.position.x = Math.sin(angle) * orbitRadius;
     cam.position.z = Math.cos(angle) * orbitRadius * 0.7 + 3;
-    // Smooth Y float using sin — hits floor, mid, and high angles
     cam.position.y = 2.5 + Math.sin(t * 0.35) * 2.2;
 
     cam.lookAt(0, 1.2, 0);
-    cam.fov = 60 + Math.sin(t * 0.22) * 4; // subtle FOV breathe
+    cam.fov = 60 + Math.sin(t * 0.22) * 4;
     cam.updateProjectionMatrix();
   });
 
@@ -73,10 +191,18 @@ function CinematicCamera() {
 // ── Stage geometry renderer ───────────────────────────────────────────────────
 function StageGeometry({ stageId }: { stageId: StageId }) {
   const resolvedId = stageId === 'random' ? 'urban_night' : stageId;
+
+  // Resolve config for lighting
+  const cfg = resolvedId !== 'random' ? STAGE_CONFIGS[resolvedId as Exclude<StageId, 'random'>] : null;
+  const ambientColor = cfg?.ambientColor ?? '#1a0030';
+  const primaryColor = cfg?.primaryLightColor ?? '#ffffff';
+  const fillColor = cfg?.fillLightColor ?? '#334155';
+  const ambientIntensity = cfg?.ambientIntensity ?? 0.25;
+  const accentColor = cfg?.accentColor ?? '#a855f7';
+
   if (resolvedId === 'training') {
     return (
       <>
-        {/* Training Grid lighting */}
         <ambientLight intensity={0.35} color="#c8d0e0" />
         <directionalLight position={[0, 8, 4]} intensity={2.5} color="#fff8f0" />
         <directionalLight position={[-5, 4, 3]} intensity={0.8} color="#a0b8ff" />
@@ -86,7 +212,63 @@ function StageGeometry({ stageId }: { stageId: StageId }) {
       </>
     );
   }
-  return <UrbanNightStage p1Color="#a855f7" p2Color="#a855f7" />;
+
+  if (resolvedId === 'urban_night') {
+    return <UrbanNightStage p1Color="#a855f7" p2Color="#a855f7" />;
+  }
+
+  // Generic procedural stage preview for new arenas
+  return (
+    <>
+      <ambientLight intensity={ambientIntensity} color={ambientColor} />
+      <directionalLight position={[0, 8, 4]} intensity={2.0} color={primaryColor} />
+      <directionalLight position={[-5, 4, 3]} intensity={0.6} color={fillColor} />
+      <pointLight position={[0, 3, 0]} intensity={2.0} color={accentColor} distance={14} decay={2} />
+      <pointLight position={[4, 2, -2]} intensity={1.0} color={primaryColor} distance={10} decay={2} />
+      <pointLight position={[-4, 2, -2]} intensity={1.0} color={fillColor} distance={10} decay={2} />
+
+      {/* Floor */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]} receiveShadow>
+        <planeGeometry args={[20, 20]} />
+        <meshStandardMaterial color={ambientColor} roughness={0.8} metalness={0.2} />
+      </mesh>
+
+      {/* Floor grid lines */}
+      <gridHelper args={[20, 20, accentColor, fillColor]} position={[0, 0, 0]} />
+
+      {/* Accent pillars */}
+      {[-4, 4].map((x, i) => (
+        <mesh key={i} position={[x, 1.5, -3]}>
+          <boxGeometry args={[0.3, 3, 0.3]} />
+          <meshStandardMaterial color={accentColor} emissive={accentColor} emissiveIntensity={0.4} />
+        </mesh>
+      ))}
+
+      {/* Stage name plate glow strip */}
+      <mesh position={[0, 0.02, -3.5]}>
+        <planeGeometry args={[8, 0.15]} />
+        <meshStandardMaterial color={accentColor} emissive={accentColor} emissiveIntensity={1.5} />
+      </mesh>
+
+      {/* Fog-like background plane */}
+      <mesh position={[0, 3, -6]}>
+        <planeGeometry args={[20, 10]} />
+        <meshStandardMaterial color={ambientColor} transparent opacity={0.6} />
+      </mesh>
+    </>
+  );
+}
+
+// ── Feature badge pill ────────────────────────────────────────────────────────
+function Badge({ label, accentColor }: { label: string; accentColor: string }) {
+  return (
+    <span
+      className="text-[6px] font-black tracking-wider px-1 py-0.5 border leading-none"
+      style={{ borderColor: `${accentColor}66`, color: accentColor, background: `${accentColor}18` }}
+    >
+      {label}
+    </span>
+  );
 }
 
 // ── Thumbnail card ────────────────────────────────────────────────────────────
@@ -178,7 +360,6 @@ export default function StageSelectScreen({
       selectedStage.id === 'random'
         ? REAL_STAGES[Math.floor(Math.random() * REAL_STAGES.length)]
         : selectedStage.id;
-    // Brief flash then transition
     setTimeout(() => onConfirm(finalId), 600);
   }, [confirming, selectedStage, onConfirm]);
 
@@ -226,8 +407,8 @@ export default function StageSelectScreen({
         </div>
       </div>
 
-      {/* ── STAGE NAME OVERLAY (center) ── */}
-      <div className="absolute inset-0 z-20 flex flex-col items-center justify-center pointer-events-none">
+      {/* ── STAGE INFO OVERLAY (center) ── */}
+      <div className="absolute inset-0 z-20 flex flex-col items-center justify-center pointer-events-none px-6">
         <div
           className="text-[9px] tracking-[0.6em] mb-2 transition-all duration-300"
           style={{ color: selectedStage.accentColor }}
@@ -235,7 +416,7 @@ export default function StageSelectScreen({
           {selectedStage.subtitle}
         </div>
         <div
-          className="text-4xl md:text-5xl font-black tracking-[0.12em] transition-all duration-300 drop-shadow-2xl"
+          className="text-4xl md:text-5xl font-black tracking-[0.12em] transition-all duration-300 drop-shadow-2xl mb-3"
           style={{
             color: '#ffffff',
             textShadow: `0 0 40px ${selectedStage.accentColor}88, 0 2px 0 rgba(0,0,0,0.8)`,
@@ -243,6 +424,25 @@ export default function StageSelectScreen({
         >
           {selectedStage.name}
         </div>
+
+        {/* Description */}
+        {selectedStage.description && (
+          <div
+            className="text-[9px] tracking-wider text-center max-w-xs mb-3 opacity-70"
+            style={{ color: selectedStage.accentColor }}
+          >
+            {selectedStage.description}
+          </div>
+        )}
+
+        {/* Feature badges */}
+        {selectedStage.badges.length > 0 && (
+          <div className="flex flex-wrap gap-1 justify-center">
+            {selectedStage.badges.map((b) => (
+              <Badge key={b} label={b} accentColor={selectedStage.accentColor} />
+            ))}
+          </div>
+        )}
       </div>
 
       {/* ── BOTTOM UI PANEL ── */}
@@ -257,7 +457,7 @@ export default function StageSelectScreen({
 
         <div className="bg-black/90 px-4 pt-3 pb-6">
           {/* Thumbnail row */}
-          <div className="flex gap-2 overflow-x-auto pb-3 scrollbar-hide justify-center">
+          <div className="flex gap-2 overflow-x-auto pb-3 scrollbar-hide">
             {STAGES.map((stage, idx) => (
               <StageThumbnail
                 key={stage.id}

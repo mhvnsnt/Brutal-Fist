@@ -44,7 +44,13 @@ import { createKiChargeState, tickKiCharge, applyKiChargeCounterHit, type KiChar
 // ── Decoupled combat state tick ───────────────────────────────────────────────
 import { createCombatMatchState, tickCombatState, checkSidestepWhiff, type CombatMatchState,  } from '../engine/combat/CombatStateTick';
 // ── Wall system ───────────────────────────────────────────────────────────────
-
+// ── Stage config & arena state ────────────────────────────────────────────────
+import {
+  resolveStageConfig,
+  createArenaCombatState,
+  tickArenaState,
+  type ArenaCombatState,
+} from '../engine/combat/StageConfig';
 // ── Heat Burst / Power Crush / Rage Art ──────────────────────────────────────
 import { type HeatState, type PowerCrushState, type RageArtState,  } from '../engine/combat/HeatBurstSystem';
 // ── Directional throw system ──────────────────────────────────────────────────
@@ -179,6 +185,15 @@ export default function GameBattleArena({
   const combatStateRef = useRef<CombatMatchState>(
     createCombatMatchState(p1Fighter.hp, p2Fighter.hp)
   );
+
+  // ── Arena combat state — wiped and rebuilt on every stage load ────────────
+  const arenaCombatStateRef = useRef<ArenaCombatState>(createArenaCombatState(stageId));
+  const [arenaState, setArenaState] = useState<ArenaCombatState>(() => createArenaCombatState(stageId));
+  const [ringOutNotice, setRingOutNotice] = useState<{ player: 'p1' | 'p2'; count: number } | null>(null);
+  const ringOutNoticeCountRef = useRef(0);
+  const [floorBreakNotice, setFloorBreakNotice] = useState<{ player: 'p1' | 'p2'; level: string; count: number } | null>(null);
+  const floorBreakNoticeCountRef = useRef(0);
+  const [hazardNotice, setHazardNotice] = useState<string>('');
 
   // ── Announcer system ──────────────────────────────────────────────────────
   const announcerRef = useRef(getAnnouncerSystem({
@@ -343,6 +358,14 @@ export default function GameBattleArena({
     p1ImpactMarkersRef.current = [];
     p2ImpactMarkersRef.current = [];
 
+    // ── Wipe and rebuild arena combat state for this stage ─────────────────
+    const freshArenaState = createArenaCombatState(stageId);
+    arenaCombatStateRef.current = freshArenaState;
+    setArenaState(freshArenaState);
+    setRingOutNotice(null);
+    setFloorBreakNotice(null);
+    setHazardNotice(freshArenaState.config.hazardLabel);
+
     // ── Init Global Audio Manager ──────────────────────────────────────────
     const audioManager = audioManagerRef.current;
     audioManager.init({ enabled: settings.soundEnabled }).then(() => {
@@ -368,8 +391,9 @@ export default function GameBattleArena({
     const t2 = window.setTimeout(() => {
       setCinematicPhase('fight');
       setArenaReady(true);
-      // Crossfade to stage BGM when fight starts
-      audioManager.playBGM(stageId === 'urban_night' ? 'stage_urban_night' : 'stage_training', 1200);
+      // Crossfade to stage BGM — use stage config track key
+      const stageCfg = resolveStageConfig(stageId);
+      audioManager.playBGM(`stage_${stageCfg.bgmTrack}`, 1200);
     }, SWEEP_DURATION_MS + INTRO_DURATION_MS);
 
     return () => {
@@ -513,6 +537,58 @@ export default function GameBattleArena({
         {},
         dt,
       );
+
+      // ── Tick arena combat state (stage boundaries, ring-out, floor-break, hazard) ──
+      const p1X = p1XRef.current;
+      const p2X = p2XRef.current;
+      const prevArena = arenaCombatStateRef.current;
+      const newArena = tickArenaState(
+        prevArena,
+        p1X,
+        p2X,
+        0, // hit damage passed per-hit below
+        0,
+        false,
+        false,
+      );
+      arenaCombatStateRef.current = newArena;
+
+      // Ring-out KO detection
+      if (newArena.p1RingOut && !prevArena.p1RingOut) {
+        setRingOutNotice({ player: 'p1', count: ++ringOutNoticeCountRef.current });
+        // Treat ring-out as instant KO for P1
+        setP1Health(0);
+      }
+      if (newArena.p2RingOut && !prevArena.p2RingOut) {
+        setRingOutNotice({ player: 'p2', count: ++ringOutNoticeCountRef.current });
+        setP2Health(0);
+      }
+
+      // Floor-break notification
+      if (newArena.p1FloorBreakPending && !prevArena.p1FloorBreakPending) {
+        const lvl = newArena.config.levels[newArena.p1LevelIndex];
+        setFloorBreakNotice({ player: 'p1', level: lvl?.label ?? 'LOWER LEVEL', count: ++floorBreakNoticeCountRef.current });
+        arenaCombatStateRef.current = { ...newArena, p1FloorBreakPending: false };
+      }
+      if (newArena.p2FloorBreakPending && !prevArena.p2FloorBreakPending) {
+        const lvl = newArena.config.levels[newArena.p2LevelIndex];
+        setFloorBreakNotice({ player: 'p2', level: lvl?.label ?? 'LOWER LEVEL', count: ++floorBreakNoticeCountRef.current });
+        arenaCombatStateRef.current = { ...newArena, p2FloorBreakPending: false };
+      }
+
+      // Hazard damage (applied per second)
+      if (newArena.p1InHazard) {
+        const hazardDmg = newArena.config.levels[newArena.p1LevelIndex]?.hazardDamagePerSec ?? 0;
+        if (hazardDmg > 0) {
+          setP1Health(h => Math.max(0, h - hazardDmg * dt));
+        }
+      }
+      if (newArena.p2InHazard) {
+        const hazardDmg = newArena.config.levels[newArena.p2LevelIndex]?.hazardDamagePerSec ?? 0;
+        if (hazardDmg > 0) {
+          setP2Health(h => Math.max(0, h - hazardDmg * dt));
+        }
+      }
 
       // ── Update rage art availability based on P1 HP ────────────────────
       const p1HpPct = prevP1HealthRef.current / p1Fighter.hp;
@@ -700,6 +776,18 @@ export default function GameBattleArena({
           p2LocoRef.current.halt();
           // Trigger dust VFX on knockdown
           setKnockdownEvent({ count: ++knockdownEventCountRef.current, player: 'p2' });
+
+          // ── Floor-break: slam sends P2 crashing through to next level ──
+          const slamDmg = p1Hit.damage ?? 0;
+          const prevArenaSnap = arenaCombatStateRef.current;
+          const afterSlam = tickArenaState(prevArenaSnap, p1XRef.current, p2XRef.current, 0, slamDmg, false, true);
+          arenaCombatStateRef.current = afterSlam;
+          if (afterSlam.p2FloorBreakPending && !prevArenaSnap.p2FloorBreakPending) {
+            const lvl = afterSlam.config.levels[afterSlam.p2LevelIndex];
+            setFloorBreakNotice({ player: 'p2', level: lvl?.label ?? 'LOWER LEVEL', count: ++floorBreakNoticeCountRef.current });
+            arenaCombatStateRef.current = { ...afterSlam, p2FloorBreakPending: false };
+            audioManagerRef.current.playSFX('floor_slam');
+          }
         } else if (!guardResult.blocked) {
           p2SMRef.current.applyStun(p1Hit.hitstun || 0.3, false);
           // Apply pushback from hit
@@ -830,6 +918,18 @@ export default function GameBattleArena({
           p1LocoRef.current.halt();
           // Trigger dust VFX on knockdown
           setKnockdownEvent({ count: ++knockdownEventCountRef.current, player: 'p1' });
+
+          // ── Floor-break: slam sends P1 crashing through to next level ──
+          const slamDmg = p2Hit.damage ?? 0;
+          const prevArenaSnap = arenaCombatStateRef.current;
+          const afterSlam = tickArenaState(prevArenaSnap, p1XRef.current, p2XRef.current, slamDmg, 0, true, false);
+          arenaCombatStateRef.current = afterSlam;
+          if (afterSlam.p1FloorBreakPending && !prevArenaSnap.p1FloorBreakPending) {
+            const lvl = afterSlam.config.levels[afterSlam.p1LevelIndex];
+            setFloorBreakNotice({ player: 'p1', level: lvl?.label ?? 'LOWER LEVEL', count: ++floorBreakNoticeCountRef.current });
+            arenaCombatStateRef.current = { ...afterSlam, p1FloorBreakPending: false };
+            audioManagerRef.current.playSFX('floor_slam');
+          }
         } else if (!p1GuardResult.blocked) {
           p1SMRef.current.applyStun(p2Hit.hitstun || 0.3, false);
           p1LocoRef.current.applyPushback(p2Hit.pushback ?? 0.3);
@@ -1550,6 +1650,83 @@ export default function GameBattleArena({
               >
                 💢 RAGE ART READY
               </div>
+            </div>
+          )}
+
+          {/* ── Ring-Out Notice ── */}
+          {ringOutNotice && (
+            <div
+              key={ringOutNotice.count}
+              className="absolute z-50 pointer-events-none inset-0 flex items-center justify-center"
+            >
+              <div
+                className="px-6 py-3 text-2xl font-black tracking-[0.3em] uppercase animate-bounce"
+                style={{
+                  color: '#facc15',
+                  textShadow: '0 0 30px #facc15, 0 0 60px #facc1588',
+                  border: '2px solid #facc1566',
+                  background: 'rgba(0,0,0,0.85)',
+                }}
+              >
+                {ringOutNotice.player === 'p1' ? 'P1' : 'P2'} RING OUT!
+              </div>
+            </div>
+          )}
+
+          {/* ── Floor Break Notice ── */}
+          {floorBreakNotice && (
+            <div
+              key={floorBreakNotice.count}
+              className="absolute z-50 pointer-events-none inset-0 flex items-center justify-center"
+            >
+              <div
+                className="px-6 py-3 text-xl font-black tracking-[0.25em] uppercase"
+                style={{
+                  color: '#f97316',
+                  textShadow: '0 0 24px #f97316, 0 0 48px #f9731688',
+                  border: '2px solid #f9731666',
+                  background: 'rgba(0,0,0,0.85)',
+                  animation: 'ping 0.4s ease-out',
+                }}
+              >
+                💥 FLOOR BREAK → {floorBreakNotice.level}
+              </div>
+            </div>
+          )}
+
+          {/* ── Hazard Warning ── */}
+          {hazardNotice && arenaState.config.hazardDamagePerSec > 0 && (
+            <div className="absolute z-40 pointer-events-none top-[18%] left-1/2 -translate-x-1/2">
+              <div
+                className="px-3 py-1 text-[8px] font-black tracking-widest uppercase animate-pulse"
+                style={{
+                  color: '#ef4444',
+                  textShadow: '0 0 12px #ef4444',
+                  border: '1px solid #ef444466',
+                  background: 'rgba(0,0,0,0.75)',
+                }}
+              >
+                {hazardNotice}
+              </div>
+            </div>
+          )}
+
+          {/* ── Stage Level Indicator ── */}
+          {arenaState.config.levels.length > 1 && (
+            <div className="absolute z-40 pointer-events-none top-[22%] left-1/2 -translate-x-1/2 flex gap-3">
+              <span
+                className="text-[7px] tracking-widest font-black"
+                style={{ color: arenaState.config.accentColor, opacity: 0.7 }}
+              >
+                P1: {arenaState.config.levels[arenaState.p1LevelIndex]?.label ?? 'LEVEL 1'}
+              </span>
+              <span className="text-[7px] text-zinc-600">|</span>
+              <span
+                className="text-[7px] tracking-widest font-black"
+                style={{ color: arenaState.config.accentColor, opacity: 0.7 }}
+              >
+                P2: {arenaState.config.levels[arenaState.p2LevelIndex]?.label ?? 'LEVEL 1'}
+              </span>
             </div>
           )}
 
