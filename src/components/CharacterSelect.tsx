@@ -305,9 +305,11 @@ function RosterSlot({
           style={{ imageRendering: pixelated ? 'pixelated' : 'auto' }}
         />
       )}
+      {!pixelated ? null : (
       <div className="absolute inset-0 z-[1] opacity-20 pointer-events-none" style={{
         backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 1px, rgba(0,0,0,0.55) 1px, rgba(0,0,0,0.55) 2px)',
       }} />
+      )}
       <div className="absolute bottom-0 left-0 right-0 z-10 bg-black/70 py-0.5">
         <div className="text-[7px] font-mono text-zinc-300 tracking-widest truncate w-full text-center px-0.5">
           {fighter.name.toUpperCase()}

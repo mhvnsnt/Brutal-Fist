@@ -1,13 +1,10 @@
 /**
- * Tekken-style character card art. Each fighter can have multiple 2D arts;
- * the player picks which one fills the select-grid square.
- *
- *   likeness — HQ art built from GLB/canon tells (default when present)
- *   concept  — first-pass 128px drawings, archived, still selectable
- *   pixel    — same concept, nearest-scaled (PS1 crunch)
+ * Tekken-style character card art. Default grid face is always the HQ likeness.
+ * CARD cycles LIKENESS / CONCEPT / PIXEL. Cache-bust so old 128px is not sticky.
  */
 
-const STORAGE_KEY = 'bf-card-art-v1';
+const STORAGE_KEY = 'bf-card-art-v2';
+const CACHE_BUST = 'v2';
 
 export type CardArtKind = 'likeness' | 'concept' | 'pixel';
 
@@ -17,21 +14,12 @@ export interface CardArtOption {
   src: string;
 }
 
-const LIKENESS_IDS = new Set([
-  'bannon', 'maime', 'onyx', 'stick_up', 'cain_elias',
-  'finxsse', 'tarzanian_devil', 'tyneshia',
-]);
-
 export function getCardArtOptions(fighterId: string): CardArtOption[] {
-  const concept = `/concept-art/portraits-v1/${fighterId}.png`;
-  const pixel = `/portraits/${fighterId}.png`;
-  const opts: CardArtOption[] = [];
-  if (LIKENESS_IDS.has(fighterId)) {
-    opts.push({ kind: 'likeness', label: 'LIKENESS', src: `/portraits/likeness/${fighterId}.png` });
-  }
-  opts.push({ kind: 'concept', label: 'CONCEPT', src: concept });
-  opts.push({ kind: 'pixel', label: 'PIXEL', src: pixel });
-  return opts;
+  return [
+    { kind: 'likeness', label: 'LIKENESS', src: `/portraits/likeness/${fighterId}.png?${CACHE_BUST}` },
+    { kind: 'concept', label: 'CONCEPT', src: `/concept-art/portraits-v1/${fighterId}.png` },
+    { kind: 'pixel', label: 'PIXEL', src: `/concept-art/portraits-v1/${fighterId}.png` },
+  ];
 }
 
 function readMap(): Record<string, CardArtKind> {
@@ -43,16 +31,16 @@ function readMap(): Record<string, CardArtKind> {
   }
 }
 
-export function getSelectedCardArtKind(fighterId: string): CardArtKind {
-  const stored = readMap()[fighterId];
-  if (stored) return stored;
-  return LIKENESS_IDS.has(fighterId) ? 'likeness' : 'concept';
+export function getSelectedCardArtKind(_fighterId: string): CardArtKind {
+  const stored = readMap()[_fighterId];
+  if (stored === 'concept' || stored === 'pixel' || stored === 'likeness') return stored;
+  return 'likeness';
 }
 
 export function getSelectedCardArtSrc(fighterId: string): string {
   const kind = getSelectedCardArtKind(fighterId);
   const opt = getCardArtOptions(fighterId).find((o) => o.kind === kind);
-  return opt?.src ?? `/portraits/${fighterId}.png`;
+  return opt?.src ?? `/portraits/likeness/${fighterId}.png?${CACHE_BUST}`;
 }
 
 export function setSelectedCardArtKind(fighterId: string, kind: CardArtKind): void {

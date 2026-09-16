@@ -34,3 +34,27 @@ export function flattenRootMotionY(clip: THREE.AnimationClip): void {
     for (let i = 1; i < v.length; i += 3) v[i] -= y0;
   }
 }
+
+const FOOT_RE = /foot|toe|ankle/i;
+
+/**
+ * After mixer.update(), put soles on y=0 using FOOT BONES — not mesh AABB.
+ * Box3.setFromObject uses undeformed bind geometry, so AABB snap cannot see
+ * Mixamo idle lifting the skinned verts (the hover in the screenshots).
+ */
+export function snapAuthoredFeetToFloor(root: THREE.Object3D, soleY = 0.02): void {
+  root.updateMatrixWorld(true);
+  const world = new THREE.Vector3();
+  let minY = Infinity;
+  root.traverse((obj) => {
+    const bone = obj as THREE.Bone;
+    if (!bone.isBone && obj.type !== 'Bone') return;
+    if (!FOOT_RE.test(obj.name || '')) return;
+    obj.getWorldPosition(world);
+    if (world.y < minY) minY = world.y;
+  });
+  if (!Number.isFinite(minY)) return;
+  const dy = soleY - minY;
+  if (Math.abs(dy) > 0.001) root.position.y += dy;
+}
+

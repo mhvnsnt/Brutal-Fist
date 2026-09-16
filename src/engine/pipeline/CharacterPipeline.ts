@@ -226,6 +226,7 @@ export function normalizeClonedFighter(
   cloned.position.y += -box.min.y;
   cloned.position.z += -center.z;
   cloned.updateMatrixWorld(true);
+  cloned.userData.bindFloorY = cloned.position.y;
 
   const floorBox = computeMeshWorldBox(cloned);
   const measuredHeight = floorBox.getSize(new THREE.Vector3()).y;

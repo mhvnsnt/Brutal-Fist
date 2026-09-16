@@ -147,4 +147,11 @@ Maime_skinned is 15 unit-cube named-parts + Mixamo bones with **no rest translat
 Grid: likeness copied over `/portraits/{id}.png`, `imageRendering:auto` unless CARD PIXEL.
 
 Float: flatten Mixamo hip Y on clips + per-frame foot snap on grounded states. Training floor lightened so the true y=0 plane is visible.
+
+## 2026-09-16 — Grid HQ for entire roster + universal foot-bone floor
+
+AABB snap cannot see Mixamo idle: `Box3.setFromObject` uses bind geometry, so feet stayed in the air. Universal fix: reset to bindFloorY then `snapAuthoredFeetToFloor` on **foot bones** after mixer.update.
+
+Select grid default is `/portraits/likeness/{id}.png?v=2` for all 27 fighters (scanline overlay only on CARD PIXEL). Old 128px stays as CONCEPT/PIXEL.
+
 Select P2 stays −45° toward camera.

@@ -14,9 +14,8 @@ import {
 } from '../engine/debug/DeformationIntegrityLogger';
 import {
   runCharacterPipeline,
-  computeMeshWorldBox,
 } from '../engine/pipeline/CharacterPipeline';
-import { isCollapsedNamedPartRig } from '../engine/pipeline/namedPartRig';
+import { isCollapsedNamedPartRig, snapAuthoredFeetToFloor } from '../engine/pipeline/namedPartRig';
 import {
   runAnimationIntegrityGate,
   type AnimationIntegrityReport,
@@ -789,15 +788,13 @@ function FighterMeshInner({
     // Skipping mixer.update() entirely causes animation state to desync —
     // the mixer's internal clock stops tracking and crossfades break on resume.
     if (normalized) {
+      const bindY = typeof normalized.scene.userData.bindFloorY === 'number'
+        ? normalized.scene.userData.bindFloorY
+        : 0;
+      normalized.scene.position.y = bindY;
       normalized.mixer.update(delta);
       const grounded = !['Knockdown', 'KO', 'Crumple', 'Airborne'].includes(state);
-      if (grounded) {
-        normalized.scene.updateMatrixWorld(true);
-        const box = computeMeshWorldBox(normalized.scene);
-        if (Number.isFinite(box.min.y) && Math.abs(box.min.y) > 0.003) {
-          normalized.scene.position.y += -box.min.y;
-        }
-      }
+      if (grounded) snapAuthoredFeetToFloor(normalized.scene, 0.02);
       if (normalized.skeletonHelper && showHitbox) {
         normalized.skeletonHelper.update();
       }
