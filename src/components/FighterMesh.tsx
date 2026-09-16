@@ -18,6 +18,7 @@ import {
   runAnimationIntegrityGate,
   type AnimationIntegrityReport,
 } from '../engine/combat/AnimationIntegrityGate';
+import { COMBAT_STATE_TO_SEMANTIC } from '../engine/retarget/SemanticStateAliases';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props
@@ -251,6 +252,27 @@ const MIN_CROSSFADE_HOLD_S = 0.05; // 3 frames at 60fps
 // Resolve the best matching clip name from available actions
 // ─────────────────────────────────────────────────────────────────────────────
 function resolveClipName(key: string, availableClips: string[]): string | null {
+  // ── STEP 0: Combat state → semantic state → clip aliases ─────────────────
+  // Use the AnimationBridge COMBAT_STATE_TO_SEMANTIC mapping as the first
+  // lookup step. This ensures FighterStateMachine states drive the correct
+  // semantic animation state (e.g. 'lightAttack' → 'attack_1' → jab/punch clips).
+  const semanticState = COMBAT_STATE_TO_SEMANTIC[key];
+  if (semanticState) {
+    // Try semantic state aliases first (procedural placeholders + authored names)
+    const semanticAliases = ANIMATION_ALIASES[semanticState] ?? [semanticState];
+    const semanticFound = availableClips.find(c =>
+      semanticAliases.some(a => c.toLowerCase() === a.toLowerCase())
+    );
+    if (semanticFound) return semanticFound;
+
+    // Try partial match on semantic state name
+    const semanticPartial = availableClips.find(c =>
+      c.toLowerCase().includes(semanticState.replace('_', '').toLowerCase()) ||
+      c.toLowerCase().includes(semanticState.toLowerCase())
+    );
+    if (semanticPartial) return semanticPartial;
+  }
+
   const aliases = ANIMATION_ALIASES[key] ?? [key];
 
   // 1. Exact alias match (case-insensitive)

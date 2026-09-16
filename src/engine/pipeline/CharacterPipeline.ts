@@ -69,6 +69,14 @@ import * as THREE from 'three';
 import { SkeletonUtils } from 'three-stdlib';
 import { DEFAULT_PSX_RENDER } from '../../render/psx';
 import { AnimationRetargeter } from '../retarget/AnimationRetargeter';
+import {
+  generateProceduralClipSet,
+} from '../retarget/BannonClipJsonAdapter';
+import {
+  AnimationSourceRegistry,
+  validateRegistryCompleteness,
+} from '../retarget/AnimationSourceRegistry';
+import { SEMANTIC_STATE_ALIASES } from '../retarget/SemanticStateAliases';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constants
@@ -591,15 +599,52 @@ export function extractAndRetargetAnimations(
     }
   }
 
-  if (glbAnimations.length === 0) {
+  // ── ANIMATION SOURCE REGISTRY: build from GLB clips + Bannon motion bank ──
+  // Collect target bone names for procedural fallback generation
+  const targetBoneNames: string[] = [];
+  targetScene.traverse((child) => {
+    if ((child as THREE.Bone).isBone && child.name) {
+      targetBoneNames.push(child.name);
+    }
+  });
+
+  const registry = new AnimationSourceRegistry();
+
+  // Register GLB clips (highest priority if they exist)
+  if (processedClips.length > 0) {
+    // Tag each clip with its semantic state via SEMANTIC_STATE_ALIASES lookup
+    for (const clip of processedClips) {
+      const semanticState = resolveClipSemanticState(clip.name);
+      if (semanticState) {
+        (clip as any).userData = { ...((clip as any).userData ?? {}), semanticState };
+      }
+    }
+    registry.registerGLBClips(processedClips, modelName, characterId);
+    bridgeClipCount = processedClips.length;
+  }
+
+  // If GLB has no clips, generate procedural placeholders so the pipeline
+  // can be verified end-to-end. These are clearly labeled PROCEDURAL_PLACEHOLDER.
+  if (processedClips.length === 0) {
     console.warn(
       `[CharacterPipeline] ⚠️ "${modelName}" — no animation clips in GLB. ` +
-      `Character will be static (bind pose).\n` +
+      `Generating PROCEDURAL_PLACEHOLDER clips for pipeline verification.\n` +
       `  → Source: check ${characterId ? characterId + '_rigged.glb' : 'rigged GLB'} from Bannon repo\n` +
       `  → Bridge: check animation_bridge/SOURCE_REGISTRY.json\n` +
       `  → Required: idle, walk, attack, hit, knockdown clips`
     );
+
+    if (targetBoneNames.length > 0) {
+      const proceduralClips = generateProceduralClipSet(targetBoneNames);
+      registry.registerBannonMotionBank(proceduralClips, 'PROCEDURAL_PLACEHOLDER');
+      processedClips = [...proceduralClips.values()];
+      bridgeClipCount = processedClips.length;
+      retargetVerdict = 'SKIPPED';
+    }
   }
+
+  // Validate registry completeness
+  validateRegistryCompleteness(registry, characterId || modelName);
 
   // Run channel validation on the final clip set
   const channelValidation = validateAnimationChannelBones(
@@ -628,6 +673,20 @@ export function extractAndRetargetAnimations(
     retargetApplied,
     retargetVerdict,
   };
+}
+
+/**
+ * Resolve a clip name to its semantic state using SEMANTIC_STATE_ALIASES.
+ * Returns null if no semantic state is found.
+ */
+function resolveClipSemanticState(clipName: string): string | null {
+  const lower = clipName.toLowerCase();
+  for (const [semanticState, aliases] of Object.entries(SEMANTIC_STATE_ALIASES)) {
+    if (aliases.some((a: string) => a.toLowerCase() === lower || lower.includes(a.toLowerCase()))) {
+      return semanticState;
+    }
+  }
+  return null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

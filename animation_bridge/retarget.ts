@@ -32,33 +32,12 @@
 import * as THREE from 'three';
 import { AnimationRetargeter, type RetargetReport } from '../src/engine/retarget/AnimationRetargeter';
 import { validateAnimationChannelBones } from '../src/engine/pipeline/CharacterPipeline';
+import {
+  SEMANTIC_STATE_ALIASES,
+  COMBAT_STATE_TO_SEMANTIC,
+} from '../src/engine/retarget/SemanticStateAliases';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Semantic state aliases
-// Maps semantic animation state names to actual clip names from various sources
-// ─────────────────────────────────────────────────────────────────────────────
-
-export const SEMANTIC_STATE_ALIASES: Record<string, string[]> = {
-  idle:           ['idle', 'Idle', 'neutral', 'Neutral', 'standing', 'Standing', 'stance', 'Stance', 'combatIdle', 'CombatIdle'],
-  walk_forward:   ['walk', 'Walk', 'walkForward', 'WalkForward', 'walking', 'Walking', 'walk_fwd', 'SBW_walk_fwd'],
-  walk_back:      ['walkBack', 'WalkBack', 'walkBackward', 'WalkBackward', 'walk_back', 'walk_bwd', 'SBW_walk_back'],
-  strafe_left:    ['strafeLeft', 'StrafeLeft', 'sidestepLeft', 'SidestepLeft', 'SBW_strafe_left'],
-  strafe_right:   ['strafeRight', 'StrafeRight', 'sidestepRight', 'SidestepRight', 'SBW_strafe_right'],
-  attack_1:       ['lightAttack', 'LightAttack', 'punch', 'Punch', 'jab', 'Jab', 'attack', 'Attack', 'LP', 'T_1', 'bf_jab'],
-  attack_2:       ['heavyAttack', 'HeavyAttack', 'kick', 'Kick', 'cross', 'Cross', 'RP', 'T_2', 'bf_cross'],
-  block:          ['guard', 'Guard', 'block', 'Block', 'defend', 'Defend', 'SBW_guard', 'T_guard'],
-  hit_reaction:   ['hit', 'Hit', 'hurt', 'Hurt', 'flinch', 'Flinch', 'hitstun', 'Hitstun', 'SBW_hit', 'T_hit'],
-  knockdown:      ['knockdown', 'Knockdown', 'ko', 'KO', 'fall', 'Fall', 'SBW_knockdown', 'T_knockdown'],
-  getup:          ['getUp', 'GetUp', 'quickStand', 'QuickStand', 'gettingUp', 'GettingUp', 'T_quickstand'],
-  grapple:        ['grab', 'Grab', 'throw', 'Throw', 'grapple', 'Grapple', 'SBW_throw', 'T_1_3'],
-  crouch:         ['crouch', 'Crouch', 'duck', 'Duck', 'SBW_crouch', 'T_crouch'],
-  run:            ['run', 'Run', 'running', 'Running', 'sprint', 'Sprint'],
-  dash_forward:   ['dashForward', 'DashForward', 'dash', 'Dash', 'run', 'Run'],
-  backdash:       ['backdash', 'Backdash', 'backDash', 'BackDash', 'SBW_backdash', 'T_backdash'],
-  victory:        ['victory', 'Victory', 'win', 'Win', 'victoryPose', 'VictoryPose'],
-  defeat:         ['defeat', 'Defeat', 'lose', 'Lose', 'knockdown', 'Knockdown'],
-  taunt:          ['taunt', 'Taunt', 'idle', 'Idle'],
-};
+export { SEMANTIC_STATE_ALIASES, COMBAT_STATE_TO_SEMANTIC };
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -202,5 +181,53 @@ export class AnimationBridge {
     );
 
     return actions;
+  }
+
+  /**
+   * Resolve a FighterStateMachine combat state to a semantic animation state.
+   * Returns 'idle' as fallback if no mapping exists.
+   */
+  static resolveSemanticState(combatState: string): string {
+    return COMBAT_STATE_TO_SEMANTIC[combatState] ?? 'idle';
+  }
+
+  /**
+   * Get the best clip for a combat state from a clips-by-state map.
+   * Applies the combat state → semantic state → clip lookup chain.
+   */
+  static getClipForCombatState(
+    combatState: string,
+    clipsByState: Map<string, THREE.AnimationClip>,
+  ): THREE.AnimationClip | null {
+    const semanticState = COMBAT_STATE_TO_SEMANTIC[combatState];
+    if (!semanticState) return clipsByState.get('idle') ?? null;
+
+    // Direct semantic state lookup
+    const direct = clipsByState.get(semanticState);
+    if (direct) return direct;
+
+    // Fallback chain
+    const fallbacks: Record<string, string[]> = {
+      walk_back:    ['walk_forward', 'idle'],
+      strafe_left:  ['walk_forward', 'idle'],
+      strafe_right: ['walk_forward', 'idle'],
+      backdash:     ['walk_back', 'walk_forward', 'idle'],
+      crouch:       ['idle'],
+      grapple:      ['attack_2', 'attack_1', 'idle'],
+      hit_reaction: ['idle'],
+      knockdown:    ['idle'],
+      getup:        ['idle'],
+      victory:      ['idle'],
+      taunt:        ['idle'],
+      defeat:       ['knockdown', 'idle'],
+    };
+
+    const chain = fallbacks[semanticState] ?? ['idle'];
+    for (const fb of chain) {
+      const fbClip = clipsByState.get(fb);
+      if (fbClip) return fbClip;
+    }
+
+    return null;
   }
 }
