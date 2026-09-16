@@ -185,7 +185,7 @@ function RosterSlot({
   const factionColor = FACTION_COLOR[fighter.factionAlignment];
   const moveSet = useMemo(() => getCharacterMoveSet(fighter.id), [fighter.id]);
   const isCustomized = moveSet?.isCustomized ?? false;
-  const face = fighter.gridPortrait ?? `/portraits/${fighter.id}.png`;
+  const previewUrl = fighter.portraitUrl;
 
   return (
     <button
@@ -207,14 +207,14 @@ function RosterSlot({
         outlineOffset: cursorOn ? 1 : undefined,
       }}
     >
-      {/* 2D PSX headshot — never a 3D GLB in the tiny box */}
-      <img
-        src={face}
-        alt=""
-        draggable={false}
-        className="absolute inset-0 z-0 w-full h-full object-cover"
-        style={{ imageRendering: 'pixelated' }}
-      />
+      {/* 3D GLB character preview — restored to the character-select grid. */}
+      <div className="absolute inset-0 z-0">
+        <CharacterPortrait3D
+          modelUrl={previewUrl}
+          factionColor={factionColor}
+          mode="full"
+        />
+      </div>
 
       {/* Scanlines over the sprite */}
       <div className="absolute inset-0 z-[1] opacity-20 pointer-events-none" style={{
@@ -365,7 +365,8 @@ export default function CharacterSelect({ onSelectP1, onSelectP2, onStartMatch }
       </div>
 
       {/* ── TOP ZONE: Two player portrait busts (fills remaining space above grid) ── */}
-      <div className="relative z-10 flex flex-1 min-h-0">
+      <div className="relative z-10 flex flex-col overflow-hidden" style={{ height: '57%' }}>
+        <div className="flex flex-1 min-h-0">
         {/* P1 Portrait + attire strip */}
         <div className="flex flex-col flex-1 border-r border-zinc-800/60 min-w-0">
           <div className="flex-1 min-h-0">
@@ -422,6 +423,8 @@ export default function CharacterSelect({ onSelectP1, onSelectP2, onStartMatch }
         </div>
       </div>
 
+        </div>
+
       {/* ── CHARACTER NAME BAR ── */}
       <div className="relative z-10 flex h-8 border-t border-b border-zinc-800 shrink-0"
         style={{ background: 'linear-gradient(90deg, #0a0a0a 0%, #111 50%, #0a0a0a 100%)' }}
@@ -452,8 +455,7 @@ export default function CharacterSelect({ onSelectP1, onSelectP2, onStartMatch }
       </div>
 
       {/* ── BOTTOM ZONE: Tekken-style two-row character grid ── */}
-      <div className="relative z-10 shrink-0"
-        style={{ background: 'linear-gradient(180deg, #0d0d0f 0%, #080808 100%)' }}
+      <div className="relative z-10 flex flex-col overflow-hidden" style={{ flex: '1 1 0', minHeight: 0, background: 'linear-gradient(180deg, #0d0d0f 0%, #080808 100%)' }}
       >
         {/* Controls bar */}
         <div className="flex items-center justify-between px-3 py-1 border-b border-zinc-800/50">
