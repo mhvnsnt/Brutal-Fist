@@ -71,6 +71,7 @@ import { DEFAULT_PSX_RENDER } from '../../render/psx';
 import { AnimationRetargeter, bindClipTracksToTargetBones } from '../retarget/AnimationRetargeter';
 import {
   loadBannonClipsFromPublic,
+  loadNamedMotionBankClips,
   getCachedBannonMotionBank,
 } from '../retarget/BannonClipJsonAdapter';
 import {
@@ -78,6 +79,7 @@ import {
   validateRegistryCompleteness,
 } from '../retarget/AnimationSourceRegistry';
 import { SEMANTIC_STATE_ALIASES } from '../retarget/SemanticStateAliases';
+import { getFighterMotionClips, resolveFighterIdFromModel } from '../../data/fighterMotionMaps';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constants
@@ -678,6 +680,51 @@ export async function extractAndRetargetAnimations(
       );
     }
 
+    // Fighter motion maps: extra Bannon mocap keys studied from move databases.
+    // Universal — empty map is a no-op. First listed clip per semantic wins.
+    const fighterMotion = getFighterMotionClips(characterId);
+    if (fighterMotion.length > 0) {
+      try {
+        const named = await loadNamedMotionBankClips(fighterMotion);
+        const seenSemantic = new Set<string>();
+        for (const entry of fighterMotion) {
+          const clip = named.get(entry.key);
+          if (!clip) continue;
+          const bound = bindClipTracksToTargetBones(clip, targetBoneNames);
+          if (bound.resolvedTracks === 0) {
+            console.warn(
+              `[CharacterPipeline] ⚠️ "${modelName}" fighter clip "${entry.key}" resolved 0 tracks`,
+            );
+            continue;
+          }
+          bound.clip.name = entry.key;
+          (bound.clip as any).userData = {
+            ...((bound.clip as any).userData ?? {}),
+            semanticState: entry.semanticState,
+            clipSourceType: 'RETARGETED_AUTHORED_CLIP',
+            isProcedural: false,
+            motionKey: entry.key,
+            motionRole: entry.role,
+          };
+          if (!seenSemantic.has(entry.semanticState)) {
+            boundClips.set(entry.semanticState, bound.clip);
+            seenSemantic.add(entry.semanticState);
+          }
+          if (!processedClips.some((c) => c.name === bound.clip.name)) {
+            processedClips.push(bound.clip);
+          }
+        }
+        if (seenSemantic.size > 0) {
+          registry.registerAuthoredClips(boundClips, 'BANNON_MOTION_BANK');
+          console.log(
+            `[CharacterPipeline] ✅ "${modelName}" fighter motion map bound [${[...seenSemantic].join(', ')}]`,
+          );
+        }
+      } catch (e: any) {
+        console.warn(`[CharacterPipeline] ⚠️ fighter motion map failed: ${e.message}`);
+      }
+    }
+
     const cache = getCachedBannonMotionBank();
     if (cache) {
       console.log(
@@ -949,7 +996,7 @@ export async function runCharacterPipeline(
   // ── STEP 13a: Extract and retarget animation clips ────────────────────────
   // Apply retarget layer: source bone names → canonical → target skeleton bones
   // Run validateAnimationChannelBones() before mixer starts
-  const characterId = modelName.replace(/[_.].*$/, '').toUpperCase();
+  const characterId = resolveFighterIdFromModel(modelName) || modelName.replace(/[_.].*$/, '').toLowerCase();
   const extractionResult = await extractAndRetargetAnimations(
     scene,    // source: original un-cloned scene (for bone name indexing)
     cloned,   // target: the visible clone the mixer will drive

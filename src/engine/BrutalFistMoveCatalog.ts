@@ -142,11 +142,41 @@ export const STRIKE_MOVES: Record<string, BrutalFistMove> = {
     id: 'bf_chop', displayName: 'Dragon Chop', category: 'strike',
     startup: 5, active: 3, recovery: 12, damage: 14, hitAdvantage: 3, blockAdvantage: -2,
     pushback: 0.7, hitstun: 16, blockstun: 9, animation: 'chop',
-    animationAliases: ['chop', 'Chop', 'dragon_chop', 'DragonChop', 'open_hand', 'OpenHand', 'karate_chop'],
+    animationAliases: ['chop', 'Chop', 'dragon_chop', 'DragonChop', 'open_hand', 'OpenHand', 'karate_chop', 'CROTCHCHOP', 'knife_edge', 'knifeEdgeChop'],
     minRange: 0.2, maxRange: 1.9, priority: 12, low: false, mid: true, overhead: false, throw: false, canCancel: true,
     inputSequence: 'LP',
     description: 'Open-hand chop. Tatsu-style.',
     hitbox: { offsetX: 0.8, offsetZ: 0, width: 1.0, depth: 0.6, damage: 14, hitstun: 16, blockstun: 9, pushback: 0.7, launch: 0 }
+  },
+  knifeEdgeChop: {
+    id: 'bf_knife_edge_chop', displayName: 'Knife-Edge Chop', category: 'strike',
+    startup: 5, active: 3, recovery: 11, damage: 16, hitAdvantage: 4, blockAdvantage: -1,
+    pushback: 0.55, hitstun: 18, blockstun: 10, animation: 'knifeEdgeChop',
+    animationAliases: ['knifeEdgeChop', 'knife_edge_chop', 'KnifeEdgeChop', 'CROTCHCHOP', 'chop', 'Chop', 'knife_edge'],
+    minRange: 0.15, maxRange: 1.7, priority: 13, low: false, mid: true, overhead: false, throw: false, canCancel: true,
+    inputSequence: 'LP (Tarzanian)',
+    description: "Tarzanian Devil's primary strike. Stiff knife-edge chop to the pecs — pace control from Tarzan Duran's standing exchanges.",
+    hitbox: { offsetX: 0.75, offsetZ: 0, width: 1.0, depth: 0.6, damage: 16, hitstun: 18, blockstun: 10, pushback: 0.55, launch: 0 }
+  },
+  tarzanScale: {
+    id: 'bf_tarzan_scale', displayName: 'Tarzan Scale', category: 'strike',
+    startup: 14, active: 4, recovery: 22, damage: 28, hitAdvantage: 2, blockAdvantage: -8,
+    pushback: 1.4, hitstun: 26, blockstun: 14, animation: 'tarzanScale',
+    animationAliases: ['tarzanScale', 'tarzan_scale', 'TarzanScale', 'CROSS_JUMPS', 'DROP_KICK', 'crossbody', 'Crossbody'],
+    minRange: 0.4, maxRange: 3.2, priority: 28, low: false, mid: true, overhead: true, throw: false, canCancel: false,
+    inputSequence: 'RP (Tarzanian)',
+    description: "Top-rope scale into a high-angle crossbody. Joel Maximo lucha close — gravity over grappling.",
+    hitbox: { offsetX: 0.9, offsetZ: 0, width: 1.1, depth: 0.8, damage: 28, hitstun: 26, blockstun: 14, pushback: 1.4, launch: 0.2 }
+  },
+  plunderStrike: {
+    id: 'bf_plunder_strike', displayName: 'Hardware Equalizer', category: 'strike',
+    startup: 10, active: 3, recovery: 20, damage: 24, hitAdvantage: 0, blockAdvantage: -6,
+    pushback: 1.2, hitstun: 24, blockstun: 12, animation: 'plunderStrike',
+    animationAliases: ['plunderStrike', 'plunder_strike', 'kendo', 'chair_shot', 'weapon_strike', 'BASH'],
+    minRange: 0.2, maxRange: 2.2, priority: 22, low: false, mid: true, overhead: false, throw: false, canCancel: false,
+    inputSequence: 'LP+RP (Tarzanian)',
+    description: "Deathmatch plunder strike — kendo / chair swing from Duran's GCW and JCW runs. Equalizes size.",
+    hitbox: { offsetX: 0.95, offsetZ: 0, width: 1.2, depth: 0.7, damage: 24, hitstun: 24, blockstun: 12, pushback: 1.2, launch: 0.1 }
   },
   ironPalm: {
     id: 'bf_iron_palm', displayName: 'Iron Palm', category: 'strike',
@@ -316,6 +346,17 @@ export const COUNTER_MOVES: Record<string, BrutalFistMove> = {
     invincibleFrames: [{ start: 1, end: 4 }],
     hitbox: { offsetX: 0.75, offsetZ: 0, width: 0.95, depth: 0.6, damage: 20, hitstun: 24, blockstun: 0, pushback: 1.0, launch: 0 }
   },
+  driverCounter: {
+    id: 'bf_driver_counter', displayName: 'Driver Counter', category: 'counter',
+    startup: 2, active: 4, recovery: 16, damage: 22, hitAdvantage: 8, blockAdvantage: 0,
+    pushback: 0.2, hitstun: 28, blockstun: 0, animation: 'driverCounter',
+    animationAliases: ['driverCounter', 'driver_counter', 'CRUCIFIXPIN', 'crucifix', 'sunset_flip', 'SunsetFlip', 'flash_pin'],
+    minRange: 0.1, maxRange: 1.4, priority: 34, low: false, mid: true, overhead: false, throw: true, canCancel: false,
+    inputSequence: 'guard+LK (Tarzanian)',
+    description: "Flash pin reversal. At the apex of a powerbomb/driver, weight-shift into a crucifix / sunset-flip for a sudden three-count.",
+    invincibleFrames: [{ start: 1, end: 5 }],
+    hitbox: { offsetX: 0.5, offsetZ: 0, width: 0.9, depth: 0.7, damage: 22, hitstun: 28, blockstun: 0, pushback: 0.2, launch: 0 }
+  },
 };
 
 // ─── GRAPPLES ─────────────────────────────────────────────────────────────────
@@ -425,6 +466,16 @@ export const THROW_MOVES: Record<string, BrutalFistMove> = {
     inputSequence: 'run+grapple',
     description: "Lion of Punjab's Unity Bomb. Running powerbomb.",
     hitbox: { offsetX: 0.4, offsetZ: 0, width: 0.8, depth: 0.7, damage: 58, hitstun: 60, blockstun: 0, pushback: 0, launch: 0 }
+  },
+  invertedFacelockToss: {
+    id: 'bf_inverted_facelock_toss', displayName: 'Inverted Facelock Toss', category: 'throw',
+    startup: 14, active: 3, recovery: 24, damage: 28, hitAdvantage: 6, blockAdvantage: 0,
+    pushback: 0.3, hitstun: 22, blockstun: 0, animation: 'invertedFacelockToss',
+    animationAliases: ['invertedFacelockToss', 'inverted_facelock_toss', 'TZ_TILT_WHIRL_SLAM', 'HAMMERTHROW', 'cravate_flip', 'overhead_toss'],
+    minRange: 0.1, maxRange: 0.95, priority: 30, low: false, mid: false, overhead: false, throw: true, canCancel: true,
+    inputSequence: 'grapple+RK (Tarzanian)',
+    description: "Jungle Juice setup. Back-to-back inverted facelock (chin/neck hook). Lever the opponent over the shoulder — they backflip and land on their feet, face-to-face.",
+    hitbox: { offsetX: 0.4, offsetZ: 0, width: 0.8, depth: 0.7, damage: 28, hitstun: 22, blockstun: 0, pushback: 0.3, launch: 0.4 }
   },
 };
 
@@ -660,7 +711,7 @@ export const SIGNATURE_MOVES: Record<string, BrutalFistMove> = {
     id: 'bf_hurricanrana', displayName: 'Hurricanrana', category: 'throw',
     startup: 12, active: 3, recovery: 26, damage: 38, hitAdvantage: 4, blockAdvantage: -6,
     pushback: 0.8, hitstun: 32, blockstun: 12, animation: 'hurricanrana',
-    animationAliases: ['hurricanrana', 'hurricane_rana', 'Hurricanrana', 'rana'],
+    animationAliases: ['hurricanrana', 'hurricane_rana', 'Hurricanrana', 'HURRICANERANA', 'rana'],
     minRange: 0.1, maxRange: 1.2, priority: 32, low: false, mid: false, overhead: false, throw: true, canCancel: true,
     inputSequence: 'LP+LK (Tarzanian)',
     description: "Tarzanian Devil's hurricanrana. Lucha headscissors takeover.",
@@ -668,13 +719,28 @@ export const SIGNATURE_MOVES: Record<string, BrutalFistMove> = {
   },
   jungleBomb: {
     id: 'bf_jungle_bomb', displayName: 'Jungle Bomb', category: 'signature',
-    startup: 22, active: 3, recovery: 50, damage: 78, hitAdvantage: 0, blockAdvantage: -14,
-    pushback: 1.6, hitstun: 66, blockstun: 20, animation: 'jungleBomb',
-    animationAliases: ['jungleBomb', 'jungle_bomb', 'JungleBomb', 'tarzanian_finisher', 'senton'],
-    minRange: 0.2, maxRange: 2.8, priority: 48, low: false, mid: true, overhead: true, throw: false, canCancel: false,
+    startup: 22, active: 3, recovery: 50, damage: 62, hitAdvantage: 0, blockAdvantage: -14,
+    pushback: 1.6, hitstun: 58, blockstun: 20, animation: 'jungleBomb',
+    animationAliases: ['jungleBomb', 'jungle_bomb', 'JungleBomb', 'ASSISTEDDIVSENTON', 'senton', 'Senton'],
+    minRange: 0.2, maxRange: 2.8, priority: 44, low: false, mid: true, overhead: true, throw: false, canCancel: false,
     inputSequence: 'LP+RP+RK (Tarzanian)',
-    description: "Tarzanian Devil's Jungle Bomb. Flying senton, wildman pin.",
-    hitbox: { offsetX: 0.5, offsetZ: 0, width: 1.0, depth: 0.8, damage: 78, hitstun: 66, blockstun: 20, pushback: 1.6, launch: 0 }
+    description: "Aerial signature. Flying senton off the Tarzan Scale — wildman pin attempt. Not the Jungle Juice finisher.",
+    hitbox: { offsetX: 0.5, offsetZ: 0, width: 1.0, depth: 0.8, damage: 62, hitstun: 58, blockstun: 20, pushback: 1.6, launch: 0 }
+  },
+  jungleJuice: {
+    id: 'bf_jungle_juice', displayName: 'Jungle Juice', category: 'signature',
+    startup: 18, active: 6, recovery: 42, damage: 86, hitAdvantage: 0, blockAdvantage: 0,
+    pushback: 0, hitstun: 74, blockstun: 0, animation: 'jungleJuice',
+    animationAliases: [
+      'jungleJuice', 'jungle_juice', 'JungleJuice',
+      'DDT', 'HAMMERLOCKDDT', 'impaler_ddt', 'ImpalerDDT',
+      'invertedFacelockToss', 'TZ_TILT_WHIRL_SLAM',
+      'tarzanian_finisher',
+    ],
+    minRange: 0.1, maxRange: 0.95, priority: 52, low: false, mid: false, overhead: false, throw: true, canCancel: false,
+    inputSequence: 'LP+RP+LK+RK (Tarzanian)',
+    description: "Tarzan Duran's match-ender. Two-part combination — not a Black Hole Slam. (1) Inverted Facelock Toss: back-to-back inverted cravate, chin/neck hook, opponent backflips over the shoulder and lands on their feet face-to-face. (2) Impaler DDT: immediate front facelock, slight lift to kill their footing, drop backward driving them face-first (lifting implant DDT).",
+    hitbox: { offsetX: 0.4, offsetZ: 0, width: 0.85, depth: 0.75, damage: 86, hitstun: 74, blockstun: 0, pushback: 0, launch: 0.15 }
   },
 };
 
@@ -696,7 +762,8 @@ export const BRUTAL_FIST_FULL_CATALOG: Record<string, BrutalFistMove> = {
 };
 
 export function getMoveById(id: string): BrutalFistMove | null {
-  return BRUTAL_FIST_FULL_CATALOG[id] ?? null;
+  if (BRUTAL_FIST_FULL_CATALOG[id]) return BRUTAL_FIST_FULL_CATALOG[id];
+  return Object.values(BRUTAL_FIST_FULL_CATALOG).find(m => m.id === id) ?? null;
 }
 
 export function getMovesByCategory(category: MoveCategory): BrutalFistMove[] {

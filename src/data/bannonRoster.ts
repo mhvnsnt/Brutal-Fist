@@ -952,7 +952,8 @@ export const BANNON_ROSTER: readonly BannonFighterProfile[] = [
 
   // ── TARZANIAN DEVIL ──────────────────────────────────────────────────────────
   // Owner filename: "tarzanian devil (based on Tarzan duran indie wrestler)"
-  // Original Bannon character. Lucha + hardcore wildman. Attires: skinned + dec_rig28.
+  // Ring names: Tarzan Duran, Tarzanian Devil, Wildlife. CZW / GCW / JCW / GTS / XPW.
+  // Attires: skinned + dec_rig28.
   {
     id: 'tarzanian_devil',
     name: 'Tarzanian Devil',
@@ -961,11 +962,11 @@ export const BANNON_ROSTER: readonly BannonFighterProfile[] = [
     faction: 'Independent',
     factionAlignment: 'independent',
     poise: 86, hp: 10000, speed: 92, strength: 84, physicsScale: 1.0,
-    payback: 'Jungle Bomb',
+    payback: 'Jungle Juice',
     manager: 'None',
-    bio: 'The Tarzanian Devil is the roster\'s dirtbag luchador — a shirtless wildman who swings between high-flying lucha and hardcore brawling. Gold hoop, messy hair, Tarzan yell on the way in. Independent circuit energy, no faction leash.',
+    bio: 'The Tarzanian Devil is the roster\'s dirtbag luchador — a shirtless wildman who swings between high-flying lucha and hardcore brawling. Gold hoop, messy hair, Tarzan yell on the way in. Based on indie wrestler Tarzan Duran (Wildlife), trained under Joel Maximo, with CZW / GCW / JCW / GTS deathmatch miles. Independent circuit energy, no faction leash.',
     personality: 'Loose cannon. Hilarious, loud, lives on three things: wrestling, chaos, and the scream. Never more dangerous than when he looks like he is having fun.',
-    fightingStyle: 'Lucha libre / hardcore hybrid. Hurricanranas, springboards, and deathmatch grit. Finisher Jungle Bomb — a flying senton that ends with a wildman pin.',
+    fightingStyle: 'Lucha + deathmatch hybrid. Knife-edge chops set the pace; Tarzan Scale dives close distance; Driver Counter flashes a crucifix pin off a powerbomb. Finisher Jungle Juice is a two-part grapple: Inverted Facelock Toss (back-to-back cravate, opponent backflips over the shoulder, lands face-to-face) into an Impaler DDT. Jungle Bomb (diving senton) is the aerial signature, not the finisher.',
     model: 'TARZANIAN_DEVIL_skinned.glb',
     attire: 'Default',
     portraitUrl: `${BANNON_RAW}/TARZANIAN_DEVIL_skinned.glb`,
@@ -973,17 +974,17 @@ export const BANNON_ROSTER: readonly BannonFighterProfile[] = [
     defaultMoveSet: {
       idle: 'bf_idle', walkForward: 'bf_walk_fwd', walkBackward: 'bf_walk_back',
       crouch: 'bf_crouch', guard: 'bf_guard',
-      lightAttack: 'bf_chop', heavyAttack: 'bf_cross',
+      lightAttack: 'bf_knife_edge_chop', heavyAttack: 'bf_tarzan_scale',
       lowKick: 'bf_low_kick', highKick: 'bf_spin_kick',
       primaryCombo: 'bf_rush_combo',
-      counter: 'bf_mars_counter',
+      counter: 'bf_driver_counter',
       grappleInitiate: 'bf_clinch',
-      primaryThrow: 'bf_exploder',
+      primaryThrow: 'bf_inverted_facelock_toss',
       knockdown: 'bf_knockdown', wakeup: 'bf_wakeup_kick',
       hitReaction: 'bf_hit_reaction', ko: 'bf_ko',
-      signature: 'bf_jungle_bomb',
-      extraMove1: 'bf_hurricanrana',
-      extraMove2: 'bf_shining_wizard',
+      signature: 'bf_jungle_juice',
+      extraMove1: 'bf_jungle_bomb',
+      extraMove2: 'bf_hurricanrana',
     }
   },
 ];

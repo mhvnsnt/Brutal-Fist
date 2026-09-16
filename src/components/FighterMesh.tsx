@@ -120,22 +120,22 @@ const ANIMATION_ALIASES: Record<string, string[]> = {
   guardLow:          ['guardLow', 'GuardLow', 'lowBlock', 'LowBlock', 'crouchBlock', 'CrouchBlock', 'guard', 'Guard', 'block', 'Block'],
   // ── Light Attack ────────────────────────────────────────────────────────────
   light:             ['light', 'Light', 'punch', 'Punch', 'attack', 'Attack', 'jab', 'Jab', 'lightAttack', 'LightAttack', 'LP', 'lp'],
-  lightAttack:       ['lightAttack', 'LightAttack', 'light', 'Light', 'punch', 'Punch', 'jab', 'Jab', 'attack', 'Attack', 'hit', 'Hit', 'strike', 'Strike', 'quickPunch', 'QuickPunch', 'punch1', 'Punch1', 'LP', 'lp', 'SBW_lightAttack', 'SBW_jab', 'T_jab', 'T_1', 'bf_jab', 'bf_chop', 'punchingLeft', 'punchingRight'],
+  lightAttack:       ['lightAttack', 'LightAttack', 'light', 'Light', 'punch', 'Punch', 'jab', 'Jab', 'attack', 'Attack', 'hit', 'Hit', 'strike', 'Strike', 'quickPunch', 'QuickPunch', 'punch1', 'Punch1', 'LP', 'lp', 'SBW_lightAttack', 'SBW_jab', 'T_jab', 'T_1', 'bf_jab', 'bf_chop', 'bf_knife_edge_chop', 'CROTCHCHOP', 'knifeEdgeChop', 'punchingLeft', 'punchingRight'],
   Startup:           ['lightAttack', 'LightAttack', 'attack', 'Attack', 'punch', 'Punch', 'jab', 'Jab'],
   Active:            ['lightAttack', 'LightAttack', 'attack', 'Attack', 'punch', 'Punch', 'kick', 'Kick'],
   crouchLightAttack: ['crouchLightAttack', 'CrouchLightAttack', 'crouchPunch', 'CrouchPunch', 'lowPunch', 'LowPunch', 'lightAttack', 'LightAttack', 'jab', 'Jab'],
   // ── Heavy Attack ────────────────────────────────────────────────────────────
   heavy:             ['heavy', 'Heavy', 'strong', 'Strong', 'heavyAttack', 'HeavyAttack', 'cross', 'Cross'],
-  heavyAttack:       ['heavyAttack', 'HeavyAttack', 'heavy', 'Heavy', 'strong', 'Strong', 'cross', 'Cross', 'kick', 'Kick', 'attack', 'Attack', 'strike', 'Strike', 'hook', 'Hook', 'uppercut', 'Uppercut', 'roundhouse', 'Roundhouse', 'highKick', 'HighKick', 'spinningKick', 'SpinningKick', 'RP', 'rp', 'LK', 'lk', 'RK', 'rk', 'SBW_heavyAttack', 'SBW_cross', 'T_cross', 'T_2', 'T_3', 'T_4', 'bf_cross', 'bf_elbow', 'bf_uppercut', 'kickingLeft', 'kickingRight', 'kickingForward'],
+  heavyAttack:       ['heavyAttack', 'HeavyAttack', 'heavy', 'Heavy', 'strong', 'Strong', 'cross', 'Cross', 'kick', 'Kick', 'attack', 'Attack', 'strike', 'Strike', 'hook', 'Hook', 'uppercut', 'Uppercut', 'roundhouse', 'Roundhouse', 'highKick', 'HighKick', 'spinningKick', 'SpinningKick', 'RP', 'rp', 'LK', 'lk', 'RK', 'rk', 'SBW_heavyAttack', 'SBW_cross', 'T_cross', 'T_2', 'T_3', 'T_4', 'bf_cross', 'bf_elbow', 'bf_uppercut', 'bf_tarzan_scale', 'CROSS_JUMPS', 'tarzanScale', 'kickingLeft', 'kickingRight', 'kickingForward'],
   crouchHeavyAttack: ['crouchHeavyAttack', 'CrouchHeavyAttack', 'crouchKick', 'CrouchKick', 'lowKick', 'LowKick', 'heavyAttack', 'HeavyAttack', 'kick', 'Kick'],
   jumpAttack:        ['jumpAttack', 'JumpAttack', 'airAttack', 'AirAttack', 'jumpingPunch', 'JumpingPunch', 'heavyAttack', 'HeavyAttack'],
   runAttack:         ['runAttack', 'RunAttack', 'dashAttack', 'DashAttack', 'runningAttack', 'RunningAttack', 'heavyAttack', 'HeavyAttack'],
   // ── Tekken Specials ─────────────────────────────────────────────────────────
   heatBurst:         ['heatBurst', 'HeatBurst', 'heat_burst', 'Heat_Burst', 'heavyAttack', 'HeavyAttack', 'special', 'Special'],
-  rageArt:           ['rageArt', 'RageArt', 'rage_art', 'Rage_Art', 'finisher', 'Finisher', 'heavyAttack', 'HeavyAttack'],
+  rageArt:           ['rageArt', 'RageArt', 'rage_art', 'Rage_Art', 'finisher', 'Finisher', 'jungleJuice', 'JungleJuice', 'DDT', 'HAMMERLOCKDDT', 'heavyAttack', 'HeavyAttack'],
   powerCrush:        ['powerCrush', 'PowerCrush', 'power_crush', 'armorMove', 'ArmorMove', 'heavyAttack', 'HeavyAttack'],
   // ── Command Throw ───────────────────────────────────────────────────────────
-  CommandThrow:      ['heavyAttack', 'HeavyAttack', 'heavy', 'Heavy', 'grab', 'Grab', 'throw', 'Throw', 'grapple', 'Grapple', 'suplex', 'Suplex', 'slam', 'Slam', 'SBW_throw', 'T_1_3', 'T_2_4', 'bf_grab', 'bf_beastMode'],
+  CommandThrow:      ['heavyAttack', 'HeavyAttack', 'heavy', 'Heavy', 'grab', 'Grab', 'throw', 'Throw', 'grapple', 'Grapple', 'suplex', 'Suplex', 'slam', 'Slam', 'DDT', 'HAMMERLOCKDDT', 'TZ_TILT_WHIRL_SLAM', 'HURRICANERANA', 'CRUCIFIXPIN', 'jungleJuice', 'invertedFacelockToss', 'SBW_throw', 'T_1_3', 'T_2_4', 'bf_grab', 'bf_beastMode'],
   ThrowWhiff:        ['idle', 'Idle', 'neutral', 'Neutral'],
   // ── Hit Reactions ───────────────────────────────────────────────────────────
   hit:               ['hit', 'Hit', 'hurt', 'Hurt', 'flinch', 'Flinch', 'hitstun', 'Hitstun', 'damage', 'Damage', 'react', 'React', 'stagger', 'Stagger', 'recoil', 'Recoil', 'SBW_hit', 'T_hit', 'bf_hit_reaction', 'gettingHit', 'hitImpact'],

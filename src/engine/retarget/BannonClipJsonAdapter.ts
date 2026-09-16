@@ -408,6 +408,8 @@ export interface MotionBankLoadStats {
 }
 
 let cachedMotionBank: { clips: Map<string, THREE.AnimationClip>; stats: MotionBankLoadStats } | null = null;
+let cachedMotionIndex: BannonMotionIndex | null = null;
+const cachedNamedClips = new Map<string, THREE.AnimationClip>();
 
 export function getCachedBannonMotionBank(): { clips: Map<string, THREE.AnimationClip>; stats: MotionBankLoadStats } | null {
   return cachedMotionBank;
@@ -974,6 +976,7 @@ export async function loadBannonClipsFromPublic(): Promise<Map<string, THREE.Ani
     const indexRes = await fetch(BANNON_MOTION_BANK_INDEX);
     if (!indexRes.ok) throw new Error(`Bannon motion index HTTP ${indexRes.status}`);
     const index = await indexRes.json() as BannonMotionIndex;
+    cachedMotionIndex = index;
     stats.indexSize = Object.keys(index).length;
 
     const preferred = pickPreferredMotionBankFiles(index);
@@ -1007,6 +1010,7 @@ export async function loadBannonClipsFromPublic(): Promise<Map<string, THREE.Ani
         continue;
       }
       const { semanticState, adapted } = settled.value;
+      cachedNamedClips.set(settled.value.key, adapted.clip);
       if (!clips.has(semanticState)) {
         clips.set(semanticState, adapted.clip);
         stats.converted++;
@@ -1049,4 +1053,72 @@ export async function loadBannonClipsFromPublic(): Promise<Map<string, THREE.Ani
   console.warn(`[BannonClipJsonAdapter] No authored Bannon motion-bank clips loaded.`);
   cachedMotionBank = { clips: new Map(), stats };
   return cachedMotionBank.clips;
+}
+
+/**
+ * Fetch additional Bannon Euler clips by index key.
+ * Used by fighter motion maps so a character can bind DDT / HURRICANERANA / etc.
+ * without replacing the global one-clip-per-semantic bank.
+ */
+export async function loadNamedMotionBankClips(
+  keys: ReadonlyArray<{ key: string; semanticState: string }>,
+): Promise<Map<string, THREE.AnimationClip>> {
+  const out = new Map<string, THREE.AnimationClip>();
+  if (keys.length === 0) return out;
+
+  try {
+    if (!cachedMotionIndex) {
+      const indexRes = await fetch(BANNON_MOTION_BANK_INDEX);
+      if (!indexRes.ok) throw new Error(`Bannon motion index HTTP ${indexRes.status}`);
+      cachedMotionIndex = await indexRes.json() as BannonMotionIndex;
+    }
+  } catch (e: any) {
+    console.warn(`[BannonClipJsonAdapter] ⚠️ Named clip index failed: ${e.message}`);
+    return out;
+  }
+
+  const index = cachedMotionIndex;
+  const unique = new Map<string, string>();
+  for (const { key, semanticState } of keys) {
+    if (!unique.has(key)) unique.set(key, semanticState);
+  }
+
+  await Promise.allSettled(
+    [...unique.entries()].map(async ([key, semanticState]) => {
+      if (cachedNamedClips.has(key)) {
+        out.set(key, cachedNamedClips.get(key)!);
+        return;
+      }
+      const entry = index[key];
+      if (!entry?.file) throw new Error(`${key} not in motion index`);
+      const url = `${BANNON_MOTION_BANK_BASE}${encodeURIComponent(entry.file)}`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`${key} HTTP ${res.status}`);
+      const json = await res.json();
+      const adapted = convertAnyBannonClipJson(json, key, semanticState);
+      if (adapted.trackCount === 0) throw new Error(`${key} NO_TRACKS`);
+      (adapted.clip as any).userData = {
+        ...(adapted.clip as any).userData,
+        clipSourceType: (adapted.clip as any).userData?.clipSourceType ?? 'RETARGETED_AUTHORED_CLIP',
+        sourceUrl: url,
+        sourceFile: entry.file,
+        isProcedural: false,
+        semanticState,
+        motionKey: key,
+      };
+      adapted.clip.name = key;
+      cachedNamedClips.set(key, adapted.clip);
+      out.set(key, adapted.clip);
+    }),
+  );
+
+  for (const key of unique.keys()) {
+    const clip = cachedNamedClips.get(key);
+    if (clip && !out.has(key)) out.set(key, clip);
+  }
+
+  if (out.size > 0) {
+    console.log(`[BannonClipJsonAdapter] ✅ Named motion clips: [${[...out.keys()].join(', ')}]`);
+  }
+  return out;
 }
