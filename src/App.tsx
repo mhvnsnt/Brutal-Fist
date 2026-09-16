@@ -6,6 +6,7 @@ import dynamic from 'next/dynamic';
 import { useAuth } from './contexts/AuthContext';
 import { type TournamentEndData } from './components/TournamentBracket';
 import { type TournamentSettings, DEFAULT_TOURNAMENT_SETTINGS } from './components/TournamentSettingsScreen';
+import { type StageId } from './components/StageSelectScreen';
 
 const CharacterSelect = dynamic(() => import('./components/CharacterSelect'), { ssr: false });
 const GameBattleArena = dynamic(() => import('./components/GameBattleArena'), { ssr: false });
@@ -19,6 +20,8 @@ const TournamentSettingsScreen = dynamic(() => import('./components/TournamentSe
 const LeaderboardScreen = dynamic(() => import('./components/LeaderboardScreen'), { ssr: false });
 const PracticeArenaScreen = dynamic(() => import('./components/PracticeArenaScreen'), { ssr: false });
 const StoryModeScreen = dynamic(() => import('./components/StoryModeScreen'), { ssr: false });
+const StageSelectScreen = dynamic(() => import('./components/StageSelectScreen'), { ssr: false });
+const SeasonalTournamentScreen = dynamic(() => import('./components/SeasonalTournamentScreen'), { ssr: false });
 
 export default function App() {
   const { user, loading: authLoading, signOut } = useAuth();
@@ -29,6 +32,7 @@ export default function App() {
   const [gameMode, setGameMode] = useState<'arcade' | 'versus' | 'tournament'>('versus');
   const [tournamentEndData, setTournamentEndData] = useState<TournamentEndData | null>(null);
   const [tournamentSettings, setTournamentSettings] = useState<TournamentSettings>(DEFAULT_TOURNAMENT_SETTINGS);
+  const [selectedStageId, setSelectedStageId] = useState<StageId>('urban_night');
 
   useEffect(() => {
     if (screen !== AppScreen?.Boot) return;
@@ -125,6 +129,13 @@ export default function App() {
               <span className="ml-3 text-[10px] text-yellow-400 tracking-widest">BRACKET MODE</span>
             </button>
             <button
+              onClick={() => setScreen('seasonal_tournament' as any)}
+              className="block w-full border border-slate-600 px-6 py-4 text-left text-xl font-black tracking-widest hover:bg-white hover:text-black transition-all"
+            >
+              SEASONAL
+              <span className="ml-3 text-[10px] text-orange-400 tracking-widest">ELO BRACKET</span>
+            </button>
+            <button
               onClick={() => setScreen('practice' as any)}
               className="block w-full border border-slate-600 px-6 py-4 text-left text-xl font-black tracking-widest hover:bg-white hover:text-black transition-all"
             >
@@ -195,6 +206,16 @@ export default function App() {
     );
   }
 
+  // ── Seasonal Tournament ──
+  if ((screen as any) === 'seasonal_tournament') {
+    return (
+      <SeasonalTournamentScreen
+        onBack={() => setScreen(AppScreen?.MainMenu)}
+        playerFighterId={p1BannonFighter?.id ?? 'bannon'}
+      />
+    );
+  }
+
   // ── Leaderboard ──
   if ((screen as any) === 'leaderboard') {
     return <LeaderboardScreen onBack={() => setScreen(AppScreen?.MainMenu)} />;
@@ -213,8 +234,30 @@ export default function App() {
         onStartStoryBattle={(p1f, p2f, chapterTitle) => {
           setP1BannonFighter(p1f);
           setP2BannonFighter(p2f);
+          setScreen('stage_select' as any);
+        }}
+        onCosmeticUnlock={(characterId, reward) => {
+          // Cosmetic unlock handled inside StoryModeScreen with banner
+          // Future: persist to Supabase profile here
+          console.info('[BrutalFist] Cosmetic unlocked:', reward.name, 'for', characterId);
+        }}
+      />
+    );
+  }
+
+  // ── Stage Select ──
+  if ((screen as any) === 'stage_select') {
+    const p1 = p1BannonFighter ?? getBannonFighter('bannon')!;
+    const p2 = p2BannonFighter ?? getBannonFighter('maime')!;
+    return (
+      <StageSelectScreen
+        p1Fighter={p1}
+        p2Fighter={p2}
+        onConfirm={(stageId) => {
+          setSelectedStageId(stageId);
           setScreen(AppScreen?.Combat);
         }}
+        onBack={() => setScreen(AppScreen?.Select)}
       />
     );
   }
@@ -257,7 +300,8 @@ export default function App() {
           if (gameMode === 'tournament') {
             setScreen('tournament' as any);
           } else {
-            setScreen(AppScreen?.Combat);
+            // Go to stage select before combat
+            setScreen('stage_select' as any);
           }
         }}
       />
@@ -291,7 +335,7 @@ export default function App() {
           setMatchWinner(winner);
           setScreen(AppScreen?.PostMatch);
         }}
-        onBack={() => setScreen(AppScreen?.Select)}
+        onBack={() => setScreen('stage_select' as any)}
         settings={tournamentSettings}
       />
     );
@@ -313,7 +357,7 @@ export default function App() {
         <div className="text-4xl font-black tracking-widest text-white">BRUTAL FIST</div>
         <div className="flex gap-4 mt-4">
           <button
-            onClick={() => setScreen(AppScreen?.Select)}
+            onClick={() => setScreen('stage_select' as any)}
             className="border border-slate-600 px-6 py-3 text-sm font-black tracking-widest hover:bg-white hover:text-black transition-all"
           >
             REMATCH

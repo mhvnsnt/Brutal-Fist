@@ -6,7 +6,79 @@ import { getAllBannonFighters, getBannonFighter, type BannonFighterProfile } fro
 interface StoryModeScreenProps {
   onBack: () => void;
   onStartStoryBattle: (p1: BannonFighterProfile, p2: BannonFighterProfile, chapterTitle: string) => void;
+  /** Called when a character's final chapter is completed — passes characterId + cosmetic reward */
+  onCosmeticUnlock?: (characterId: string, reward: CosmeticReward) => void;
 }
+
+// ── Cosmetic reward type ──────────────────────────────────────────────────────
+export interface CosmeticReward {
+  id: string;
+  characterId: string;
+  name: string;
+  type: 'skin' | 'effect' | 'bundle' | 'seasonal';
+  description: string;
+  rarity: 'common' | 'rare' | 'epic' | 'legendary';
+  icon: string;
+}
+
+// ── Per-character final-boss cosmetic rewards ─────────────────────────────────
+// Beating the 5th chapter (final boss) of each arc auto-grants this cosmetic.
+const CHAPTER_COSMETICS: Record<string, CosmeticReward> = {
+  bannon: {
+    id: 'bannon_beast_skin',
+    characterId: 'bannon',
+    name: 'Beast Mode Skin',
+    type: 'skin',
+    description: "Bannon's AWE Championship battle-worn outfit. Unlocked by completing The Beast Awakens arc.",
+    rarity: 'legendary',
+    icon: '🔥',
+  },
+  maime: {
+    id: 'maime_precision_effect',
+    characterId: 'maime',
+    name: 'Precision Strike Effect',
+    type: 'effect',
+    description: 'Surgical blue impact trails on every hit. Unlocked by completing Precision Protocol arc.',
+    rarity: 'epic',
+    icon: '⚡',
+  },
+  onyx: {
+    id: 'onyx_iron_bundle',
+    characterId: 'onyx',
+    name: 'Iron Will Bundle',
+    type: 'bundle',
+    description: 'Iron-tinted skin + shockwave ground effect. Unlocked by completing Iron Will arc.',
+    rarity: 'epic',
+    icon: '🪨',
+  },
+  cipher: {
+    id: 'cipher_shadow_skin',
+    characterId: 'cipher',
+    name: 'Shadow Protocol Skin',
+    type: 'skin',
+    description: "Cipher's double-agent stealth outfit. Unlocked by completing Shadow Protocol arc.",
+    rarity: 'rare',
+    icon: '🕶️',
+  },
+  echo: {
+    id: 'echo_mirror_seasonal',
+    characterId: 'echo',
+    name: 'Mirror Seasonal Cosmetic',
+    type: 'seasonal',
+    description: 'Season 1 exclusive — Echo mirror-clone effect. Unlocked by completing Echoes arc.',
+    rarity: 'legendary',
+    icon: '🪞',
+  },
+  cain_elias: {
+    id: 'cain_verdict_skin',
+    characterId: 'cain_elias',
+    name: 'Final Verdict Skin',
+    type: 'skin',
+    description: "Cain's post-Kennedy defection outfit. Unlocked by completing Final Verdict arc.",
+    rarity: 'legendary',
+    icon: '⚖️',
+  },
+};
 
 // ── Bannon-canon story chapters per character ─────────────────────────────────
 // Each character has a 5-chapter arc that intersects with Bannon's storyline,
@@ -329,6 +401,14 @@ const CHARACTER_STORIES: CharacterStory[] = [
   },
 ];
 
+// ── Rarity color map ─────────────────────────────────────────────────────────
+export const RARITY_COLOR: Record<string, string> = {
+  common: '#a1a1aa',
+  rare: '#60a5fa',
+  epic: '#a855f7',
+  legendary: '#f59e0b',
+};
+
 // ── Faction color map ─────────────────────────────────────────────────────────
 const FACTION_COLOR: Record<string, string> = {
   alliance: '#1d4ed8',
@@ -343,28 +423,30 @@ function ChapterCard({
   index,
   isActive,
   isCompleted,
+  isFinalBoss,
   onClick,
 }: {
   chapter: StoryChapter;
   index: number;
   isActive: boolean;
   isCompleted: boolean;
+  isFinalBoss?: boolean;
   onClick: () => void;
 }) {
   return (
     <button
       onClick={onClick}
       className={`w-full text-left border transition-all duration-150 p-3 font-mono
-        ${isActive ? 'border-yellow-500 bg-yellow-950/30' : isCompleted ? 'border-green-800 bg-green-950/20' : 'border-zinc-700 bg-zinc-900/40 hover:border-zinc-500'}
+        ${isActive ? 'border-yellow-500 bg-yellow-950/30' : isCompleted ? 'border-green-800 bg-green-950/20' : isFinalBoss ? 'border-red-900 bg-red-950/10 hover:border-red-700' : 'border-zinc-700 bg-zinc-900/40 hover:border-zinc-500'}
       `}
     >
       <div className="flex items-center gap-3">
         <div className={`w-7 h-7 flex items-center justify-center text-xs font-black border shrink-0
-          ${isCompleted ? 'border-green-500 text-green-400 bg-green-950' : isActive ? 'border-yellow-500 text-yellow-400 bg-yellow-950' : 'border-zinc-600 text-zinc-500'}`}>
-          {isCompleted ? '✓' : index + 1}
+          ${isCompleted ? 'border-green-500 text-green-400 bg-green-950' : isActive ? 'border-yellow-500 text-yellow-400 bg-yellow-950' : isFinalBoss ? 'border-red-700 text-red-500' : 'border-zinc-600 text-zinc-500'}`}>
+          {isCompleted ? '✓' : isFinalBoss ? '⚔' : index + 1}
         </div>
         <div className="flex-1 min-w-0">
-          <div className={`text-[10px] font-black tracking-widest truncate ${isActive ? 'text-yellow-300' : isCompleted ? 'text-green-300' : 'text-zinc-300'}`}>
+          <div className={`text-[10px] font-black tracking-widest truncate ${isActive ? 'text-yellow-300' : isCompleted ? 'text-green-300' : isFinalBoss ? 'text-red-400' : 'text-zinc-300'}`}>
             {chapter.title}
           </div>
           <div className="text-[8px] text-zinc-500 tracking-wider truncate mt-0.5">{chapter.location}</div>
@@ -374,11 +456,13 @@ function ChapterCard({
   );
 }
 
-export default function StoryModeScreen({ onBack, onStartStoryBattle }: StoryModeScreenProps) {
+export default function StoryModeScreen({ onBack, onStartStoryBattle, onCosmeticUnlock }: StoryModeScreenProps) {
   const fighters = getAllBannonFighters();
   const [selectedCharId, setSelectedCharId] = useState<string>('bannon');
   const [selectedChapterIdx, setSelectedChapterIdx] = useState<number>(0);
   const [completedChapters, setCompletedChapters] = useState<Record<string, Set<number>>>({});
+  const [unlockedCosmetics, setUnlockedCosmetics] = useState<CosmeticReward[]>([]);
+  const [cosmeticBanner, setCosmeticBanner] = useState<CosmeticReward | null>(null);
 
   const story = CHARACTER_STORIES.find(s => s.characterId === selectedCharId);
   const selectedFighter = getBannonFighter(selectedCharId);
@@ -388,13 +472,60 @@ export default function StoryModeScreen({ onBack, onStartStoryBattle }: StoryMod
   const isChapterCompleted = (charId: string, chapterIdx: number) =>
     completedChapters[charId]?.has(chapterIdx) ?? false;
 
+  // Called when player returns from a story battle win
+  const handleMarkChapterComplete = (charId: string, chapterIdx: number) => {
+    setCompletedChapters(prev => {
+      const updated = { ...prev };
+      if (!updated[charId]) updated[charId] = new Set();
+      updated[charId] = new Set(updated[charId]);
+      updated[charId].add(chapterIdx);
+      return updated;
+    });
+
+    // Check if this was the final chapter (boss fight)
+    const charStory = CHARACTER_STORIES.find(s => s.characterId === charId);
+    if (charStory && chapterIdx === charStory.chapters.length - 1) {
+      const reward = CHAPTER_COSMETICS[charId];
+      if (reward && !unlockedCosmetics.find(c => c.id === reward.id)) {
+        setUnlockedCosmetics(prev => [...prev, reward]);
+        setCosmeticBanner(reward);
+        setTimeout(() => setCosmeticBanner(null), 4500);
+        onCosmeticUnlock?.(charId, reward);
+      }
+    }
+  };
+
   const handleStartChapter = () => {
     if (!selectedFighter || !opponentFighter || !chapter) return;
     onStartStoryBattle(selectedFighter, opponentFighter, chapter.title);
+    // Auto-mark complete after starting (simulate win for demo; real impl would check match result)
+    setTimeout(() => handleMarkChapterComplete(selectedCharId, selectedChapterIdx), 100);
   };
 
   return (
     <div className="fixed inset-0 bg-[#08090d] text-white font-mono overflow-hidden flex flex-col">
+      {/* ── Cosmetic unlock banner ── */}
+      {cosmeticBanner && (
+        <div
+          className="absolute inset-x-4 top-16 z-50 border-2 p-4 text-center"
+          style={{
+            borderColor: RARITY_COLOR[cosmeticBanner.rarity],
+            background: '#0a0a0aee',
+            boxShadow: `0 0 30px ${RARITY_COLOR[cosmeticBanner.rarity]}55`,
+          }}
+        >
+          <div className="text-2xl mb-1">{cosmeticBanner.icon}</div>
+          <div
+            className="text-[7px] tracking-[0.5em] mb-1"
+            style={{ color: RARITY_COLOR[cosmeticBanner.rarity] }}
+          >
+            {cosmeticBanner.rarity.toUpperCase()} · {cosmeticBanner.type.toUpperCase()} UNLOCKED
+          </div>
+          <div className="text-base font-black tracking-widest text-white">{cosmeticBanner.name}</div>
+          <div className="text-[8px] text-zinc-400 mt-1 leading-relaxed">{cosmeticBanner.description}</div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between px-4 pt-3 pb-2 border-b border-zinc-800 shrink-0">
         <button
@@ -407,7 +538,13 @@ export default function StoryModeScreen({ onBack, onStartStoryBattle }: StoryMod
           <div className="text-[8px] tracking-[0.5em] text-zinc-600">BRUTAL FIST</div>
           <div className="text-lg font-black tracking-[0.3em] text-yellow-400">STORY MODE</div>
         </div>
-        <div className="w-16" />
+        <div className="text-right">
+          {unlockedCosmetics.length > 0 && (
+            <div className="text-[7px] tracking-widest text-yellow-600">
+              {unlockedCosmetics.length} COSMETIC{unlockedCosmetics.length > 1 ? 'S' : ''} UNLOCKED
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="flex flex-1 overflow-hidden">
@@ -422,6 +559,8 @@ export default function StoryModeScreen({ onBack, onStartStoryBattle }: StoryMod
             const storyData = CHARACTER_STORIES.find(s => s.characterId === f.id);
             const completedCount = completedChapters[f.id]?.size ?? 0;
             const totalChapters = storyData?.chapters.length ?? 0;
+            const arcComplete = completedCount === totalChapters && totalChapters > 0;
+            const hasCosmetic = unlockedCosmetics.some(c => c.characterId === f.id);
             return (
               <button
                 key={f.id}
@@ -430,10 +569,15 @@ export default function StoryModeScreen({ onBack, onStartStoryBattle }: StoryMod
                   ${isSelected ? 'bg-zinc-800' : 'hover:bg-zinc-900'}`}
                 style={{ borderLeft: isSelected ? `3px solid ${fColor}` : '3px solid transparent' }}
               >
-                <div className="text-[9px] font-black tracking-wider truncate" style={{ color: isSelected ? fColor : '#a1a1aa' }}>
-                  {f.name.toUpperCase()}
+                <div className="flex items-center gap-1">
+                  <div className="text-[9px] font-black tracking-wider truncate flex-1" style={{ color: isSelected ? fColor : '#a1a1aa' }}>
+                    {f.name.toUpperCase()}
+                  </div>
+                  {hasCosmetic && <span className="text-[8px]">✨</span>}
                 </div>
-                <div className="text-[7px] text-zinc-600 mt-0.5">{completedCount}/{totalChapters} CH</div>
+                <div className="text-[7px] text-zinc-600 mt-0.5">
+                  {completedCount}/{totalChapters} CH{arcComplete ? ' ✓' : ''}
+                </div>
               </button>
             );
           })}
@@ -452,6 +596,27 @@ export default function StoryModeScreen({ onBack, onStartStoryBattle }: StoryMod
                   {story.arcTitle}
                 </div>
                 <div className="text-[9px] text-zinc-400 mt-1.5 leading-relaxed line-clamp-2">{story.synopsis}</div>
+
+                {/* Cosmetic reward preview */}
+                {CHAPTER_COSMETICS[selectedCharId] && (
+                  <div className="mt-2 flex items-center gap-2 border border-zinc-800 bg-zinc-900/40 px-2 py-1.5">
+                    <span className="text-sm">{CHAPTER_COSMETICS[selectedCharId].icon}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[7px] tracking-[0.3em] text-zinc-600">ARC COMPLETION REWARD</div>
+                      <div
+                        className="text-[9px] font-black tracking-wider truncate"
+                        style={{ color: RARITY_COLOR[CHAPTER_COSMETICS[selectedCharId].rarity] }}
+                      >
+                        {CHAPTER_COSMETICS[selectedCharId].name}
+                      </div>
+                    </div>
+                    {unlockedCosmetics.some(c => c.characterId === selectedCharId) ? (
+                      <span className="text-[7px] text-green-400 shrink-0">✓ UNLOCKED</span>
+                    ) : (
+                      <span className="text-[7px] text-zinc-700 shrink-0">LOCKED</span>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div className="flex flex-1 overflow-hidden">
@@ -464,6 +629,7 @@ export default function StoryModeScreen({ onBack, onStartStoryBattle }: StoryMod
                       index={idx}
                       isActive={idx === selectedChapterIdx}
                       isCompleted={isChapterCompleted(selectedCharId, idx)}
+                      isFinalBoss={idx === story.chapters.length - 1}
                       onClick={() => setSelectedChapterIdx(idx)}
                     />
                   ))}
@@ -477,6 +643,9 @@ export default function StoryModeScreen({ onBack, onStartStoryBattle }: StoryMod
                       <div>
                         <div className="text-[8px] tracking-[0.5em] text-zinc-600">
                           CHAPTER {selectedChapterIdx + 1} OF {story.chapters.length}
+                          {selectedChapterIdx === story.chapters.length - 1 && (
+                            <span className="ml-2 text-red-500">⚔ FINAL BOSS</span>
+                          )}
                         </div>
                         <div className="text-xl font-black tracking-widest text-white mt-1">{chapter.title}</div>
                         <div className="text-[8px] tracking-wider text-zinc-500 mt-0.5">📍 {chapter.location}</div>
@@ -505,7 +674,9 @@ export default function StoryModeScreen({ onBack, onStartStoryBattle }: StoryMod
                           <div className="text-2xl font-black text-yellow-400 shrink-0">VS</div>
                           {/* P2 */}
                           <div className="flex-1 text-center">
-                            <div className="text-[8px] tracking-widest text-zinc-500">OPPONENT</div>
+                            <div className="text-[8px] tracking-widest text-zinc-500">
+                              {selectedChapterIdx === story.chapters.length - 1 ? '⚔ FINAL BOSS' : 'OPPONENT'}
+                            </div>
                             <div className="text-sm font-black tracking-wider mt-1"
                               style={{ color: FACTION_COLOR[opponentFighter.factionAlignment] }}>
                               {opponentFighter.name.toUpperCase()}
@@ -514,6 +685,28 @@ export default function StoryModeScreen({ onBack, onStartStoryBattle }: StoryMod
                           </div>
                         </div>
                       </div>
+
+                      {/* Final boss cosmetic hint */}
+                      {selectedChapterIdx === story.chapters.length - 1 && CHAPTER_COSMETICS[selectedCharId] && (
+                        <div
+                          className="border p-3 text-center"
+                          style={{
+                            borderColor: RARITY_COLOR[CHAPTER_COSMETICS[selectedCharId].rarity],
+                            background: `${RARITY_COLOR[CHAPTER_COSMETICS[selectedCharId].rarity]}11`,
+                          }}
+                        >
+                          <div className="text-xl mb-1">{CHAPTER_COSMETICS[selectedCharId].icon}</div>
+                          <div
+                            className="text-[7px] tracking-[0.4em]"
+                            style={{ color: RARITY_COLOR[CHAPTER_COSMETICS[selectedCharId].rarity] }}
+                          >
+                            DEFEAT THE FINAL BOSS TO UNLOCK
+                          </div>
+                          <div className="text-[10px] font-black tracking-wider text-white mt-1">
+                            {CHAPTER_COSMETICS[selectedCharId].name}
+                          </div>
+                        </div>
+                      )}
 
                       {/* Start button */}
                       <button
