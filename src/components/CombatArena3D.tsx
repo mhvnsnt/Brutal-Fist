@@ -326,6 +326,9 @@ export interface CombatArena3DProps {
   /** Animation trigger counters — increment to force re-trigger on repeated same-key attacks */
   p1AnimTrigger?: number;
   p2AnimTrigger?: number;
+  /** Locomotion velocity from FighterStateMachine — used for velocity-gated animation blending */
+  p1LocomotionVelocity?: { forward: number; strafe: number };
+  p2LocomotionVelocity?: { forward: number; strafe: number };
 }
 
 export default function CombatArena3D({
@@ -350,6 +353,8 @@ export default function CombatArena3D({
   stageId = 'urban_night',
   p1AnimTrigger = 0,
   p2AnimTrigger = 0,
+  p1LocomotionVelocity,
+  p2LocomotionVelocity,
 }: CombatArena3DProps) {
   const [particles, setParticles] = useState<Particle[]>([]);
   const [screenFlash, setScreenFlash] = useState(0);
@@ -507,6 +512,7 @@ export default function CombatArena3D({
           rotationY={0}
           tint={p1SkinTint ?? p1Color}
           animationTrigger={p1AnimTrigger}
+          locomotionVelocity={p1LocomotionVelocity}
         />
 
         {/* P2 Fighter — faces -X (toward P1), rotationY=Math.PI for ALL characters */}
@@ -519,6 +525,7 @@ export default function CombatArena3D({
           rotationY={p2RotationY}
           tint={p2SkinTint ?? p2Color}
           animationTrigger={p2AnimTrigger}
+          locomotionVelocity={p2LocomotionVelocity}
         />
 
         <CinematicCamera

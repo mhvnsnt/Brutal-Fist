@@ -177,6 +177,12 @@ export default function GameBattleArena({
   const prevP1AnimRef = useRef<string>('idle');
   const prevP2AnimRef = useRef<string>('idle');
 
+  // ── Locomotion velocity state — fed from FSM each frame for velocity-gated blending ──
+  const [p1LocomotionVelocity, setP1LocomotionVelocity] = useState<{ forward: number; strafe: number }>({ forward: 0, strafe: 0 });
+  const [p2LocomotionVelocity, setP2LocomotionVelocity] = useState<{ forward: number; strafe: number }>({ forward: 0, strafe: 0 });
+  const p1VelRef = useRef<{ forward: number; strafe: number }>({ forward: 0, strafe: 0 });
+  const p2VelRef = useRef<{ forward: number; strafe: number }>({ forward: 0, strafe: 0 });
+
   // ── Match recorder ────────────────────────────────────────────────────────
   const { startRecording, stopRecording, recordFrame, getBuffer, isRecording } = useMatchRecorder();
 
@@ -700,6 +706,26 @@ export default function GameBattleArena({
       prevP1AnimRef.current = p1NextMotion;
       prevP2AnimRef.current = p2NextMotion;
 
+      // ── Sync locomotion velocity from FSM → React state for velocity-gated blending ──
+      // Use refs to avoid triggering re-renders every frame; only update state when
+      // velocity changes meaningfully (threshold 0.03) to prevent excessive renders.
+      const p1Vel = p1SM.getWalkVelocity();
+      const p2Vel = p2SM.getWalkVelocity();
+      const p1VelChanged =
+        Math.abs(p1Vel.forward - p1VelRef.current.forward) > 0.03 ||
+        Math.abs(p1Vel.strafe - p1VelRef.current.strafe) > 0.03;
+      const p2VelChanged =
+        Math.abs(p2Vel.forward - p2VelRef.current.forward) > 0.03 ||
+        Math.abs(p2Vel.strafe - p2VelRef.current.strafe) > 0.03;
+      if (p1VelChanged) {
+        p1VelRef.current = p1Vel;
+        setP1LocomotionVelocity({ ...p1Vel });
+      }
+      if (p2VelChanged) {
+        p2VelRef.current = p2Vel;
+        setP2LocomotionVelocity({ ...p2Vel });
+      }
+
       // ── Update queued action HUD display ──────────────────────────────────
       setP1QueuedAction(p1SM.getQueuedAction());
       setP1RecoveryProgress(p1SM.getRecoveryProgress());
@@ -875,6 +901,8 @@ export default function GameBattleArena({
           stageId={stageId === 'random' ? 'urban_night' : (stageId as 'urban_night' | 'training')}
           p1AnimTrigger={p1AnimTrigger}
           p2AnimTrigger={p2AnimTrigger}
+          p1LocomotionVelocity={p1LocomotionVelocity}
+          p2LocomotionVelocity={p2LocomotionVelocity}
         />
       </div>
 

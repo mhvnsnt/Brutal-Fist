@@ -288,8 +288,14 @@ const BACKDASH_DURATION = 0.28;
 const BACKDASH_DECEL = 6.0;
 
 // ── Frame-accurate animation transition thresholds ───────────────────────────
-const WALK_ANIM_THRESHOLD = 0.15;
-const BACKDASH_ANIM_THRESHOLD = -0.85;
+/**
+ * Hysteresis band for walk animation gating.
+ * Enter walk animation only when velocity exceeds ENTER threshold.
+ * Exit walk animation (→ idle) only when velocity drops below EXIT threshold.
+ * The gap between them prevents rapid walk↔idle oscillation (jitter).
+ */
+const WALK_ANIM_ENTER = 0.18;   // velocity must exceed this to start walk anim
+const WALK_ANIM_EXIT  = 0.08;   // velocity must drop below this to return to idle
 
 // ── Crossfade duration constants ──────────────────────────────────────────────
 /** Crossfade duration for walk→idle transition (frames at 60fps) */
@@ -1038,14 +1044,23 @@ export class FighterStateMachine {
 
     const absForward = Math.abs(this.walkVelocity.forward);
     const absStrafe = Math.abs(this.walkVelocity.strafe);
-    const moving = absForward > WALK_ANIM_THRESHOLD || absStrafe > WALK_ANIM_THRESHOLD;
+
+    // ── Hysteresis: use different thresholds for entering vs exiting walk ────
+    // If currently idle, require ENTER threshold to start walking.
+    // If currently walking, only stop at EXIT threshold.
+    // This prevents rapid idle↔walk oscillation from micro-inputs.
+    const currentlyMoving = this.actionState === 'Walking' || this.actionState === 'Backdashing';
+    const exitThreshold = currentlyMoving ? WALK_ANIM_EXIT : WALK_ANIM_ENTER;
+    const moving = absForward > exitThreshold || absStrafe > exitThreshold;
 
     if (!moving) {
+      // Snap to zero to prevent float drift
       if (absForward < 0.02) this.walkVelocity.forward = 0;
       if (absStrafe < 0.02) this.walkVelocity.strafe = 0;
 
       // Crossfade walk→idle when decelerating to a stop
-      const wasMoving = Math.abs(prevForward) > WALK_ANIM_THRESHOLD || Math.abs(prevStrafe) > WALK_ANIM_THRESHOLD;
+      // Only fire if we were actually in a walk motion state (not already idle)
+      const wasMoving = Math.abs(prevForward) > WALK_ANIM_EXIT || Math.abs(prevStrafe) > WALK_ANIM_EXIT;
       if (wasMoving && this.motionState !== 'idle') {
         this.beginCrossfade(this.motionState, 'idle', CROSSFADE_WALK_IDLE_FRAMES / this.FPS);
       }
@@ -1057,25 +1072,39 @@ export class FighterStateMachine {
 
     this.actionState = 'Walking';
 
+    // ── Determine dominant direction ─────────────────────────────────────────
+    // Use a small dead-zone ratio to prevent direction flipping when forward
+    // and strafe are nearly equal (prevents locked-in direction jitter).
+    const DIRECTION_DOMINANCE_RATIO = 1.15; // forward must be 15% stronger than strafe to dominate
     let newMotion: FighterMotionState = this.motionState;
-    if (absForward >= absStrafe) {
-      if (this.walkVelocity.forward > WALK_ANIM_THRESHOLD) {
+
+    const forwardDominant = absForward * DIRECTION_DOMINANCE_RATIO >= absStrafe;
+    const strafeDominant  = absStrafe  * DIRECTION_DOMINANCE_RATIO >= absForward;
+
+    if (forwardDominant && absForward > exitThreshold) {
+      if (this.walkVelocity.forward > 0) {
         newMotion = 'walkForward';
-      } else if (this.walkVelocity.forward < -WALK_ANIM_THRESHOLD) {
+      } else {
         newMotion = 'walkBackward';
       }
-    } else {
-      if (this.walkVelocity.strafe > WALK_ANIM_THRESHOLD) {
+    } else if (strafeDominant && absStrafe > exitThreshold) {
+      if (this.walkVelocity.strafe > 0) {
         newMotion = 'strafeRight';
-      } else if (this.walkVelocity.strafe < -WALK_ANIM_THRESHOLD) {
+      } else {
         newMotion = 'strafeLeft';
       }
     }
+    // If neither is dominant (equal magnitudes), keep current motion to avoid flip
 
-    // Frame-accurate crossfade on direction change
+    // ── Frame-accurate crossfade on direction change ─────────────────────────
     if (newMotion !== this.motionState) {
-      const isStrafeToDash = (this.motionState === 'strafeLeft' || this.motionState === 'strafeRight') && newMotion === 'walkBackward';
-      const crossfadeFrames = isStrafeToDash ? CROSSFADE_STRAFE_BACKDASH_FRAMES : CROSSFADE_WALK_IDLE_FRAMES;
+      // Detect strafe→backward transition (could be start of backdash)
+      const isStrafeToDash =
+        (this.motionState === 'strafeLeft' || this.motionState === 'strafeRight') &&
+        newMotion === 'walkBackward';
+      const crossfadeFrames = isStrafeToDash
+        ? CROSSFADE_STRAFE_BACKDASH_FRAMES
+        : CROSSFADE_WALK_IDLE_FRAMES;
       this.beginCrossfade(this.motionState, newMotion, crossfadeFrames / this.FPS);
       this.motionState = newMotion;
     }
