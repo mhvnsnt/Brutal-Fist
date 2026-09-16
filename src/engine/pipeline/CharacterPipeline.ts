@@ -340,6 +340,154 @@ export function validateAuthoredAsset(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// ANIMATION CHANNEL BONE VALIDATION
+// ─────────────────────────────────────────────────────────────────────────────
+// Validates that every animation clip channel (track) targets a bone that
+// actually exists in the cloned skeleton BEFORE the mixer starts playing.
+//
+// This catches the most common "statue / bind-pose lock" root cause:
+//   • Animation track says "rotate RightArm" but the skeleton has no bone
+//     named "RightArm" (e.g. it's named "mixamorigRightArm" or "Arm_R").
+//   • The mixer silently does nothing — the character freezes in bind pose.
+//
+// The validator logs:
+//   ✅  channels that resolve correctly
+//   ❌  channels that cannot resolve — with the target name AND the full list
+//       of available bone names so the mismatch is immediately actionable.
+//
+// Returns a summary object so callers can gate mixer.play() on full resolution.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface AnimationChannelValidationResult {
+  /** Total number of tracks across all clips */
+  totalChannels: number;
+  /** Number of channels that resolved to a real bone */
+  resolvedChannels: number;
+  /** Number of channels that could NOT be resolved */
+  unresolvedChannels: number;
+  /** Per-clip, per-track mismatch details */
+  mismatches: AnimationChannelMismatch[];
+  /** Whether every channel resolved (true = safe to start mixer) */
+  allResolved: boolean;
+}
+
+export interface AnimationChannelMismatch {
+  clipName: string;
+  trackName: string;
+  /** The bone/object name extracted from the track path */
+  targetName: string;
+  /** All bone names present in the skeleton at validation time */
+  availableBones: string[];
+}
+
+/**
+ * Validate that every animation clip channel resolves to an actual bone in
+ * the cloned scene before the AnimationMixer starts.
+ *
+ * Three.js track names follow the pattern:
+ *   "<objectName>.<propertyPath>"   e.g. "RightArm.quaternion" *"<objectName>[<subpath>]"       e.g. "Armature|RightArm.quaternion"
+ *
+ * The resolver mirrors THREE.AnimationMixer's own name-based lookup: *   it searches the root object's subtree for an object whose .name matches
+ *   the track's target name.
+ *
+ * @param clonedScene  The cloned scene that the mixer will target
+ * @param animations   The animation clips to validate
+ * @param modelName    Short name used in log messages
+ */
+export function validateAnimationChannelBones(
+  clonedScene: THREE.Object3D,
+  animations: THREE.AnimationClip[],
+  modelName: string,
+): AnimationChannelValidationResult {
+  // Build a fast lookup: bone name → true
+  const boneNameSet = new Set<string>();
+  const allBoneNames: string[] = [];
+  clonedScene.traverse((child) => {
+    if ((child as THREE.Bone).isBone) {
+      boneNameSet.add(child.name);
+      allBoneNames.push(child.name);
+    }
+  });
+
+  // Also include ALL named objects (not just bones) because some tracks target
+  // non-bone objects (e.g. mesh nodes, armature root). We still want to know
+  // if the target exists anywhere in the hierarchy.
+  const objectNameSet = new Set<string>();
+  clonedScene.traverse((child) => {
+    if (child.name) objectNameSet.add(child.name);
+  });
+
+  let totalChannels = 0;
+  let resolvedChannels = 0;
+  let unresolvedChannels = 0;
+  const mismatches: AnimationChannelMismatch[] = [];
+
+  for (const clip of animations) {
+    for (const track of clip.tracks) {
+      totalChannels++;
+
+      // Extract target object name from track name.
+      // THREE.js KeyframeTrack name format: "<nodeName>.<property>"
+      // e.g. "RightArm.quaternion", "mixamorigSpine.position"
+      // Some exporters use "|" as separator: "Armature|RightArm.quaternion"
+      const rawName = track.name;
+      // Strip property suffix (everything after the last ".")
+      const dotIdx = rawName.lastIndexOf('.');
+      const withoutProp = dotIdx !== -1 ? rawName.slice(0, dotIdx) : rawName;
+      // Strip armature prefix if present (e.g. "Armature|RightArm" → "RightArm")
+      const pipeIdx = withoutProp.lastIndexOf('|');
+      const targetName = pipeIdx !== -1 ? withoutProp.slice(pipeIdx + 1) : withoutProp;
+
+      const resolves = objectNameSet.has(targetName);
+
+      if (resolves) {
+        resolvedChannels++;
+        // Only log resolved channels at debug level to avoid console spam
+        // Uncomment the line below for verbose per-channel logging:
+        // console.log(`[CharacterPipeline] ✅ Channel resolved: clip="${clip.name}" track="${rawName}" → "${targetName}"`);
+      } else {
+        unresolvedChannels++;
+        mismatches.push({
+          clipName: clip.name,
+          trackName: rawName,
+          targetName,
+          availableBones: allBoneNames.slice(), // snapshot at validation time
+        });
+
+        console.error(
+          `[CharacterPipeline] ❌ BONE MISMATCH — "${modelName}"\n` +
+          `  Clip:          "${clip.name}"\n` + `  Track:"${rawName}"\n` + `  Target bone:"${targetName}"\n` +
+          `  Available bones (${allBoneNames.length}): [${allBoneNames.join(', ')}]\n` +
+          `  → This channel will NOT animate. Fix the asset or add a retarget map.`
+        );
+      }
+    }
+  }
+
+  const allResolved = unresolvedChannels === 0;
+
+  if (animations.length === 0) {
+    console.warn(
+      `[CharacterPipeline] ⚠️ "${modelName}" — no animation clips to validate. ` +
+      `Character will be static (bind pose).`
+    );
+  } else if (allResolved) {
+    console.log(
+      `[CharacterPipeline] ✅ Animation channel validation PASSED — "${modelName}"\n` +
+      `  ${resolvedChannels}/${totalChannels} channels resolved across ${animations.length} clip(s).`
+    );
+  } else {
+    console.error(
+      `[CharacterPipeline] ❌ Animation channel validation FAILED — "${modelName}"\n` +
+      `  ${resolvedChannels}/${totalChannels} channels resolved, ${unresolvedChannels} UNRESOLVED.\n` +
+      `  Unresolved channels will produce statue/bind-pose lock. Fix bone name mismatches above.`
+    );
+  }
+
+  return { totalChannels, resolvedChannels, unresolvedChannels, mismatches, allResolved };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // MAIN PIPELINE FUNCTION
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -546,6 +694,20 @@ export function runCharacterPipeline(
   // the mixer apply to the original (invisible) scene's skeleton, not the
   // visible clone.
   const mixer = new THREE.AnimationMixer(cloned);
+
+  // ── STEP 13b: Validate animation channel → bone resolution BEFORE mixer starts ──
+  // Every animation clip channel must resolve to an actual bone in the cloned
+  // skeleton. Mismatches (e.g. track targets "RightArm" but skeleton has
+  // "mixamorigRightArm") cause silent bind-pose lock — the mixer runs but
+  // nothing moves. This check logs every mismatch with the target name and
+  // the full list of available bones so the problem is immediately actionable.
+  const channelValidation = validateAnimationChannelBones(cloned, animations, modelName);
+  if (!channelValidation.allResolved && channelValidation.totalChannels > 0) {
+    console.warn(
+      `[CharacterPipeline] ⚠️ "${modelName}" — ${channelValidation.unresolvedChannels} unresolved animation ` +
+      `channel(s). Character may appear frozen in bind pose. See BONE MISMATCH errors above.`
+    );
+  }
 
   // ── STEP 14: Load animation clips with NAME-BASED binding ─────────────────
   // AGENT LAW: Use name-based binding, NOT UUID-based binding.

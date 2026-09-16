@@ -20,7 +20,10 @@
     "glb:normalize:dry": "node scripts/normalize-glb.mjs --dry-run --verbose",
     "glb:scan": "node tools/diagnostics/scan-roster-glbs.mjs",
     "glb:scan:verbose": "node tools/diagnostics/scan-roster-glbs.mjs --verbose",
-    "glb:scan:output": "node tools/diagnostics/scan-roster-glbs.mjs --output docs/GLB_MANIFEST.json"
+    "glb:scan:output": "node tools/diagnostics/scan-roster-glbs.mjs --output docs/GLB_MANIFEST.json",
+    "glb:rig": "node tools/diagnostics/rig-static-glbs.mjs",
+    "glb:rig:dry": "node tools/diagnostics/rig-static-glbs.mjs --dry-run --verbose",
+    "glb:rig:verbose": "node tools/diagnostics/rig-static-glbs.mjs --verbose"
   },
   "dependencies": {
     "@dhiwise/component-tagger": "latest",
