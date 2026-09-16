@@ -21,11 +21,11 @@ interface CharacterPortrait3DProps {
   flip?: boolean;
   /**
    * Explicit Y-axis rotation in radians for the character model IN THE PORTRAIT ONLY.
-   * COMPLETELY DECOUPLED from in-fight rotationY.
-   * Portrait convention:
-   *   P1 (left panel):  -0.45 rad → slight right-facing inward angle
-   *   P2 (right panel): +0.45 rad → slight left-facing inward angle
-   *   Roster grid slots: 0 (face camera)
+   * COMPLETELY DECOUPLED from in-fight rotationY. Never baked into the GLB.
+   * Viewport slot math (applied by CharacterSelect, same for every fighter):
+   *   P1:  Math.PI / 4   → 45° inward to the right
+   *   P2: -Math.PI / 4   → 45° inward to the left
+   * Base GLB loads at 0° on all axes before this slot rotation is applied.
    */
   rotationY?: number;
 }
@@ -66,9 +66,10 @@ function FixedCamera({ mode }: { mode: 'bust' | 'full' }) {
   useEffect(() => {
     const cam = camera as THREE.PerspectiveCamera;
     if (mode === 'bust') {
-      cam.fov = 28;
-      cam.position.set(0, 1.6, 3.2);
-      cam.lookAt(0, 1.4, 0);
+      // Mid-thigh → head three-quarter bust for the 65% P1/P2 viewports.
+      cam.fov = 32;
+      cam.position.set(0, 1.18, 3.55);
+      cam.lookAt(0, 1.12, 0);
     } else {
       cam.fov = 40;
       cam.position.set(0, 1.0, 4.5);
