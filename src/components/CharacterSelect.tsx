@@ -90,7 +90,9 @@ function FighterPortrait({
           modelUrl={fighter.portraitUrl}
           factionColor={factionColor}
           mode="bust"
-          flip={!isP1}
+          // P1 faces slightly right (inward toward P2), P2 faces slightly left (inward toward P1)
+          // Both face the camera — no full 180° flip in portrait panels
+          rotationY={isP1 ? -0.45 : 0.45}
         />
       </div>
 

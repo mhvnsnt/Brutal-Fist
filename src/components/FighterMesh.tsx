@@ -243,8 +243,14 @@ export function FighterMesh({
     const attacking = state === 'Startup' || state === 'Active';
     const bob = state === 'Neutral' ? Math.sin(clock.elapsedTime * 5) * 0.025 : 0;
     groupRef.current.position.set(position[0], position[1] + bob, position[2]);
+    // ── Orientation: rotationY prop is the single source of truth for facing ──
+    // P1 (facing=1):  rotationY=0       → faces +Z (toward camera, left side)
+    // P2 (facing=-1): rotationY=Math.PI → faces -Z (toward P1, right side)
+    // We do NOT flip scale.x — that fights with rotationY and causes double-flip.
     groupRef.current.rotation.y = rotationY;
-    groupRef.current.scale.x = Math.abs(groupRef.current.scale.x) * (facing < 0 ? -1 : 1) * (attacking ? 1.03 : 1);
+    // Attack pulse: uniform scale on all axes, no mirroring
+    const attackScale = attacking ? 1.03 : 1.0;
+    groupRef.current.scale.set(attackScale, attackScale, attackScale);
   });
 
   if (!model) return null;

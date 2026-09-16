@@ -13,8 +13,20 @@ interface CharacterPortrait3DProps {
   mode?: 'bust' | 'full';
   /** Whether to apply a hit-stop brightness flash */
   flash?: boolean;
-  /** Flip horizontally for P2 side — rotates 180° on Y so character faces toward P1 */
+  /**
+   * Flip horizontally for P2 side — rotates 180° on Y so character faces toward P1.
+   * @deprecated Use rotationY for precise control. flip=true is equivalent to rotationY=Math.PI.
+   */
   flip?: boolean;
+  /**
+   * Explicit Y-axis rotation in radians for the character model.
+   * Overrides `flip` when provided.
+   * Portrait convention:
+   *   P1 (left panel):  -0.45 rad → slight right-facing inward angle
+   *   P2 (right panel): +0.45 rad → slight left-facing inward angle
+   *   Combat P2:        Math.PI   → full 180° to face P1 across the arena
+   */
+  rotationY?: number;
 }
 
 /**
@@ -170,6 +182,7 @@ function PortraitModel({
   mode = 'bust',
   flash = false,
   flip = false,
+  rotationY,
 }: CharacterPortrait3DProps) {
   const groupRef = useRef<THREE.Group>(null);
   const mixerRef = useRef<THREE.AnimationMixer | null>(null);
@@ -271,8 +284,8 @@ function PortraitModel({
     <group
       ref={groupRef}
       position={[0, model.nudgeY, 0]}
-      // P2 side: rotate 180° on Y-axis so the character faces toward P1.
-      rotation={[0, flip ? Math.PI : 0, 0]}
+      // rotationY prop takes priority; fall back to flip boolean for backward compat
+      rotation={[0, rotationY !== undefined ? rotationY : (flip ? Math.PI : 0), 0]}
     >
       {/* INNER SCENE: animation mixer runs here at Y=0, cannot override parent offset */}
       <primitive object={model.scene} />
@@ -286,6 +299,7 @@ export default function CharacterPortrait3D({
   mode = 'bust',
   flash = false,
   flip = false,
+  rotationY,
 }: CharacterPortrait3DProps) {
   return (
     <div className="relative w-full h-full">
@@ -318,6 +332,7 @@ export default function CharacterPortrait3D({
             mode={mode}
             flash={flash}
             flip={flip}
+            rotationY={rotationY}
           />
         </Suspense>
       </Canvas>
