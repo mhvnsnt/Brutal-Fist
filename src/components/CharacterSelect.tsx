@@ -347,61 +347,63 @@ export default function CharacterSelect({ onSelectP1, onSelectP2, onStartMatch }
         </div>
       </div>
 
-      {/* ── TOP ZONE: Two player portrait busts (fills remaining space above grid) ── */}
-      <div className="relative z-10 flex flex-1 min-h-0">
-        {/* P1 Portrait + attire strip */}
-        <div className="flex flex-col flex-1 border-r border-zinc-800/60 min-w-0">
-          <div className="flex-1 min-h-0">
-            <FighterPortrait fighter={p1Fighter} attirePortraitUrl={p1PortraitUrl} slot="P1" active={activeSlot === 'p1'} />
-          </div>
-          {p1Fighter && (
-            <AttireSelector
-              characterId={p1Fighter.id}
-              selectedAttire={p1Attire}
-              onSelectAttire={(attire, url) => { setP1Attire(attire); setP1PortraitUrl(url); }}
-              slot="P1"
-            />
-          )}
-        </div>
-
-        {/* Center divider with countdown */}
-        <div className="relative flex flex-col items-center justify-center w-14 md:w-18 shrink-0 z-20"
-          style={{ background: 'linear-gradient(180deg, #0a0a0a 0%, #111 50%, #0a0a0a 100%)' }}
-        >
-          <div className="absolute top-2 left-1/2 -translate-x-1/2 flex flex-col items-center gap-0.5">
-            {'PLAYER SELECT'.split('').map((ch, i) => (
-              <span key={i} className="text-[6px] text-zinc-600 font-black tracking-widest leading-tight">{ch}</span>
-            ))}
-          </div>
-          <div className="flex flex-col items-center mt-4">
-            <div className="text-3xl md:text-4xl font-black tabular-nums"
-              style={{
-                color: countdown <= 10 ? '#ef4444' : '#facc15',
-                textShadow: countdown <= 10
-                  ? '0 0 16px #ef4444, 0 0 32px #ef444488' :'0 0 16px #facc15, 0 0 32px #facc1588',
-                fontFamily: 'monospace',
-              }}
-            >
-              {String(countdown).padStart(2, '0')}
+      {/* ── TOP ZONE: 3D Fighter Presentation — ~57% of screen height ── */}
+      <div className="relative z-10 flex flex-col overflow-hidden" style={{ height: '57%' }}>
+        <div className="flex flex-1 min-h-0">
+          {/* P1 Portrait + attire strip */}
+          <div className="flex flex-col flex-1 border-r border-zinc-800/60 min-w-0">
+            <div className="flex-1 min-h-0">
+              <FighterPortrait fighter={p1Fighter} attirePortraitUrl={p1PortraitUrl} slot="P1" active={activeSlot === 'p1'} />
             </div>
-            <div className="text-[7px] text-zinc-600 tracking-widest mt-0.5">TIME</div>
+            {p1Fighter && (
+              <AttireSelector
+                characterId={p1Fighter.id}
+                selectedAttire={p1Attire}
+                onSelectAttire={(attire, url) => { setP1Attire(attire); setP1PortraitUrl(url); }}
+                slot="P1"
+              />
+            )}
           </div>
-          <div className="mt-3 text-xs font-black text-zinc-700 tracking-widest">VS</div>
-        </div>
 
-        {/* P2 Portrait + attire strip */}
-        <div className="flex flex-col flex-1 border-l border-zinc-800/60 min-w-0">
-          <div className="flex-1 min-h-0">
-            <FighterPortrait fighter={p2Fighter} attirePortraitUrl={p2PortraitUrl} slot="P2" active={activeSlot === 'p2'} />
+          {/* Center divider with countdown */}
+          <div className="relative flex flex-col items-center justify-center w-14 md:w-18 shrink-0 z-20"
+            style={{ background: 'linear-gradient(180deg, #0a0a0a 0%, #111 50%, #0a0a0a 100%)' }}
+          >
+            <div className="absolute top-2 left-1/2 -translate-x-1/2 flex flex-col items-center gap-0.5">
+              {'PLAYER SELECT'.split('').map((ch, i) => (
+                <span key={i} className="text-[6px] text-zinc-600 font-black tracking-widest leading-tight">{ch}</span>
+              ))}
+            </div>
+            <div className="flex flex-col items-center mt-4">
+              <div className="text-3xl md:text-4xl font-black tabular-nums"
+                style={{
+                  color: countdown <= 10 ? '#ef4444' : '#facc15',
+                  textShadow: countdown <= 10
+                    ? '0 0 16px #ef4444, 0 0 32px #ef444488' :'0 0 16px #facc15, 0 0 32px #facc1588',
+                  fontFamily: 'monospace',
+                }}
+              >
+                {String(countdown).padStart(2, '0')}
+              </div>
+              <div className="text-[7px] text-zinc-600 tracking-widest mt-0.5">TIME</div>
+            </div>
+            <div className="mt-3 text-xs font-black text-zinc-700 tracking-widest">VS</div>
           </div>
-          {p2Fighter && (
-            <AttireSelector
-              characterId={p2Fighter.id}
-              selectedAttire={p2Attire}
-              onSelectAttire={(attire, url) => { setP2Attire(attire); setP2PortraitUrl(url); }}
-              slot="P2"
-            />
-          )}
+
+          {/* P2 Portrait + attire strip */}
+          <div className="flex flex-col flex-1 border-l border-zinc-800/60 min-w-0">
+            <div className="flex-1 min-h-0">
+              <FighterPortrait fighter={p2Fighter} attirePortraitUrl={p2PortraitUrl} slot="P2" active={activeSlot === 'p2'} />
+            </div>
+            {p2Fighter && (
+              <AttireSelector
+                characterId={p2Fighter.id}
+                selectedAttire={p2Attire}
+                onSelectAttire={(attire, url) => { setP2Attire(attire); setP2PortraitUrl(url); }}
+                slot="P2"
+              />
+            )}
+          </div>
         </div>
       </div>
 
@@ -434,12 +436,11 @@ export default function CharacterSelect({ onSelectP1, onSelectP2, onStartMatch }
         </div>
       </div>
 
-      {/* ── BOTTOM ZONE: Tekken-style two-row character grid ── */}
-      <div className="relative z-10 shrink-0"
-        style={{ background: 'linear-gradient(180deg, #0d0d0f 0%, #080808 100%)' }}
+      {/* ── BOTTOM ZONE: 2D Roster/Selection — ~43% of screen height (minus name bar) ── */}
+      <div className="relative z-10 flex flex-col overflow-hidden" style={{ flex: '1 1 0', minHeight: 0, background: 'linear-gradient(180deg, #0d0d0f 0%, #080808 100%)' }}
       >
         {/* Controls bar */}
-        <div className="flex items-center justify-between px-3 py-1 border-b border-zinc-800/50">
+        <div className="flex items-center justify-between px-3 py-1 border-b border-zinc-800/50 shrink-0">
           <div className="flex items-center gap-2">
             <span className="text-[8px] text-zinc-600 tracking-[0.3em]">SELECTING FOR</span>
             <span className={`text-[9px] font-black tracking-[0.3em] px-2 py-0.5 border ${
@@ -474,8 +475,8 @@ export default function CharacterSelect({ onSelectP1, onSelectP2, onStartMatch }
           </div>
         </div>
 
-        {/* Roster rows — Tekken-style two rows at the bottom */}
-        <div className="flex flex-col gap-0.5 px-1 py-1">
+        {/* Roster rows — Tekken-style two rows */}
+        <div className="flex flex-col gap-0.5 px-1 py-1 flex-1 overflow-y-auto">
           {/* Row 1 */}
           <div
             className="grid gap-0.5"
@@ -538,7 +539,7 @@ export default function CharacterSelect({ onSelectP1, onSelectP2, onStartMatch }
         </div>
 
         {/* Bottom info bar */}
-        <div className="flex items-center justify-between px-3 py-1 border-t border-zinc-800/50">
+        <div className="flex items-center justify-between px-3 py-1 border-t border-zinc-800/50 shrink-0">
           <div className="text-[8px] text-zinc-700 tracking-[0.3em]">
             {cursorFighter
               ? `${cursorFighter.name.toUpperCase()} · ${cursorFighter.fightingStyle.split('.')[0].toUpperCase()}`
