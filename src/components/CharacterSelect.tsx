@@ -150,7 +150,7 @@ function FighterPortrait({
         className="absolute inset-0 animate-pulse opacity-20 pointer-events-none"
         style={{ background: `radial-gradient(ellipse at center, ${factionColor}55 0%, transparent 70%)` }}
       />
-      <div className="absolute inset-0 z-10">
+      <div className="absolute inset-0 z-10 flex items-end justify-center">
         <CharacterPortrait3D
           modelUrl={portraitUrl}
           factionColor={factionColor}

@@ -6,7 +6,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import { SkeletonUtils } from 'three-stdlib';
-import { determineForwardCorrection } from '../engine/pipeline/CharacterPipeline';
+import { normalizeClonedFighter, PIPELINE_TARGET_HEIGHT } from '../engine/pipeline/CharacterPipeline';
 
 interface CharacterPortrait3DProps {
   modelUrl: string;
@@ -31,16 +31,13 @@ interface CharacterPortrait3DProps {
 }
 
 /**
- * NORMALIZATION CONTRACT (v10 — Universal Box3 + Forward Detection):
- *
- * All characters use the same Box3 normalization as FighterMesh:
- *   - Scale to 2.0 units tall
- *   - Offset so bottom of bounding box sits at Y=0
- *   - No character-specific manual offsets
- *   - Forward direction auto-detected: models facing +Z get 180° Y correction
- *     applied to the inner scene group (not the outer portrait rotation group)
- *
- * PORTRAIT ORIENTATION IS COMPLETELY DECOUPLED FROM IN-FIGHT ORIENTATION.
+ * NORMALIZATION CONTRACT:
+ * Character Select uses the same normalizeClonedFighter() as combat:
+ *   - Zero root rotation first
+ *   - Uniform scale to PIPELINE_TARGET_HEIGHT from mesh AABB
+ *   - ADD floor/center offset (never SET — Mixamo hip-root must survive)
+ *   - Rest-pose limb-axis facing, not mesh centroid
+ * Slot rotation (P1 π/4, P2 −π/4) is applied on an OUTER group only.
  */
 
 // ── Forward direction detection (delegated to CharacterPipeline) ──────────────
@@ -60,20 +57,21 @@ function selectIdleClip(clips: THREE.AnimationClip[]): THREE.AnimationClip {
   return clips[0];
 }
 
-/** Fixed camera — all models normalized to Y=0 baseline */
+/** Fixed camera — fighters are floor-snapped to Y=0 at PIPELINE_TARGET_HEIGHT. */
 function FixedCamera({ mode }: { mode: 'bust' | 'full' }) {
   const { camera } = useThree();
   useEffect(() => {
     const cam = camera as THREE.PerspectiveCamera;
+    const h = PIPELINE_TARGET_HEIGHT;
     if (mode === 'bust') {
-      // Mid-thigh → head three-quarter bust for the 65% P1/P2 viewports.
-      cam.fov = 32;
-      cam.position.set(0, 1.18, 3.55);
-      cam.lookAt(0, 1.12, 0);
+      // Mid-thigh → head, object-position: bottom. Feet stay at Y=0.
+      cam.fov = 30;
+      cam.position.set(0, h * 0.62, h * 1.9);
+      cam.lookAt(0, h * 0.55, 0);
     } else {
-      cam.fov = 40;
-      cam.position.set(0, 1.0, 4.5);
-      cam.lookAt(0, 1.0, 0);
+      cam.fov = 34;
+      cam.position.set(0, h * 0.5, h * 2.45);
+      cam.lookAt(0, h * 0.42, 0);
     }
     cam.updateProjectionMatrix();
   }, [mode, camera]);
@@ -118,41 +116,13 @@ function PortraitModel({
         // the full bone hierarchy and re-binds every SkinnedMesh to the correct skeleton.
         const cloned = SkeletonUtils.clone(gltf.scene) as THREE.Group;
 
-        // Disable frustum culling on all SkinnedMeshes
         cloned.traverse((child) => {
           if ((child as THREE.SkinnedMesh).isSkinnedMesh) {
             (child as THREE.SkinnedMesh).frustumCulled = false;
-            (child as THREE.SkinnedMesh).normalizeSkinWeights();
           }
         });
 
-        // ── Step 1: Measure raw bounding box (pre-scale) ──────────────────────
-        cloned.updateMatrixWorld(true);
-        const rawBox = new THREE.Box3().setFromObject(cloned);
-        const rawSize = rawBox.getSize(new THREE.Vector3());
-
-        // ── Step 2: Scale to 2.0 units tall ───────────────────────────────────
-        const scale = rawSize.y > 0 ? 2.0 / rawSize.y : 1;
-        cloned.scale.setScalar(scale);
-
-        // ── Step 3: Force matrix world update ─────────────────────────────────
-        cloned.updateMatrixWorld(true);
-
-        // ── Step 4: Re-measure bounding box in post-scale world space ─────────
-        const scaledBox = new THREE.Box3().setFromObject(cloned);
-        const scaledCenter = scaledBox.getCenter(new THREE.Vector3());
-
-        // ── Step 5: Center horizontally; floor bottom of bounding box at Y=0 ──
-        cloned.position.set(-scaledCenter.x, -scaledBox.min.y, -scaledCenter.z);
-
-        // ── Step 6: Reset ONLY the root scene rotation (not children) ─────────
-        cloned.rotation.set(0, 0, 0);
-
-        // ── Step 7: Force update so bone world positions are accurate ──────────
-        cloned.updateMatrixWorld(true);
-
-        // ── Step 8: Detect forward direction ──────────────────────────────────
-        const forwardCorrectionY = determineForwardCorrection(cloned);
+        const { forwardCorrectionY } = normalizeClonedFighter(cloned, PIPELINE_TARGET_HEIGHT);
 
         // ── Step 9: Apply faction color tint ──────────────────────────────────
         const color = new THREE.Color(factionColor);
@@ -258,7 +228,7 @@ export default function CharacterPortrait3D({
   rotationY,
 }: CharacterPortrait3DProps) {
   return (
-    <div className="relative w-full h-full">
+    <div className="relative w-full h-full flex items-end justify-center">
       <div
         className="absolute inset-0 pointer-events-none"
         style={{
@@ -270,6 +240,8 @@ export default function CharacterPortrait3D({
         style={{
           width: '100%',
           height: '100%',
+          objectFit: 'contain',
+          objectPosition: 'bottom center',
           filter: flash ? 'brightness(1.8)' : undefined,
           transition: 'filter 0.05s',
         }}

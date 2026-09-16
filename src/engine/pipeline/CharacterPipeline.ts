@@ -148,72 +148,162 @@ export interface PipelineValidationResult {
   details: string[];
 }
 
+export interface FighterNormalizeResult {
+  scale: number;
+  measuredHeight: number;
+  measuredFloorY: number;
+  forwardCorrectionY: number;
+}
+
+function boneKey(name: string): string {
+  return name.toLowerCase().replace(/:/g, '').replace(/^mixamorig/, '').replace(/_/g, '');
+}
+
+function findNamedBone(scene: THREE.Object3D, keys: string[]): THREE.Object3D | null {
+  const want = new Set(keys.map((k) => k.toLowerCase()));
+  let found: THREE.Object3D | null = null;
+  scene.traverse((obj) => {
+    if (found || !obj.name) return;
+    if (want.has(boneKey(obj.name))) found = obj;
+  });
+  return found;
+}
+
+/**
+ * World AABB of visible Mesh / SkinnedMesh geometry only.
+ * Empties, bones, and helper nodes must not pull the floor or height.
+ */
+export function computeMeshWorldBox(scene: THREE.Object3D): THREE.Box3 {
+  const box = new THREE.Box3();
+  let any = false;
+  scene.updateMatrixWorld(true);
+  scene.traverse((child) => {
+    const mesh = child as THREE.Mesh;
+    if (!mesh.isMesh || !mesh.geometry) return;
+    if (!mesh.visible) return;
+    const geo = mesh.geometry;
+    if (!geo.boundingBox) geo.computeBoundingBox();
+    if (!geo.boundingBox || geo.boundingBox.isEmpty()) return;
+    const meshBox = geo.boundingBox.clone().applyMatrix4(mesh.matrixWorld);
+    if (!any) {
+      box.copy(meshBox);
+      any = true;
+    } else {
+      box.union(meshBox);
+    }
+  });
+  return any ? box : new THREE.Box3().setFromObject(scene);
+}
+
+/**
+ * Universal instance normalize used by Character Select AND Combat.
+ *
+ * 1. Zero authored root rotation (facing is applied later on an outer group).
+ * 2. Uniform-scale mesh AABB to PIPELINE_TARGET_HEIGHT.
+ * 3. ADD a floor/center offset — never SET position (that wipes Mixamo hip-root
+ *    translations and drops Cain/Echo/Cody/etc. through the floor).
+ * 4. Detect rest-pose forward from the Mixamo limb axes, not mesh centroid.
+ *
+ * No per-character offsets. Any roster GLB goes through this exact path.
+ */
+export function normalizeClonedFighter(
+  cloned: THREE.Object3D,
+  targetHeight = PIPELINE_TARGET_HEIGHT,
+): FighterNormalizeResult {
+  cloned.rotation.set(0, 0, 0);
+  cloned.updateMatrixWorld(true);
+
+  const rawBox = computeMeshWorldBox(cloned);
+  const rawSize = rawBox.getSize(new THREE.Vector3());
+  const factor = rawSize.y > 0.01 ? targetHeight / rawSize.y : 1;
+  cloned.scale.multiplyScalar(factor);
+  cloned.updateMatrixWorld(true);
+
+  const box = computeMeshWorldBox(cloned);
+  const center = box.getCenter(new THREE.Vector3());
+  cloned.position.x += -center.x;
+  cloned.position.y += -box.min.y;
+  cloned.position.z += -center.z;
+  cloned.updateMatrixWorld(true);
+
+  const floorBox = computeMeshWorldBox(cloned);
+  const measuredHeight = floorBox.getSize(new THREE.Vector3()).y;
+  const forwardCorrectionY = determineForwardCorrection(cloned);
+
+  console.log(
+    `[CharacterPipeline] 📐 normalize: height=${measuredHeight.toFixed(3)} ` +
+    `floorY=${floorBox.min.y.toFixed(4)} scale*=${factor.toFixed(4)} ` +
+    `forwardY=${forwardCorrectionY.toFixed(3)} rad`,
+  );
+
+  return {
+    scale: factor,
+    measuredHeight,
+    measuredFloorY: floorBox.min.y,
+    forwardCorrectionY,
+  };
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // AUTHORED FORWARD AXIS DETERMINATION
 // ─────────────────────────────────────────────────────────────────────────────
-// CRITICAL: We use GEOMETRY-ONLY measurement — the bounding box centroid of
-// visible mesh geometry in the canonical (rotation=0) pose.
+// Rest-pose limb axes, not mesh centroid and not fighting-stance bone Z.
 //
-// We NEVER use bone positions (head Z vs hips Z) to infer facing direction.
-// Reason: A fighting stance can put the head forward without the character's
-// actual forward axis being +Z. Bone-position-based inference is unreliable
-// and was the source of wrong-facing characters in the previous pipeline.
+// Anatomical forward = (right shoulder − left shoulder) × (head − hips).
+// Select/combat cameras sit on +Z looking at the origin, so a fighter that
+// already looks at +Z needs 0 correction (Bannon/Maime). A fighter looking
+// −Z needs Math.PI on the INNER group.
 //
-// The geometry centroid approach is stable because:
-//   - It measures the actual rendered geometry, not a pose-dependent skeleton
-//   - It works for all GLB exports regardless of rig convention
-//   - It is not affected by animation state or fighting stance
-//
-// glTF standard: characters should face -Z (toward camera at +Z).
-// Blender default export: characters face +Z.
-// If the mesh centroid is at positive Z after normalization, the model faces +Z
-// and needs a 180° Y correction on the inner scene group.
+// Mesh-centroid Z was flipping anyone with extra chest/gear in +Z.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * Determine the authored forward correction for a character scene.
+ * Scene must already have rotation=[0,0,0] and a current world matrix.
  *
- * Uses GEOMETRY CENTROID ONLY — no bone position inference.
- * The scene must already have rotation=[0,0,0] and be world-matrix-updated
- * before calling this function.
- *
- * @returns 0 if model faces -Z (glTF standard), Math.PI if model faces +Z (Blender default)
+ * @returns 0 if the fighter already faces +Z (camera), Math.PI if they face −Z
  */
 export function determineForwardCorrection(scene: THREE.Object3D): number {
-  const meshCentroids: THREE.Vector3[] = [];
+  scene.updateMatrixWorld(true);
 
-  scene.traverse((child) => {
-    const mesh = child as THREE.Mesh;
-    if (!mesh.isMesh) return;
-    if (!mesh.geometry || !mesh.geometry.attributes.position) return;
+  const hips = findNamedBone(scene, ['hips', 'pelvis', 'hip']);
+  const head = findNamedBone(scene, ['head', 'headtop_end']);
+  const left = findNamedBone(scene, ['leftshoulder', 'leftarm', 'leftuparm']);
+  const right = findNamedBone(scene, ['rightshoulder', 'rightarm', 'rightuparm']);
 
-    // Use the mesh's bounding box centroid in world space
-    const box = new THREE.Box3().setFromObject(mesh);
-    if (!box.isEmpty()) {
-      meshCentroids.push(box.getCenter(new THREE.Vector3()));
+  if (left && right) {
+    const leftPos = new THREE.Vector3();
+    const rightPos = new THREE.Vector3();
+    left.getWorldPosition(leftPos);
+    right.getWorldPosition(rightPos);
+    const rightDir = rightPos.sub(leftPos);
+    rightDir.y = 0;
+    if (rightDir.lengthSq() > 1e-6) {
+      rightDir.normalize();
+      const up = new THREE.Vector3(0, 1, 0);
+      if (hips && head) {
+        const hipsPos = new THREE.Vector3();
+        const headPos = new THREE.Vector3();
+        hips.getWorldPosition(hipsPos);
+        head.getWorldPosition(headPos);
+        const spine = headPos.sub(hipsPos);
+        if (spine.lengthSq() > 1e-6) up.copy(spine.normalize());
+      }
+      const forward = new THREE.Vector3().crossVectors(rightDir, up).normalize();
+      if (forward.z < -0.25) {
+        console.log(
+          `[CharacterPipeline] 🔄 Forward correction: rest-pose forward.z=${forward.z.toFixed(3)} → faces −Z → 180°`,
+        );
+        return Math.PI;
+      }
+      console.log(
+        `[CharacterPipeline] ✅ Forward direction: rest-pose forward.z=${forward.z.toFixed(3)} → faces +Z (no correction)`,
+      );
+      return 0;
     }
-  });
-
-  if (meshCentroids.length === 0) {
-    // No geometry found — cannot determine facing, assume correct
-    console.log('[CharacterPipeline] ⚠️ Forward detection: no geometry found, assuming -Z facing (no correction)');
-    return 0;
   }
 
-  // Average centroid Z across all visible meshes
-  const avgZ = meshCentroids.reduce((sum, p) => sum + p.z, 0) / meshCentroids.length;
-
-  // Threshold: 0.05 units to avoid false positives on symmetric models
-  if (avgZ > 0.05) {
-    console.log(
-      `[CharacterPipeline] 🔄 Forward correction: avgMeshCentroidZ=${avgZ.toFixed(4)} > 0.05 → model faces +Z → applying 180° Y correction to inner group`
-    );
-    return Math.PI;
-  }
-
-  console.log(
-    `[CharacterPipeline] ✅ Forward direction: avgMeshCentroidZ=${avgZ.toFixed(4)} ≤ 0.05 → model faces -Z (glTF standard, no correction needed)`
-  );
+  console.log('[CharacterPipeline] ✅ Forward direction: no limb axes, default 0 (same as Bannon)');
   return 0;
 }
 
@@ -911,49 +1001,9 @@ export async function runCharacterPipeline(
     });
   });
 
-  // ── STEP 6: Measure raw bounding box AFTER zeroing rotation ──────────────
-  cloned.updateMatrixWorld(true);
-  const rawBox = new THREE.Box3().setFromObject(cloned);
-  const rawSize = rawBox.getSize(new THREE.Vector3());
-
-  // ── STEP 7: Apply uniform scale to TARGET_HEIGHT ──────────────────────────
-  // AGENT LAW: Every character is scaled uniformly to PIPELINE_TARGET_HEIGHT
-  // so the roster has consistent physical proportions regardless of GLB export scale.
-  // DO NOT non-uniformly stretch characters.
-  // DO NOT alter mesh vertices.
-  const scale = rawSize.y > 0.01 ? PIPELINE_TARGET_HEIGHT / rawSize.y : 1;
-  cloned.scale.setScalar(scale);
-
-  // ── STEP 8: Re-measure bounding box AFTER scaling ─────────────────────────
-  cloned.updateMatrixWorld(true);
-  const scaledBox = new THREE.Box3().setFromObject(cloned);
-  const scaledCenter = scaledBox.getCenter(new THREE.Vector3());
-  const scaledSize = scaledBox.getSize(new THREE.Vector3());
-
-  // ── STEP 9: Apply Y offset — snap lowest vertex to Y=0 (floor) ───────────
-  // AGENT LAW: Use THREE.Box3 to find the absolute lowest vertex of the
-  // character's geometry (scaledBox.min.y) and offset the OUTER INSTANCE's
-  // Y position by the exact inverse so every character's feet sit at Y=0.
-  //
-  // DO NOT move the skeleton/root bone to place the fighter on the floor.
-  // The compensating translation goes to the OUTER CHARACTER INSTANCE only.
-  // Authored bone transforms and bind matrices are left untouched.
-  //
-  // This works universally for every GLB regardless of origin placement —
-  // no per-character hardcoded offsets are needed or permitted.
-  cloned.position.set(
-    -scaledCenter.x,
-    -scaledBox.min.y,
-    -scaledCenter.z,
-  );
-
-  // ── STEP 10: Update world matrices so bone world positions are accurate ───
-  cloned.updateMatrixWorld(true);
-
-  // ── STEP 11: Determine authored forward axis from geometry centroid ────────
-  // GEOMETRY CENTROID ONLY — no bone position inference.
-  // See determineForwardCorrection() for full rationale.
-  const forwardCorrectionY = determineForwardCorrection(cloned);
+  // ── STEP 6–11: Universal floor + facing (same path as Character Select) ──
+  const normalized = normalizeClonedFighter(cloned, PIPELINE_TARGET_HEIGHT);
+  const forwardCorrectionY = normalized.forwardCorrectionY;
 
   // ── STEP 12: Apply PSX vertex snapping to materials (combat only) ─────────
   if (applyPSXShader) {
@@ -1061,8 +1111,8 @@ export async function runCharacterPipeline(
     boneCount,
     skinnedMeshCount,
     clipCount: extractionResult.clips.length,
-    measuredFloorY: scaledBox.min.y + cloned.position.y, // should be ~0
-    measuredHeight: scaledSize.y,
+    measuredFloorY: normalized.measuredFloorY,
+    measuredHeight: normalized.measuredHeight,
     forwardCorrectionDeg: Math.round((forwardCorrectionY * 180) / Math.PI),
     frustumCullingDisabled,
     skinWeightsNormalized,
@@ -1073,7 +1123,7 @@ export async function runCharacterPipeline(
     `[CharacterPipeline] ✅ "${modelName}" pipeline complete — ` +
     `bones=${boneCount} skinnedMeshes=${skinnedMeshCount} clips=${extractionResult.clips.length} ` +
     `resolved=${extractionResult.resolvedTrackCount} unresolved=${extractionResult.unresolvedTrackCount} ` +
-    `height=${scaledSize.y.toFixed(3)} forwardCorrection=${diagnostics.forwardCorrectionDeg}° ` +
+    `height=${normalized.measuredHeight.toFixed(3)} forwardCorrection=${diagnostics.forwardCorrectionDeg}° ` +
     `floorY=${diagnostics.measuredFloorY.toFixed(4)}`
   );
 
