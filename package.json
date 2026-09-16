@@ -17,7 +17,10 @@
     "bannon:verify": "node tools/bannon/verify-and-build-roster.mjs",
     "sources:audit": "node tools/integration/build-source-audit.mjs",
     "glb:normalize": "node scripts/normalize-glb.mjs",
-    "glb:normalize:dry": "node scripts/normalize-glb.mjs --dry-run --verbose"
+    "glb:normalize:dry": "node scripts/normalize-glb.mjs --dry-run --verbose",
+    "glb:scan": "node tools/diagnostics/scan-roster-glbs.mjs",
+    "glb:scan:verbose": "node tools/diagnostics/scan-roster-glbs.mjs --verbose",
+    "glb:scan:output": "node tools/diagnostics/scan-roster-glbs.mjs --output docs/GLB_MANIFEST.json"
   },
   "dependencies": {
     "@dhiwise/component-tagger": "latest",

@@ -7,6 +7,7 @@ import { getMoveById } from './BrutalFistMoveCatalog';
 
 
 // Re-export getMove for backward compat
+// ... Remove this block or line ...
 export { getMoveById as getMove } from './BrutalFistMoveCatalog';
 
 const EMPTY_INPUT: InputBitmask = { up: false, down: false, left: false, right: false, light: false, heavy: false, guard: false, grapple: false, escape: false, pin: false };

@@ -603,6 +603,89 @@ Do NOT invent a new skeleton. Do NOT generate replacement weights. Do NOT claim 
 
 ---
 
+## ═══════════════════════════════════════════════════════════════════
+## GLB DIAGNOSTIC MANIFEST — AGENT READ/WRITE CONTRACT
+## ═══════════════════════════════════════════════════════════════════
+
+### Tool: `tools/diagnostics/scan-roster-glbs.mjs`
+
+This is the authoritative offline diagnostic tool for all 24 roster GLBs.
+It uses `@gltf-transform/core` (already in dependencies) to scan every GLB
+and outputs a machine-readable JSON manifest at `docs/GLB_MANIFEST.json`.
+
+**Run it:**
+```bash
+npm run glb:scan              # scan all 24 GLBs → docs/GLB_MANIFEST.json
+npm run glb:scan:verbose      # same + per-file detail in console
+npm run glb:scan:output       # explicit output path
+node tools/diagnostics/scan-roster-glbs.mjs --glb-dir public/models
+```
+
+**What it reports per character:**
+- `skinnedMeshCount`  — number of mesh primitives with JOINTS_0 + WEIGHTS_0 attributes
+- `boneCount`         — total joints across all skins
+- `animationClipCount` + `animationClipNames` — every clip in the GLB
+- `hasJointsAttribute` / `hasWeightsAttribute` / `hasInverseBindMatrices`
+- `boneNames`         — full list of joint names (for retarget diagnostics)
+- `rootNodeName`      — first child of the default scene
+- `fileSha256`        — for change detection between asset versions
+- `animationBindingDiagnostic` — channel resolution analysis:
+  - `bindingStatus`: `ALL_CHANNELS_RESOLVED` | `PARTIAL_BINDING` | `NO_CHANNELS_RESOLVED — ANIMATION_WILL_NOT_PLAY`
+  - `unresolvedTargets`: bone names referenced by animation tracks that don't exist in the skeleton
+
+**Classification per character:**
+| Classification | Meaning |
+|---|---|
+| `RIGGED_AND_ANIMATABLE` | Has SkinnedMesh + Skeleton + Bones + animations → ready for combat |
+| `RIGGED_NO_ANIMATIONS` | Has SkinnedMesh + Skeleton + Bones but 0 clips → needs animation source |
+| `STATIC_MESH` | No SkinnedMesh / no Skeleton / no Bones → CANNOT animate → asset repair required |
+| `ANIMATION_ONLY` | Has animations but no SkinnedMesh → retarget target only |
+| `MALFORMED` | Parse error or missing required mesh data |
+
+**The manifest is the ground truth for asset state.**
+Before diagnosing any animation issue, run `npm run glb:scan` and read `docs/GLB_MANIFEST.json`.
+
+### How Agents Should Use the Manifest
+
+1. **Before any animation fix**: run `npm run glb:scan` to confirm the GLB actually has a skeleton.
+   - If `classification === 'STATIC_MESH'` → the GLB has no rig. Runtime fixes are futile. Asset repair required.
+   - If `classification === 'RIGGED_AND_ANIMATABLE'` but characters are still statues → the issue is in the runtime binding (see LAW 1).
+   - If `animationBindingDiagnostic.bindingStatus === 'NO_CHANNELS_RESOLVED'` → animation tracks target wrong bone names → retarget mismatch.
+
+2. **Statue / bind-pose lock diagnosis flow:**
+   ```
+   npm run glb:scan
+      ↓
+   Check classification
+      ↓
+   STATIC_MESH → send to offline asset repair (Blender/Mixamo)
+   RIGGED_AND_ANIMATABLE + binding issues → fix retarget in CharacterPipeline.ts
+   RIGGED_AND_ANIMATABLE + no binding issues → check mixer target (LAW 1)
+   ```
+
+3. **The manifest is written to `docs/GLB_MANIFEST.json`** — commit it after each scan so all agents share the same asset state picture.
+
+4. **GLBs not found locally** (FILE_NOT_FOUND) mean the asset hasn't been synced from the Bannon repo:
+   ```bash
+   git submodule update --init --recursive
+   # or copy GLBs to public/models/
+   ```
+
+### Animation Binding Diagnostic — "Statue" Root Cause
+
+The `animationBindingDiagnostic` field in the manifest directly identifies the **statue / bind-pose lock** root cause:
+
+- `NO_CHANNELS_RESOLVED` = every animation channel targets a bone name that doesn't exist in the skeleton.
+  This is the most common cause of the statue problem. The mixer runs, the action plays, but no bone moves.
+  **Fix**: ensure the animation was exported from the same skeleton as the mesh, OR implement name-based retargeting in `CharacterPipeline.ts`.
+
+- `PARTIAL_BINDING` = some channels resolve, some don't. Partial animation (e.g., only the spine moves, arms stay frozen).
+  **Fix**: check `unresolvedTargets` list — those bone names are missing from the skeleton. Either the animation uses a different naming convention or the skeleton was modified after the animation was baked.
+
+- `ALL_CHANNELS_RESOLVED` = all animation channels target valid bones. If the character is still a statue, the issue is in the runtime (mixer not ticking, mixer targeting wrong object, etc.) — see LAW 1 and LAW 6.
+
+---
+
 ## Authored Skeleton Law
 
 **The mistake**: AI agents repeatedly make the same mistakes when working with skeletons and bone-less models.
