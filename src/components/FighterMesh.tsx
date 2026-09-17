@@ -137,7 +137,7 @@ const ANIMATION_ALIASES: Record<string, string[]> = {
   rageArt:           ['rageArt', 'RageArt', 'rage_art', 'Rage_Art', 'finisher', 'Finisher', 'heavyAttack', 'HeavyAttack'],
   powerCrush:        ['powerCrush', 'PowerCrush', 'power_crush', 'armorMove', 'ArmorMove', 'heavyAttack', 'HeavyAttack'],
   // ── Command Throw ───────────────────────────────────────────────────────────
-  CommandThrow:      ['heavyAttack', 'HeavyAttack', 'heavy', 'Heavy', 'grab', 'Grab', 'throw', 'Throw', 'grapple', 'Grapple', 'suplex', 'Suplex', 'slam', 'Slam', 'SBW_throw', 'T_1_3', 'T_2_4', 'bf_grab', 'bf_beastMode'],
+  CommandThrow:      ['heavyAttack', 'HeavyAttack', 'heavy', 'Heavy', 'grab', 'Grab', 'throw', 'Throw', 'grapple', 'Grapple', 'suplex', 'Suplex', 'slam', 'Slam', 'SBW_throw', 'T_1_3', 'T_2_4', 'bf_grab', 'bf_beastMode', 'bf_powerbomb', 'bf_suplex', 'bf_exploder', 'bf_maime_driver', 'SUPLEX', 'GERMANSUPLEX', 'DDT', 'CHOKESLAM'],
   ThrowWhiff:        ['idle', 'Idle', 'neutral', 'Neutral'],
   // ── Hit Reactions ───────────────────────────────────────────────────────────
   hit:               ['hit', 'Hit', 'hurt', 'Hurt', 'flinch', 'Flinch', 'hitstun', 'Hitstun', 'damage', 'Damage', 'react', 'React', 'stagger', 'Stagger', 'recoil', 'Recoil', 'SBW_hit', 'T_hit', 'bf_hit_reaction', 'gettingHit', 'hitImpact'],
@@ -165,10 +165,10 @@ const ANIMATION_ALIASES: Record<string, string[]> = {
   run:               ['run', 'Run', 'running', 'Running', 'sprint', 'Sprint', 'dash', 'Dash', 'walkForward', 'WalkForward', 'walk', 'Walk', 'DRUNK_RUN_FORWARD'],
   dash:              ['dash', 'Dash', 'dashForward', 'DashForward', 'run', 'Run', 'walkForward', 'WalkForward', 'dash_forward'],
   dashForward:       ['dashForward', 'DashForward', 'dash', 'Dash', 'run', 'Run', 'walkForward', 'WalkForward', 'dash_forward'],
-  jump:              ['jump', 'Jump', 'CROSS_JUMPS', 'jumpForward', 'jumpBack'],
-  jumpForward:       ['jumpForward', 'JumpForward', 'jump', 'Jump', 'CROSS_JUMPS'],
-  jumpBack:          ['jumpBack', 'JumpBack', 'jump', 'Jump', 'CROSS_JUMPS'],
-  Jumping:           ['jump', 'Jump', 'CROSS_JUMPS'],
+  jump:              ['jump', 'Jump', 'CROSS_JUMPS', 'BIG_JUMP', 'jumpForward', 'jumpBack'],
+  jumpForward:       ['jumpForward', 'JumpForward', 'jump', 'Jump', 'CROSS_JUMPS', 'BIG_JUMP'],
+  jumpBack:          ['jumpBack', 'JumpBack', 'jump', 'Jump', 'CROSS_JUMPS', 'BIG_JUMP'],
+  Jumping:           ['jump', 'Jump', 'CROSS_JUMPS', 'BIG_JUMP'],
 };
 
 // ─────────────────────────────────────────────────────────────────────────────

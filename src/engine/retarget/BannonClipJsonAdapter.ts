@@ -994,25 +994,36 @@ export async function loadBannonClipsFromPublic(): Promise<Map<string, THREE.Ani
     stats.source = localIndexRes.ok ? "/motion/index.json" : BANNON_MOTION_BANK_INDEX;
 
     const preferred = pickPreferredMotionBankFiles(index);
-    const capped: typeof preferred = [];
-    const perState = new Map<string, number>();
+    const toLoad: typeof preferred = [];
+    const seen = new Set<string>();
     for (const item of preferred) {
-      const n = perState.get(item.semanticState) ?? 0;
-    const extraBudget = ['attack_1', 'attack_2', 'attack_rp', 'attack_lk', 'attack_rk', 'hit_reaction', 'grapple', 'taunt'].includes(item.semanticState) ? 3 : 1;
-      if (n >= extraBudget) continue;
-      capped.push(item);
-      perState.set(item.semanticState, n + 1);
+      if (seen.has(item.key)) continue;
+      seen.add(item.key);
+      toLoad.push(item);
     }
-    stats.attempted = capped.length;
+    for (const [key, entry] of Object.entries(index)) {
+      if (seen.has(key) || !entry?.file) continue;
+      const bones = Number(entry.bones ?? 0);
+      const bytes = Number((entry as { bytes?: number }).bytes ?? 0);
+      if (bones > 80 || bytes > 160_000) continue;
+      seen.add(key);
+      toLoad.push({ key, file: entry.file, semanticState: inferSemanticFromMotionKey(key) });
+    }
+    stats.attempted = toLoad.length;
     const clips = new Map<string, THREE.AnimationClip>();
     const variants = new Map<string, THREE.AnimationClip>();
 
     const loaded = await Promise.allSettled(
-      capped.map(async ({ key, file, semanticState }) => {
+      toLoad.map(async ({ key, file, semanticState }) => {
         const localUrl = `/motion/${encodeURIComponent(file)}`;
         let res = await fetch(localUrl);
         const url = res.ok ? localUrl : `${BANNON_MOTION_BANK_BASE}${encodeURIComponent(file)}`;
-        if (!res.ok) res = await fetch(url);
+        if (!res.ok) {
+          // Extras: skip GitHub hammer for files not on disk. Preferred may fall back.
+          const isPreferred = preferred.some((p) => p.key === key);
+          if (!isPreferred) throw new Error(`${key} LOCAL_MISS`);
+          res = await fetch(url);
+        }
         if (!res.ok) throw new Error(`${key} HTTP ${res.status}`);
         const json = await res.json();
         const adapted = convertAnyBannonClipJson(json, key, semanticState);
@@ -1031,8 +1042,11 @@ export async function loadBannonClipsFromPublic(): Promise<Map<string, THREE.Ani
 
     for (const settled of loaded) {
       if (settled.status === 'rejected') {
-        stats.failed.push(String(settled.reason));
-        console.warn(`[BannonClipJsonAdapter] ⚠️ Motion-bank clip failed:`, settled.reason);
+        const reason = String(settled.reason);
+        stats.failed.push(reason);
+        if (!reason.includes('LOCAL_MISS')) {
+          console.warn(`[BannonClipJsonAdapter] ⚠️ Motion-bank clip failed:`, settled.reason);
+        }
         continue;
       }
       const { key, semanticState, adapted } = settled.value;

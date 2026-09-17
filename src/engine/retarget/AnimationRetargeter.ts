@@ -751,7 +751,9 @@ export function bindClipTracksToTargetBones(
         unresolvedTracks++;
         continue;
       }
-      const newTrackName = `${targetBoneName}.${property}`;
+      // PropertyBinding.parseTrackName splits on `:`. Never write colon names.
+      const mixerSafeBone = targetBoneName.replace(/:/g, '');
+      const newTrackName = `${mixerSafeBone}.${property}`;
       const TrackCtor = track.constructor as unknown as new (
         name: string,
         times: ArrayLike<number>,

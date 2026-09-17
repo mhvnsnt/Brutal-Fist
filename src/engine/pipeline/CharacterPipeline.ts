@@ -77,6 +77,7 @@ import {
   validateRegistryCompleteness,
 } from '../retarget/AnimationSourceRegistry';
 import { SEMANTIC_STATE_ALIASES, COMBAT_STATE_TO_SEMANTIC } from '../retarget/SemanticStateAliases';
+import { preferredBankKeysForFighter, rosterIdFromModel, moveIdsForSemantic } from '../retarget/FighterMotionBank';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constants
@@ -137,6 +138,35 @@ function inspectRig(root: THREE.Object3D): {
     }
   });
   return { boneNames, skinnedMeshCount, skinJointCount };
+}
+
+/**
+ * Three.js PropertyBinding.parseTrackName treats `:` as a parent/node separator.
+ * Mixamo GLBs ship `mixamorig:RightArm`; the Bannon Euler bank uses
+ * `mixamorigRightArm`. Retarget rewrites tracks onto the LIVE bone name — so
+ * colon names make the mixer "play" with zero resolved bindings and the mesh
+ * barely deforms. Strip colons on the clone (skin indices are by bone object,
+ * not name). Orientation / Y / scale are untouched.
+ */
+export function sanitizeMixamoColonNames(root: THREE.Object3D): number {
+  let renamed = 0;
+  root.traverse((obj) => {
+    if (obj.name && obj.name.includes(':')) {
+      obj.name = obj.name.replace(/:/g, '');
+      renamed++;
+    }
+  });
+  root.traverse((obj) => {
+    const skinned = obj as THREE.SkinnedMesh;
+    if (!skinned.isSkinnedMesh || !skinned.skeleton) return;
+    for (const bone of skinned.skeleton.bones) {
+      if (bone.name && bone.name.includes(':')) {
+        bone.name = bone.name.replace(/:/g, '');
+        renamed++;
+      }
+    }
+  });
+  return renamed;
 }
 
 /** Bind-pose box from mesh geometry only — never helpers, bones, or lines. */
@@ -673,6 +703,9 @@ export async function extractAndRetargetAnimations(
   let retargetApplied = false;
   let retargetVerdict: AnimationExtractionResult['retargetVerdict'] = 'SKIPPED';
 
+  sanitizeMixamoColonNames(targetScene);
+  const rosterId = rosterIdFromModel(modelName || characterId);
+  const fighterPrefs = preferredBankKeysForFighter(rosterId);
   const rig = inspectRig(targetScene);
   const mixamoOk = isMixamoCompatibleRig(rig);
   const registry = new AnimationSourceRegistry();
@@ -681,6 +714,9 @@ export async function extractAndRetargetAnimations(
   const ingest = (clip: THREE.AnimationClip, semantic?: string): THREE.AnimationClip | null => {
     const bound = bindClipTracksToTargetBones(clip, rig.boneNames);
     if (bound.resolvedTracks === 0) return null;
+    for (const track of bound.clip.tracks) {
+      if (track.name.includes(':')) track.name = track.name.replace(/:/g, '');
+    }
     sanitizeMotionClip(bound.clip);
     const relative = makeClipBindRelative(bound.clip, restMap);
     if (!relative) return null;
@@ -743,6 +779,14 @@ export async function extractAndRetargetAnimations(
       if (already) continue;
       const sem = String((clip as THREE.AnimationClip & { userData?: { semanticState?: string } }).userData?.semanticState ?? '');
       ingestNamed(sem || key, clip, false);
+    }
+    for (const [semanticState, keys] of fighterPrefs) {
+      for (const key of keys) {
+        const clip = variants.get(key);
+        if (!clip) continue;
+        ingestNamed(semanticState, clip.clone(), true);
+        break;
+      }
     }
     if (bankBound > 0) {
       retargetApplied = true;
@@ -879,6 +923,12 @@ export async function runCharacterPipeline(
   // SkinnedMesh to the correct skeleton instance in the cloned scene.
   const cloned = SkeletonUtils.clone(scene) as THREE.Group;
   restoreAuthoredTextures(cloned, modelUrl);
+  const colonStripped = sanitizeMixamoColonNames(cloned);
+  if (colonStripped > 0) {
+    console.log(
+      `[CharacterPipeline] mixer-safe Mixamo names: stripped ${colonStripped} colon(s) from "${modelName}"`,
+    );
+  }
 
   // ── STEP 3: Zero the cloned scene's rotation BEFORE any measurement ───────
   // AGENT LAW: The cloned scene's internal rotation must be [0,0,0] so that:
@@ -1000,7 +1050,7 @@ export async function runCharacterPipeline(
   // ── STEP 13a: Extract and retarget animation clips ────────────────────────
   let extractionResult: Awaited<ReturnType<typeof extractAndRetargetAnimations>>;
   try {
-    const characterId = modelName.replace(/[_.].*$/, '').toUpperCase();
+    const characterId = rosterIdFromModel(modelName);
     extractionResult = await extractAndRetargetAnimations(
       scene,
       cloned,
@@ -1038,6 +1088,7 @@ export async function runCharacterPipeline(
   // for an object with a matching name. Retargeted clips already use target
   // skeleton bone names, so resolution is correct.
   const actions: Record<string, THREE.AnimationAction> = {};
+  const rosterId = rosterIdFromModel(modelName);
   for (const clip of extractionResult.clips) {
     const action = mixer.clipAction(clip, cloned);
     actions[clip.name] = action;
@@ -1050,8 +1101,20 @@ export async function runCharacterPipeline(
       for (const [combat, mapped] of Object.entries(COMBAT_STATE_TO_SEMANTIC)) {
         if (mapped === sem && !actions[combat]) actions[combat] = action;
       }
+      for (const moveId of moveIdsForSemantic(rosterId, sem)) {
+        if (!actions[moveId]) actions[moveId] = action;
+      }
     }
   }
+
+  const probeClip = extractionResult.clips[0];
+  const probeTrack = probeClip?.tracks[0]?.name ?? '';
+  const probeBone = probeTrack.includes('.') ? probeTrack.slice(0, probeTrack.lastIndexOf('.')) : probeTrack;
+  const probeNode = probeBone ? cloned.getObjectByName(probeBone) : null;
+  console.log(
+    `[CharacterPipeline] mixer bind probe "${modelName}" track="${probeTrack}" ` +
+    `bone="${probeBone}" → ${probeNode ? probeNode.type : 'NOT FOUND'} roster=${rosterId}`,
+  );
 
   // Log instrumentation: resolved/unresolved track counts per clip
   console.log(

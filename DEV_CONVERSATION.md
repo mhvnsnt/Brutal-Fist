@@ -1,5 +1,9 @@
 # Brutal Fist — dev conversation
 
+## 2026-09-16 night — Mixamo colon mixer bind + per-fighter Bannon bank
+
+GLBs have 0 embedded clips. Motion is `/public/motion` Mixamo Euler JSON. BANNON_rigged / CIPHER bones are `mixamorig:RightArm`; Three.js PropertyBinding.parseTrackName treats `:` as a path separator so the mixer "plays" with unresolved bindings and meshes barely deform. Sanitizer strips colons on the clone (skin indices are by bone object). Bank stays bind-relative. Per-fighter `defaultMoveSet` (bf_jab / bf_elbow / bf_powerbomb / bf_maime_driver / …) now owns semantic slots from the Bannon clip library. Pulled BIG_JUMP + BOXING__5_ + taunt/loco extras from mhvnsnt/Bannon. Orientation/Y/scale still locked.
+
 ## 2026-09-16 — Don't touch unrequested axes; raise fighters not FX; un-statue
 
 Rule: if the task is facing, do not change Y/FX/select. Extra FOOT_PLANT_SINK stacked fighters into the floor. Combat fighter Y is locked at 0.22; hit FX stay at 1.2. Integrity test was stopping the mixer (statues) — skipped. Combat yaw remains P1 0 / P2 π. Continue on https://github.com/mhvnsnt/brutalfistgrokversioneight

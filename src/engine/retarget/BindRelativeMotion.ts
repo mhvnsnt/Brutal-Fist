@@ -84,7 +84,7 @@ function clipFromDeltas(
       values.push(...qMul(rest.q, delta[0], delta[1], delta[2]));
     }
     if (!used) continue;
-    tracks.push(new THREE.QuaternionKeyframeTrack(`${rest.name}.quaternion`, times, values));
+    tracks.push(new THREE.QuaternionKeyframeTrack(`${rest.name.replace(/:/g, '')}.quaternion`, times, values));
   }
   const clip = new THREE.AnimationClip(name, duration, tracks);
   (clip as THREE.AnimationClip & { userData: Record<string, unknown> }).userData = {
@@ -237,7 +237,10 @@ export function collectRestMap(root: THREE.Object3D): Map<string, THREE.Quaterni
   const map = new Map<string, THREE.Quaternion>();
   root.traverse((obj) => {
     if (!(obj as THREE.Bone).isBone || !obj.name || map.has(obj.name)) return;
-    map.set(obj.name, obj.quaternion.clone());
+    const q = obj.quaternion.clone();
+    map.set(obj.name, q);
+    const stripped = obj.name.replace(/:/g, '');
+    if (stripped !== obj.name && !map.has(stripped)) map.set(stripped, q);
   });
   return map;
 }
@@ -256,7 +259,15 @@ export function makeClipBindRelative(
   for (const track of clip.tracks) {
     if (!track.name.endsWith('.quaternion')) continue;
     const bone = track.name.slice(0, track.name.length - '.quaternion'.length);
-    const bind = restMap.get(bone);
+    const bind = restMap.get(bone)
+      ?? restMap.get(bone.replace(/:/g, ''))
+      ?? (() => {
+        const stripped = bone.replace(/:/g, '');
+        for (const [name, q] of restMap) {
+          if (name.replace(/:/g, '') === stripped) return q;
+        }
+        return undefined;
+      })();
     if (!bind) continue;
     const values = track.values;
     if (values.length < 4) continue;
