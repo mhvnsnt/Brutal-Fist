@@ -13,6 +13,8 @@
  *   ✅ no MISSING_CLIP verdicts for required semantic states
  *   ✅ AnimationSourceRegistry completeness: PASS or PARTIAL (not BLOCKED)
  *
+ * AUTHORITATIVE: uses runPreCombatRosterGate (real clip load + GLB measure).
+ * AnimationTestArena is diagnostic only — never a PASS substitute.
  * If any fighter fails, combat is BLOCKED with explicit remediation steps.
  * ─────────────────────────────────────────────────────────────────────────────
  */
@@ -22,6 +24,10 @@ import { type BannonFighterProfile } from '../data/bannonRoster';
 import { BANNON_GLB_PLAYABLE_MODELS } from '../data/bannonGlbRoster';
 import { resolveFighterGlbFilename } from '../data/FighterAssetResolver';
 import { REQUIRED_SEMANTIC_STATES } from '../engine/retarget/AnimationSourceRegistry';
+import {
+  runPreCombatRosterGate,
+  type FighterGateResult,
+} from '../engine/combat/PreCombatRosterGate';
 
 // ── Checklist item types ──────────────────────────────────────────────────────
 
@@ -323,21 +329,66 @@ export default function PreCombatValidationScreen({
   const [p2Result, setP2Result] = useState<FighterValidationResult | null>(null);
   const [validating, setValidating] = useState(true);
   const [overrideEnabled, setOverrideEnabled] = useState(false);
+  const [fightAuthorized, setFightAuthorized] = useState(false);
 
   const runValidation = useCallback(() => {
     setValidating(true);
     setOverrideEnabled(false);
+    setFightAuthorized(false);
 
-    // Run validation synchronously (roster-level checks)
-    const r1 = validateFighterRoster(p1Fighter);
-    const r2 = validateFighterRoster(p2Fighter);
-
-    setP1Result(r1);
-    setP2Result(r2);
-    setValidating(false);
-
-    console.log('[PreCombatValidation] P1 result:', r1.overallStatus, r1.fighterId);
-    console.log('[PreCombatValidation] P2 result:', r2.overallStatus, r2.fighterId);
+    // AUTHORITATIVE async gate — real clip load + GLB measure (not AnimationTestArena proxy)
+    void (async () => {
+      try {
+        const report = await runPreCombatRosterGate(p1Fighter, p2Fighter);
+        const toResult = (g: FighterGateResult): FighterValidationResult => ({
+          fighterId: g.fighterId,
+          fighterName: g.fighterName,
+          glbFile: g.glbFile,
+          overallStatus: g.overallStatus,
+          checks: g.checks.map((c) => ({
+            id: c.id,
+            label: c.label,
+            description: c.label,
+            status: c.status,
+            value: c.value,
+            remediation: c.remediation,
+          })),
+          remediationSteps: g.remediationSteps,
+        });
+        setP1Result(toResult(report.p1));
+        setP2Result(toResult(report.p2));
+        setFightAuthorized(report.fightAuthorized);
+        console.log(
+          '[PreCombatValidation] AUTHORITATIVE gate:',
+          'fightAuthorized=', report.fightAuthorized,
+          'converted=', report.clipsConverted,
+          'missing=', report.unresolvedPreferredStates,
+          'travel=', report.totalAngularTravel,
+        );
+      } catch (e: any) {
+        console.error('[PreCombatValidation] Gate failed:', e);
+        // Fail closed — synthetic BLOCKED results
+        const blocked = (f: typeof p1Fighter): FighterValidationResult => ({
+          fighterId: f.id,
+          fighterName: f.name,
+          glbFile: 'UNKNOWN',
+          overallStatus: 'BLOCKED',
+          checks: [{
+            id: 'gate_error',
+            label: 'PreCombatRosterGate',
+            description: 'Authoritative gate threw',
+            status: 'FAIL',
+            value: e?.message ?? String(e),
+            remediation: 'See console — gate must not throw; fix loader/GLB path',
+          }],
+          remediationSteps: [e?.message ?? String(e)],
+        });
+        setP1Result(blocked(p1Fighter));
+        setP2Result(blocked(p2Fighter));
+      } finally {
+        setValidating(false);
+      }
+    })();
   }, [p1Fighter, p2Fighter]);
 
   useEffect(() => {
@@ -348,11 +399,14 @@ export default function PreCombatValidationScreen({
   const anyBlocked  = p1Result?.overallStatus === 'BLOCKED' || p2Result?.overallStatus === 'BLOCKED';
   const bothPass    = p1Result?.overallStatus === 'PASS'    && p2Result?.overallStatus === 'PASS';
   // FIGHT requires BOTH fighters to be PASS. WARN is NOT PASS.
-  // Override checkbox only available when BOTH fighters are WARN (not BLOCKED).
+  // Authoritative source: PreCombatRosterGate.fightAuthorized (both PASS).
+  // TEST_ONLY override: available only when neither fighter is BLOCKED and at least one is WARN.
+  // Override never upgrades WARN→PASS; button label remains TEST MODE.
   const anyWarn     = p1Result?.overallStatus === 'WARN'    || p2Result?.overallStatus === 'WARN';
-  const bothWarnOrPass = !anyBlocked;
-  // Combat is authorized ONLY when both are PASS, or override is enabled for WARN-only scenarios
-  const canProceed  = bothPass || (bothWarnOrPass && overrideEnabled);
+  const neitherBlocked = !anyBlocked;
+  const canProceedAuth = fightAuthorized || bothPass;
+  const canProceedTestOnly = neitherBlocked && anyWarn && overrideEnabled;
+  const canProceed  = canProceedAuth || canProceedTestOnly;
 
   return (
     <div className="fixed inset-0 bg-[#080b10] text-white font-mono overflow-y-auto">
@@ -429,39 +483,43 @@ export default function PreCombatValidationScreen({
                   <div className="flex gap-2">
                     <span className="text-red-500 flex-shrink-0">1.</span>
                     <span>
-                      <strong className="text-white">Generate rigged GLBs:</strong>{' '}
-                      <code className="text-yellow-300 bg-zinc-900 px-1">node scripts/rig-static-glbs-cli.mjs</code>
-                      {' '}— outputs BANNON_rigged_ready.glb and MAIME_rigged_ready.glb
+                      <strong className="text-white">Init authored GLBs:</strong>{' '}
+                      Populate <code className="text-yellow-300 bg-zinc-900 px-1">BannonSource</code> submodule
+                      or mirror authored <code className="text-yellow-300 bg-zinc-900 px-1">BANNON_rigged.glb</code> /
+                      fighter <code className="text-yellow-300 bg-zinc-900 px-1">*_rigged.glb</code> under{' '}
+                      <code className="text-yellow-300 bg-zinc-900 px-1">public/models/</code>.
+                      Do NOT generate synthetic runtime skeletons.
                     </span>
                   </div>
                   <div className="flex gap-2">
                     <span className="text-red-500 flex-shrink-0">2.</span>
                     <span>
-                      <strong className="text-white">Update roster:</strong>{' '}
-                      Edit <code className="text-yellow-300 bg-zinc-900 px-1">src/data/bannonGlbRoster.ts</code>{' '}
-                      to reference <code className="text-yellow-300 bg-zinc-900 px-1">*_rigged_ready.glb</code> files
+                      <strong className="text-white">Preferred Euler motion bank:</strong>{' '}
+                      Ensure <code className="text-yellow-300 bg-zinc-900 px-1">public/assets/moves/clips/</code>{' '}
+                      has preferred JSON (IDLE, GINGA_*, BODY_JAB_CROSS, …) or CDN access to Bannon clips.
                     </span>
                   </div>
                   <div className="flex gap-2">
                     <span className="text-red-500 flex-shrink-0">3.</span>
                     <span>
-                      <strong className="text-white">Load animation clips:</strong>{' '}
-                      Add authored clips to <code className="text-yellow-300 bg-zinc-900 px-1">assets/moves/clips/</code>{' '}
-                      and verify in AnimationTestArena
+                      <strong className="text-white">Authoritative gate:</strong>{' '}
+                      PreCombatRosterGate must measure bones&gt;0, SkinnedMesh&gt;0, preferred clips converted,
+                      tracks bound, and bone travel — AnimationTestArena is diagnostic only.
                     </span>
                   </div>
                   <div className="flex gap-2">
                     <span className="text-red-500 flex-shrink-0">4.</span>
                     <span>
-                      <strong className="text-white">Verify in AnimationTestArena:</strong>{' '}
-                      All semantic states must show AUTHORED or RETARGETED badge (not MISSING)
+                      <strong className="text-white">Offline verify:</strong>{' '}
+                      <code className="text-yellow-300 bg-zinc-900 px-1">npm run bannon:verify-motion</code>{' '}
+                      and <code className="text-yellow-300 bg-zinc-900 px-1">npm run bannon:measure-bind</code>
                     </span>
                   </div>
                   <div className="flex gap-2">
                     <span className="text-red-500 flex-shrink-0">5.</span>
                     <span>
                       <strong className="text-white">Re-run validation:</strong>{' '}
-                      Click the REVALIDATE button below after completing the above steps
+                      Click REVALIDATE after assets are mirrored. FIGHT stays blocked until both fighters PASS.
                     </span>
                   </div>
                 </div>
@@ -508,7 +566,7 @@ export default function PreCombatValidationScreen({
               <button
                 onClick={() => {
                   if (canProceed) {
-                    console.log('[PreCombatValidation] Combat approved. P1:', p1Result?.overallStatus, 'P2:', p2Result?.overallStatus);
+                    console.log('[PreCombatValidation] Combat approved.', canProceedAuth ? 'AUTH_PASS' : 'TEST_ONLY_OVERRIDE', 'P1:', p1Result?.overallStatus, 'P2:', p2Result?.overallStatus);
                     onCombatApproved();
                   }
                 }}

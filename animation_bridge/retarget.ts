@@ -36,6 +36,8 @@ import {
   SEMANTIC_STATE_ALIASES,
   COMBAT_STATE_TO_SEMANTIC,
 } from '../src/engine/retarget/SemanticStateAliases';
+import { loadBannonClipsFromPublic } from '../src/engine/retarget/BannonClipJsonAdapter';
+import { bindClipTracksToTargetBones } from '../src/engine/retarget/BannonEulerMotionAdapter';
 
 export { SEMANTIC_STATE_ALIASES, COMBAT_STATE_TO_SEMANTIC };
 
@@ -185,10 +187,10 @@ export class AnimationBridge {
 
   /**
    * Resolve a FighterStateMachine combat state to a semantic animation state.
-   * Returns 'idle' as fallback if no mapping exists.
+   * Returns null when the combat state has no mapping — never invents idle.
    */
-  static resolveSemanticState(combatState: string): string {
-    return COMBAT_STATE_TO_SEMANTIC[combatState] ?? 'idle';
+  static resolveSemanticState(combatState: string): string | null {
+    return COMBAT_STATE_TO_SEMANTIC[combatState] ?? null;
   }
 
   /**
@@ -200,8 +202,11 @@ export class AnimationBridge {
    * Combat verbs MUST NOT silently fall back to idle — that would mask a
    * real MISSING_CLIP condition and produce incorrect animation evidence.
    *
-   * Only locomotion states (walk_back, strafe_left, strafe_right, backdash,
-   * crouch) may fall back to related locomotion clips.
+   * PLACEHOLDER_TEST_CLIP / isProcedural clips are TEST_ONLY: for non-idle
+   * semantic states they are treated as MISSING_CLIP (never authored PASS).
+   *
+   * Only locomotion states may fall back to related locomotion clips
+   * (never idle-substitute combat verbs).
    */
   static getClipForCombatState(
     combatState: string,
@@ -218,7 +223,17 @@ export class AnimationBridge {
 
     // Direct semantic state lookup
     const direct = clipsByState.get(semanticState);
-    if (direct) return direct;
+    if (direct) {
+      const ud = (direct as any).userData ?? {};
+      const isProcedural = ud.isProcedural === true || ud.clipSourceType === 'PLACEHOLDER_TEST_CLIP';
+      if (isProcedural && semanticState !== 'idle') {
+        console.warn(
+          `[AnimationBridge] ⚠️ PLACEHOLDER_TEST_CLIP for "${semanticState}" is TEST_ONLY — treating as MISSING_CLIP`,
+        );
+        return null;
+      }
+      return direct;
+    }
 
     // COMBAT VERB GUARD: attack, block, hit, knockdown, getup, grapple
     // must NOT fall back to idle — return null (MISSING_CLIP)
@@ -234,36 +249,88 @@ export class AnimationBridge {
       return null;
     }
 
-    // Locomotion fallback chain (walk variants may fall back to related locomotion)
-    const fallbacks: Record<string, string[]> = {
+    // Locomotion-only related fallbacks. Never idle-substitute combat verbs.
+    // defeat → knockdown is semantic kinship, not idle invent.
+    const locomotionFallbacks: Record<string, string[]> = {
       walk_back:    ['walk_forward'],
       strafe_left:  ['walk_forward'],
       strafe_right: ['walk_forward'],
       backdash:     ['walk_back', 'walk_forward'],
-      crouch:       ['idle'],
-      victory:      ['idle'],
-      taunt:        ['idle'],
+      run:          ['walk_forward'],
       defeat:       ['knockdown'],
     };
 
-    const chain = fallbacks[semanticState];
-    if (chain) {
-      for (const fb of chain) {
-        const fbClip = clipsByState.get(fb);
-        if (fbClip) {
-          console.log(
-            `[AnimationBridge] ℹ️ Locomotion fallback: "${semanticState}" → "${fb}"`
-          );
-          return fbClip;
-        }
-      }
+    const chain = locomotionFallbacks[semanticState] ?? [];
+    for (const fb of chain) {
+      const fbClip = clipsByState.get(fb);
+      if (!fbClip) continue;
+      const ud = (fbClip as any).userData ?? {};
+      if (ud.isProcedural === true || ud.clipSourceType === 'PLACEHOLDER_TEST_CLIP') continue;
+      console.log(
+        `[AnimationBridge] ℹ️ Locomotion fallback: "${semanticState}" → "${fb}"`
+      );
+      return fbClip;
     }
 
     // No fallback found — MISSING_CLIP
     console.warn(
       `[AnimationBridge] ⚠️ MISSING_CLIP: combatState="${combatState}" → semantic="${semanticState}" — ` +
-      `no clip and no fallback found.`
+      `no authored clip and no locomotion fallback.`
     );
     return null;
+  }
+
+  /**
+   * Load preferred Bannon Euler motion-bank clips through the same public path
+   * CharacterPipeline uses (no duplicate architecture).
+   * Optionally bind tracks onto a live target skeleton.
+   */
+  static async loadPreferredBannonMotionBank(
+    targetScene?: THREE.Object3D,
+  ): Promise<{
+    clipsByState: Map<string, THREE.AnimationClip>;
+    missingStates: string[];
+    boundTrackCount: number;
+    unboundTrackCount: number;
+  }> {
+    const clipsByState = await loadBannonClipsFromPublic();
+    const missingStates: string[] = [];
+    let boundTrackCount = 0;
+    let unboundTrackCount = 0;
+
+    for (const [state, clip] of [...clipsByState.entries()]) {
+      if (targetScene) {
+        const bind = bindClipTracksToTargetBones(clip, targetScene);
+        clipsByState.set(state, bind.clip);
+        boundTrackCount += bind.boundTracks;
+        unboundTrackCount += bind.unboundTracks;
+      }
+    }
+
+    // Report preferred semantic gaps without substituting idle
+    for (const [semanticState, aliases] of Object.entries(SEMANTIC_STATE_ALIASES)) {
+      if (!clipsByState.has(semanticState)) {
+        // Only flag core locomotion/combat aliases present in preferred set
+        if (
+          [
+            'idle', 'walk_forward', 'walk_back', 'strafe_left', 'strafe_right',
+            'attack_1', 'attack_2', 'block', 'hit_reaction', 'knockdown', 'getup',
+          ].includes(semanticState)
+        ) {
+          missingStates.push(semanticState);
+          console.warn(
+            `[AnimationBridge] ⚠️ MISSING_CLIP: preferred motion bank has no clip for "${semanticState}" ` +
+            `(aliases tried conceptually: ${aliases.slice(0, 3).join(', ')})`
+          );
+        }
+      }
+    }
+
+    console.log(
+      `[AnimationBridge] Preferred Bannon motion bank loaded: ${clipsByState.size} clips, ` +
+      `bound=${boundTrackCount} unbound=${unboundTrackCount} missing=[${missingStates.join(', ') || 'none'}]`
+    );
+
+    return { clipsByState, missingStates, boundTrackCount, unboundTrackCount };
   }
 }

@@ -203,8 +203,13 @@ function DebugScene({ modelUrl, clipJson, semanticState, onFrame, side }: SceneP
 
     const loader = new THREE.ObjectLoader();
     // Use GLTFLoader via pipeline
-    import('three/examples/jsm/loaders/GLTFLoader.js').then(({ GLTFLoader }) => {
+    import('three/examples/jsm/loaders/GLTFLoader.js').then(async ({ GLTFLoader }) => {
+      const { MeshoptDecoder } = await import('three/examples/jsm/libs/meshopt_decoder.module.js');
       const gltfLoader = new GLTFLoader();
+      if ((MeshoptDecoder as { ready?: Promise<unknown> }).ready) {
+        await (MeshoptDecoder as { ready: Promise<unknown> }).ready;
+      }
+      gltfLoader.setMeshoptDecoder(MeshoptDecoder);
       gltfLoader.load(
         modelUrl,
         gltf => {

@@ -25,7 +25,9 @@ export const SEMANTIC_STATE_ALIASES: Record<string, string[]> = {
   hit_reaction:   ['hit', 'Hit', 'hurt', 'Hurt', 'flinch', 'Flinch', 'hitstun', 'Hitstun', 'SBW_hit', 'T_hit', 'hit_reaction_procedural_placeholder'],
   knockdown:      ['knockdown', 'Knockdown', 'ko', 'KO', 'fall', 'Fall', 'SBW_knockdown', 'T_knockdown', 'knockdown_procedural_placeholder'],
   getup:          ['getUp', 'GetUp', 'quickStand', 'QuickStand', 'gettingUp', 'GettingUp', 'T_quickstand', 'getup_procedural_placeholder'],
-  grapple:        ['grab', 'Grab', 'throw', 'Throw', 'grapple', 'Grapple', 'SBW_throw', 'T_1_3'],
+  // Prefer Mixamo-compatible attacker clinch only. Do NOT alias DOUBLE_LEG_TAKEDOWN___VICTIM
+  // (victim role) or MoMask STANCE_CROUCH as authored grapple — those stay MISSING_CLIP in preferred bank.
+  grapple:        ['grab', 'Grab', 'throw', 'Throw', 'grapple', 'Grapple', 'clinch', 'Clinch', 'suplex', 'Suplex', 'chokeslam', 'Chokeslam', 'SBW_throw', 'T_1_3', 'bf_clinch', 'bf_grab'],
   crouch:         ['crouch', 'Crouch', 'duck', 'Duck', 'SBW_crouch', 'T_crouch'],
   run:            ['run', 'Run', 'running', 'Running', 'sprint', 'Sprint'],
   dash_forward:   ['dashForward', 'DashForward', 'dash', 'Dash', 'run', 'Run'],
@@ -105,3 +107,17 @@ export const COMBAT_STATE_TO_SEMANTIC: Record<string, string> = {
   taunt:             'taunt',
   intro:             'idle',
 };
+
+/**
+ * Infer a semantic state from a clip name via SEMANTIC_STATE_ALIASES.
+ * Returns null when no alias matches — never invents idle.
+ */
+export function inferSemanticStateFromClipName(clipName: string): string | null {
+  const lower = clipName.toLowerCase();
+  for (const [semanticState, aliases] of Object.entries(SEMANTIC_STATE_ALIASES)) {
+    if (aliases.some((a) => a.toLowerCase() === lower || lower === semanticState.toLowerCase())) {
+      return semanticState;
+    }
+  }
+  return null;
+}

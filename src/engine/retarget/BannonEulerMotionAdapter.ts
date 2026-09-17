@@ -344,8 +344,9 @@ export function bindClipTracksToTargetBones(
 
   const boundClip = new THREE.AnimationClip(clip.name, clip.duration, boundTracks);
   // Preserve userData
-  (boundClip as unknown as Record<string, unknown>).userData = {
-    ...((clip as unknown as Record<string, unknown>).userData ?? {}),
+  const prevUserData = (clip as unknown as { userData?: Record<string, unknown> }).userData;
+  (boundClip as unknown as { userData: Record<string, unknown> }).userData = {
+    ...(prevUserData && typeof prevUserData === 'object' ? prevUserData : {}),
     boundTracks: boundTracks.length,
     unboundTracks: unboundTargets.length,
     totalAngularTravel: Math.round(totalAngularTravel * 100) / 100,
@@ -387,6 +388,145 @@ function measureQuatTrackTravel(track: THREE.KeyframeTrack): number {
  * Convert and bind a Bannon Euler clip onto a live target skeleton in one step.
  * Combines convertBannonEulerClip() + bindClipTracksToTargetBones().
  */
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BANNON KEYS[] EULER FORMAT (live motion bank on GitHub)
+// ─────────────────────────────────────────────────────────────────────────────
+// Real Bannon assets/moves/clips/*.json use:
+//   { dur, keys: [ { t, pose, bones: { mixamorigHips: {rx,ry,rz}, ... } } ] }
+// This is NOT the bones→frames schema. Normalize before convertBannonEulerClip().
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface BannonKeysEulerClipJson {
+  dur?: number;
+  duration?: number;
+  name?: string;
+  semanticState?: string;
+  source?: string;
+  src?: string;
+  license?: string;
+  keys: Array<{
+    t: number;
+    pose?: Record<string, number[]>;
+    bones: Record<string, { rx: number; ry: number; rz: number; px?: number; py?: number; pz?: number }>;
+  }>;
+}
+
+/**
+ * Detect live Bannon motion-bank keys[] Euler format.
+ */
+export function isBannonKeysEulerFormat(json: unknown): json is BannonKeysEulerClipJson {
+  if (!json || typeof json !== 'object') return false;
+  const obj = json as Record<string, unknown>;
+  if (!Array.isArray(obj.keys) || obj.keys.length === 0) return false;
+  const first = obj.keys[0] as Record<string, unknown> | undefined;
+  if (!first || typeof first !== 'object' || !first.bones || typeof first.bones !== 'object') return false;
+  const boneVals = Object.values(first.bones as Record<string, unknown>);
+  if (boneVals.length === 0) return false;
+  const sample = boneVals[0] as Record<string, unknown>;
+  return sample != null && typeof sample === 'object' && typeof sample.rx === 'number';
+}
+
+/**
+ * Normalize keys[] Euler bank JSON → BannonEulerClipJson (bones→frames).
+ * Does not invent motion — only reshapes the same rx/ry/rz samples.
+ */
+export function normalizeBannonKeysEulerToClipJson(
+  json: BannonKeysEulerClipJson,
+  semanticStateOverride?: string,
+  nameOverride?: string,
+): BannonEulerClipJson {
+  const bones: Record<string, BannonEulerBoneTrack> = {};
+
+  for (const key of json.keys) {
+    const t = typeof key.t === 'number' ? key.t : 0;
+    if (!key.bones || typeof key.bones !== 'object') continue;
+    for (const [boneName, rot] of Object.entries(key.bones)) {
+      if (!rot || typeof rot.rx !== 'number') continue;
+      if (!bones[boneName]) bones[boneName] = { frames: [] };
+      const frame: BannonEulerBoneFrame = {
+        t,
+        rx: rot.rx,
+        ry: rot.ry ?? 0,
+        rz: rot.rz ?? 0,
+      };
+      if (typeof rot.px === 'number') {
+        frame.px = rot.px;
+        frame.py = rot.py ?? 0;
+        frame.pz = rot.pz ?? 0;
+      }
+      bones[boneName].frames.push(frame);
+    }
+  }
+
+  const lastT = json.keys.length > 0 ? (json.keys[json.keys.length - 1].t ?? 0) : 0;
+  const duration = typeof json.dur === 'number'
+    ? json.dur
+    : (typeof json.duration === 'number' ? json.duration : Math.max(lastT, 0.001));
+
+  const semanticState = semanticStateOverride ?? json.semanticState;
+  const name = nameOverride ?? json.name ?? semanticState ?? 'bannon_clip';
+
+  return {
+    name,
+    duration,
+    hasQuaternion: false,
+    eulerOrder: 'XYZ',
+    semanticState,
+    bones,
+    source: json.source ?? json.src ?? 'bannon-motion-bank-keys-euler',
+    license: json.license ?? 'proprietary',
+  };
+}
+
+/**
+ * Accept either bones→frames Euler OR keys[] Euler; always return BannonEulerClipJson.
+ */
+export function coerceToBannonEulerClipJson(
+  json: unknown,
+  semanticStateOverride?: string,
+  nameOverride?: string,
+): BannonEulerClipJson | null {
+  if (isBannonKeysEulerFormat(json)) {
+    return normalizeBannonKeysEulerToClipJson(json, semanticStateOverride, nameOverride);
+  }
+  if (isBannonEulerFormat(json)) {
+    const clip = json as BannonEulerClipJson;
+    return {
+      ...clip,
+      name: nameOverride ?? clip.name,
+      semanticState: semanticStateOverride ?? clip.semanticState,
+    };
+  }
+  return null;
+}
+
+
+/**
+ * PR #20-compatible track↔skeleton validation (additive; does not rewrite clips).
+ * Reports which track bone names resolve onto the target Object3D hierarchy.
+ */
+export function validateEulerClipAgainstSkeleton(
+  clip: THREE.AnimationClip,
+  target: THREE.Object3D,
+): { resolved: string[]; unresolved: string[] } {
+  const names = new Set<string>();
+  target.traverse((object) => {
+    if (object.name) names.add(object.name);
+  });
+  const resolved: string[] = [];
+  const unresolved: string[] = [];
+  for (const track of clip.tracks) {
+    const bone = track.name.replace(/\.(quaternion|position|scale)$/, '');
+    if (names.has(bone)) resolved.push(bone);
+    else unresolved.push(bone);
+  }
+  return {
+    resolved: [...new Set(resolved)],
+    unresolved: [...new Set(unresolved)],
+  };
+}
+
 export function convertAndBindEulerClip(
   json: BannonEulerClipJson,
   targetScene: THREE.Object3D,

@@ -25,6 +25,7 @@ const SeasonalTournamentScreen = dynamic(() => import('./components/SeasonalTour
 const MatchmakingQueueScreen = dynamic(() => import('./components/MatchmakingQueueScreen'), { ssr: false });
 const SpectatorViewerScreen = dynamic(() => import('./components/SpectatorViewerScreen'), { ssr: false });
 const AnimationTestArena = dynamic(() => import('./components/AnimationTestArena'), { ssr: false });
+const ConceptArtGallery = dynamic(() => import('./components/ConceptArtGallery'), { ssr: false });
 const PreCombatValidationScreen = dynamic(() => import('./components/PreCombatValidationScreen'), { ssr: false });
 
 export default function App() {
@@ -171,6 +172,13 @@ export default function App() {
               <span className="ml-3 text-[10px] text-purple-400 tracking-widest">MOVESET CREATION</span>
             </button>
             <button
+              onClick={() => setScreen('art_book' as any)}
+              className="block w-full border border-slate-600 px-6 py-4 text-left text-xl font-black tracking-widest hover:bg-white hover:text-black transition-all"
+            >
+              ART BOOK
+              <span className="ml-3 text-[10px] text-pink-400 tracking-widest">CONCEPT VS PIXEL</span>
+            </button>
+            <button
               onClick={() => setScreen('story' as any)}
               className="block w-full border border-slate-600 px-6 py-4 text-left text-xl font-black tracking-widest hover:bg-white hover:text-black transition-all"
             >
@@ -213,6 +221,11 @@ export default function App() {
   // ── Animation Test Arena ──
   if ((screen as any) === 'anim_test_arena') {
     return <AnimationTestArena onBack={() => setScreen(AppScreen?.MainMenu)} />;
+  }
+
+  // ── Concept Art Gallery (ported from versioneight — no auth scaffold) ──
+  if ((screen as any) === 'art_book') {
+    return <ConceptArtGallery onBack={() => setScreen(AppScreen?.MainMenu)} />;
   }
 
   // ── Pre-Combat Validation ──

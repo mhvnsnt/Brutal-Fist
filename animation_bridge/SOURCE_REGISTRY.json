@@ -1,53 +1,152 @@
 {
-    "version": 1,
-    "description": "Bannon animation source registry. Maps semantic animation states to source files from permitted/open sources.",
-    "canonical_bone_set": [
-        "Hips",
-        "Spine",
-        "Chest",
-        "Neck",
-        "Head",
-        "LUpperArm",
-        "LForeArm",
-        "LHand",
-        "RUpperArm",
-        "RForeArm",
-        "RHand",
-        "LUpperLeg",
-        "LLowerLeg",
-        "LFoot",
-        "RUpperLeg",
-        "RLowerLeg",
-        "RFoot"
-    ],
-    "semantic_states": [
-        "idle",
-        "walk_forward",
-        "walk_back",
-        "strafe_left",
-        "strafe_right",
-        "attack_1",
-        "attack_2",
-        "block",
-        "hit_reaction",
-        "knockdown",
-        "getup",
-        "grapple",
-        "crouch",
-        "run",
-        "dash_forward",
-        "backdash",
-        "victory",
-        "defeat",
-        "taunt"
-    ],
-    "sources": [],
-    "notes": [
-        "Add permitted/open animation sources here.",
-        "Each entry must include: id, file, semantic_state, source_convention (mixamo|fbx|bvh|mocap), license, provenance.",
-        "DO NOT add proprietary Tekken animation bytes or non-redistributable Schwarzerblitz character assets.",
-        "Bannon repo mocap sources (assets/mocap/open/) take priority.",
-        "Mixamo-compatible material is permitted where license allows.",
-        "See animation_bridge/README.md for integration instructions."
-    ]
+  "version": 1,
+  "description": "Bannon animation source registry. Maps semantic animation states to source files from permitted/open sources.",
+  "canonical_bone_set": [
+    "Hips",
+    "Spine",
+    "Chest",
+    "Neck",
+    "Head",
+    "LUpperArm",
+    "LForeArm",
+    "LHand",
+    "RUpperArm",
+    "RForeArm",
+    "RHand",
+    "LUpperLeg",
+    "LLowerLeg",
+    "LFoot",
+    "RUpperLeg",
+    "RLowerLeg",
+    "RFoot"
+  ],
+  "semantic_states": [
+    "idle",
+    "walk_forward",
+    "walk_back",
+    "strafe_left",
+    "strafe_right",
+    "attack_1",
+    "attack_2",
+    "block",
+    "hit_reaction",
+    "knockdown",
+    "getup",
+    "grapple",
+    "crouch",
+    "run",
+    "dash_forward",
+    "backdash",
+    "victory",
+    "defeat",
+    "taunt"
+  ],
+  "sources": [
+    {
+      "id": "bannon_preferred_idle",
+      "file": "public/assets/moves/clips/IDLE.json",
+      "semantic_state": "idle",
+      "source_convention": "mixamo",
+      "license": "proprietary",
+      "provenance": "Bannon motion bank keys[] Euler \u2192 RETARGETED_AUTHORED_CLIP (IDLE.json)",
+      "format": "BANNON_KEYS_EULER"
+    },
+    {
+      "id": "bannon_preferred_walk_forward",
+      "file": "public/assets/moves/clips/GINGA_FORWARD.json",
+      "semantic_state": "walk_forward",
+      "source_convention": "mixamo",
+      "license": "proprietary",
+      "provenance": "Bannon motion bank keys[] Euler \u2192 RETARGETED_AUTHORED_CLIP (GINGA_FORWARD.json)",
+      "format": "BANNON_KEYS_EULER"
+    },
+    {
+      "id": "bannon_preferred_walk_back",
+      "file": "public/assets/moves/clips/GINGA_BACKWARD.json",
+      "semantic_state": "walk_back",
+      "source_convention": "mixamo",
+      "license": "proprietary",
+      "provenance": "Bannon motion bank keys[] Euler \u2192 RETARGETED_AUTHORED_CLIP (GINGA_BACKWARD.json)",
+      "format": "BANNON_KEYS_EULER"
+    },
+    {
+      "id": "bannon_preferred_strafe_left",
+      "file": "public/assets/moves/clips/GINGA_SIDEWAYS_2.json",
+      "semantic_state": "strafe_left",
+      "source_convention": "mixamo",
+      "license": "proprietary",
+      "provenance": "Bannon motion bank keys[] Euler \u2192 RETARGETED_AUTHORED_CLIP (GINGA_SIDEWAYS_2.json)",
+      "format": "BANNON_KEYS_EULER"
+    },
+    {
+      "id": "bannon_preferred_strafe_right",
+      "file": "public/assets/moves/clips/CROUCH_TORCH_WALK_RIGHT.json",
+      "semantic_state": "strafe_right",
+      "source_convention": "mixamo",
+      "license": "proprietary",
+      "provenance": "Bannon motion bank keys[] Euler \u2192 RETARGETED_AUTHORED_CLIP (CROUCH_TORCH_WALK_RIGHT.json)",
+      "format": "BANNON_KEYS_EULER"
+    },
+    {
+      "id": "bannon_preferred_attack_1",
+      "file": "public/assets/moves/clips/BODY_JAB_CROSS.json",
+      "semantic_state": "attack_1",
+      "source_convention": "mixamo",
+      "license": "proprietary",
+      "provenance": "Bannon motion bank keys[] Euler \u2192 RETARGETED_AUTHORED_CLIP (BODY_JAB_CROSS.json)",
+      "format": "BANNON_KEYS_EULER"
+    },
+    {
+      "id": "bannon_preferred_attack_2",
+      "file": "public/assets/moves/clips/COMBO_PUNCH.json",
+      "semantic_state": "attack_2",
+      "source_convention": "mixamo",
+      "license": "proprietary",
+      "provenance": "Bannon motion bank keys[] Euler \u2192 RETARGETED_AUTHORED_CLIP (COMBO_PUNCH.json)",
+      "format": "BANNON_KEYS_EULER"
+    },
+    {
+      "id": "bannon_preferred_block",
+      "file": "public/assets/moves/clips/CENTER_BLOCK.json",
+      "semantic_state": "block",
+      "source_convention": "mixamo",
+      "license": "proprietary",
+      "provenance": "Bannon motion bank keys[] Euler \u2192 RETARGETED_AUTHORED_CLIP (CENTER_BLOCK.json)",
+      "format": "BANNON_KEYS_EULER"
+    },
+    {
+      "id": "bannon_preferred_hit_reaction",
+      "file": "public/assets/moves/clips/HIT_REACTION.json",
+      "semantic_state": "hit_reaction",
+      "source_convention": "mixamo",
+      "license": "proprietary",
+      "provenance": "Bannon motion bank keys[] Euler \u2192 RETARGETED_AUTHORED_CLIP (HIT_REACTION.json)",
+      "format": "BANNON_KEYS_EULER"
+    },
+    {
+      "id": "bannon_preferred_knockdown",
+      "file": "public/assets/moves/clips/FALLING_FLAT_IMPACT.json",
+      "semantic_state": "knockdown",
+      "source_convention": "mixamo",
+      "license": "proprietary",
+      "provenance": "Bannon motion bank keys[] Euler \u2192 RETARGETED_AUTHORED_CLIP (FALLING_FLAT_IMPACT.json)",
+      "format": "BANNON_KEYS_EULER"
+    },
+    {
+      "id": "bannon_preferred_getup",
+      "file": "public/assets/moves/clips/KIP_UP.json",
+      "semantic_state": "getup",
+      "source_convention": "mixamo",
+      "license": "proprietary",
+      "provenance": "Bannon motion bank keys[] Euler \u2192 RETARGETED_AUTHORED_CLIP (KIP_UP.json)",
+      "format": "BANNON_KEYS_EULER"
+    }
+  ],
+  "notes": [
+    "Preferred semantic map wired 2026-09-16 (grok/anim-euler-gate-wire).",
+    "Live Bannon clips use keys[] + bones.rx/ry/rz (NOT bones.frames schema).",
+    "BannonEulerMotionAdapter.normalizeBannonKeysEulerToClipJson coerces before convert.",
+    "DO NOT treat PLACEHOLDER_TEST_CLIP / procedural as PASS.",
+    "FIGHT stays blocked until live SkinnedMesh deformation is measured in browser gate."
+  ]
 }

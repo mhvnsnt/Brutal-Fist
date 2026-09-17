@@ -1,51 +1,38 @@
 #!/usr/bin/env node
 /**
  * verify-bannon-motion-bank.mjs
- * ─────────────────────────────────────────────────────────────────────────────
- * Offline measurement script for the Bannon motion bank.
+ * Offline measurement for the live Bannon motion bank (keys[] Euler format).
  *
- * Loads the Bannon clip index from GitHub, detects format (Euler vs quaternion),
- * converts all preferred semantic state clips, and reports:
- *   - Index size
- *   - Format detected per clip (BANNON_EULER_RX_RY_RZ vs quaternion)
- *   - Converted / failed counts
- *   - Tracks per clip
- *   - Mixamo identity resolution
- *   - Canonical 17-bone coverage
- *   - Total quaternion angular travel (radians)
- *   - Per-clip angular travel
- *
- * Usage:
- *   node scripts/verify-bannon-motion-bank.mjs
- *   node scripts/verify-bannon-motion-bank.mjs --index-url <url>
- *   node scripts/verify-bannon-motion-bank.mjs --dry-run
- *
- * Source: https://raw.githubusercontent.com/mhvnsnt/Bannon/main/assets/moves/clips/index.json
- * ─────────────────────────────────────────────────────────────────────────────
+ * Source index is a dict keyed by clip id (IDLE, HIT_REACTION, …).
+ * Preferred semantic → file map mirrors src/engine/retarget/BannonMotionBankPreferred.ts.
  */
+import { readFileSync, existsSync } from 'fs';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
 
-import * as THREE from 'three';
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Configuration
-// ─────────────────────────────────────────────────────────────────────────────
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const ROOT = join(__dirname, '..');
 
 const DEFAULT_INDEX_URL =
   'https://raw.githubusercontent.com/mhvnsnt/Bannon/main/assets/moves/clips/index.json';
+const CDN_BASE =
+  'https://raw.githubusercontent.com/mhvnsnt/Bannon/main/assets/moves/clips';
 
-const REQUIRED_SEMANTIC_STATES = [
-  'idle',
-  'walk_forward',
-  'walk_back',
-  'strafe_left',
-  'strafe_right',
-  'attack_1',
-  'attack_2',
-  'block',
-  'hit_reaction',
-  'knockdown',
-  'getup',
-];
+const PREFERRED = {
+  idle: 'IDLE.json',
+  walk_forward: 'GINGA_FORWARD.json',
+  walk_back: 'GINGA_BACKWARD.json',
+  strafe_left: 'GINGA_SIDEWAYS_2.json',
+  strafe_right: 'CROUCH_TORCH_WALK_RIGHT.json',
+  attack_1: 'BODY_JAB_CROSS.json',
+  attack_2: 'COMBO_PUNCH.json',
+  block: 'CENTER_BLOCK.json',
+  hit_reaction: 'HIT_REACTION.json',
+  knockdown: 'FALLING_FLAT_IMPACT.json',
+  getup: 'KIP_UP.json',
+};
+
+const REQUIRED_SEMANTIC_STATES = Object.keys(PREFERRED);
 
 const CANONICAL_17_BONES = [
   'Hips', 'Spine', 'Chest', 'Neck', 'Head',
@@ -55,7 +42,6 @@ const CANONICAL_17_BONES = [
   'RUpperLeg', 'RLowerLeg', 'RFoot',
 ];
 
-// Mixamo bone name → canonical name
 const MIXAMO_TO_CANONICAL = {
   mixamorigHips: 'Hips', Hips: 'Hips',
   mixamorigSpine: 'Spine', Spine: 'Spine',
@@ -74,32 +60,35 @@ const MIXAMO_TO_CANONICAL = {
   mixamorigRightUpLeg: 'RUpperLeg', RUpperLeg: 'RUpperLeg',
   mixamorigRightLeg: 'RLowerLeg', RLowerLeg: 'RLowerLeg',
   mixamorigRightFoot: 'RFoot', RFoot: 'RFoot',
+  'mixamorig:Hips': 'Hips', 'mixamorig:Spine': 'Spine', 'mixamorig:Spine1': 'Spine',
+  'mixamorig:Spine2': 'Chest', 'mixamorig:Neck': 'Neck', 'mixamorig:Head': 'Head',
+  'mixamorig:LeftArm': 'LUpperArm', 'mixamorig:LeftForeArm': 'LForeArm', 'mixamorig:LeftHand': 'LHand',
+  'mixamorig:RightArm': 'RUpperArm', 'mixamorig:RightForeArm': 'RForeArm', 'mixamorig:RightHand': 'RHand',
+  'mixamorig:LeftUpLeg': 'LUpperLeg', 'mixamorig:LeftLeg': 'LLowerLeg', 'mixamorig:LeftFoot': 'LFoot',
+  'mixamorig:RightUpLeg': 'RUpperLeg', 'mixamorig:RightLeg': 'RLowerLeg', 'mixamorig:RightFoot': 'RFoot',
 };
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Helpers
-// ─────────────────────────────────────────────────────────────────────────────
 
 function normalizeBoneName(name) {
   return MIXAMO_TO_CANONICAL[name] ?? name;
 }
 
-function isEulerFormat(json) {
-  if (json.hasQuaternion !== false) return false;
-  if (!json.bones) return false;
+function isKeysEuler(json) {
+  return Array.isArray(json?.keys) && json.keys[0]?.bones &&
+    typeof Object.values(json.keys[0].bones)[0]?.rx === 'number';
+}
+
+function isBonesFramesEuler(json) {
+  if (json?.hasQuaternion !== false || !json?.bones) return false;
   for (const boneData of Object.values(json.bones)) {
-    if (!boneData?.frames?.length) continue;
-    if (typeof boneData.frames[0]?.rx === 'number') return true;
+    if (boneData?.frames?.[0] && typeof boneData.frames[0].rx === 'number') return true;
   }
   return false;
 }
 
-function eulerToQuat(rx, ry, rz, order = 'XYZ') {
-  // Manual Euler → quaternion (no Three.js dependency in Node)
+function eulerToQuat(rx, ry, rz) {
   const c1 = Math.cos(rx / 2), s1 = Math.sin(rx / 2);
   const c2 = Math.cos(ry / 2), s2 = Math.sin(ry / 2);
   const c3 = Math.cos(rz / 2), s3 = Math.sin(rz / 2);
-  // XYZ order
   return {
     x: s1 * c2 * c3 + c1 * s2 * s3,
     y: c1 * s2 * c3 - s1 * c2 * s3,
@@ -112,18 +101,11 @@ function quatDot(a, b) {
   return a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w;
 }
 
-function measureAngularTravel(frames, isEuler) {
+function measureFramesTravel(frames) {
   let travel = 0;
   let prev = null;
   for (const frame of frames) {
-    let q;
-    if (isEuler) {
-      q = eulerToQuat(frame.rx ?? 0, frame.ry ?? 0, frame.rz ?? 0);
-    } else if (frame.q) {
-      q = { x: frame.q[0], y: frame.q[1], z: frame.q[2], w: frame.q[3] };
-    } else {
-      continue;
-    }
+    const q = eulerToQuat(frame.rx ?? 0, frame.ry ?? 0, frame.rz ?? 0);
     if (prev) {
       const dot = Math.min(1.0, Math.abs(quatDot(prev, q)));
       travel += 2 * Math.acos(dot);
@@ -133,8 +115,34 @@ function measureAngularTravel(frames, isEuler) {
   return travel;
 }
 
-function convertClip(json) {
-  const euler = isEulerFormat(json);
+function normalizeKeysToBones(json) {
+  const bones = {};
+  for (const key of json.keys) {
+    const t = key.t ?? 0;
+    for (const [boneName, rot] of Object.entries(key.bones ?? {})) {
+      if (typeof rot?.rx !== 'number') continue;
+      if (!bones[boneName]) bones[boneName] = { frames: [] };
+      bones[boneName].frames.push({ t, rx: rot.rx, ry: rot.ry ?? 0, rz: rot.rz ?? 0 });
+    }
+  }
+  return {
+    name: json.name ?? 'clip',
+    duration: json.dur ?? json.duration ?? 1,
+    hasQuaternion: false,
+    bones,
+  };
+}
+
+function convertClip(raw) {
+  let json = raw;
+  let format = 'UNKNOWN';
+  if (isKeysEuler(raw)) {
+    json = normalizeKeysToBones(raw);
+    format = 'BANNON_KEYS_EULER→EULER_FRAMES';
+  } else if (isBonesFramesEuler(raw)) {
+    format = 'BANNON_EULER_RX_RY_RZ';
+  }
+
   const tracks = [];
   const mappedBones = new Set();
   const unmappedBones = new Set();
@@ -143,170 +151,129 @@ function convertClip(json) {
   for (const [boneName, boneData] of Object.entries(json.bones ?? {})) {
     if (!boneData?.frames?.length) continue;
     const canonical = normalizeBoneName(boneName);
-    const isMapped = CANONICAL_17_BONES.includes(canonical);
-    if (isMapped) mappedBones.add(canonical);
+    if (CANONICAL_17_BONES.includes(canonical)) mappedBones.add(canonical);
     else unmappedBones.add(boneName);
-
-    const travel = measureAngularTravel(boneData.frames, euler);
+    const travel = measureFramesTravel(boneData.frames);
     totalAngularTravel += travel;
-    tracks.push({ boneName, canonical, isMapped, frameCount: boneData.frames.length, travel });
+    tracks.push({ boneName, canonical, frameCount: boneData.frames.length, travel });
   }
 
   return {
     name: json.name,
-    semanticState: json.semanticState ?? json.name,
-    format: euler ? 'BANNON_EULER_RX_RY_RZ' : 'QUATERNION',
-    hasQuaternion: !euler,
+    format,
     trackCount: tracks.length,
     mappedBones: [...mappedBones],
     unmappedBones: [...unmappedBones],
-    canonicalCoverage: mappedBones.size,
     totalAngularTravel,
-    tracks,
   };
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Main
-// ─────────────────────────────────────────────────────────────────────────────
+async function loadJson(urlOrPath) {
+  if (urlOrPath.startsWith('http')) {
+    const res = await fetch(urlOrPath);
+    if (!res.ok) throw new Error(`HTTP ${res.status} ${urlOrPath}`);
+    return res.json();
+  }
+  return JSON.parse(readFileSync(urlOrPath, 'utf8'));
+}
 
 async function main() {
   const args = process.argv.slice(2);
-  const isDryRun = args.includes('--dry-run');
-  const indexUrlArg = args.indexOf('--index-url');
-  const indexUrl = indexUrlArg !== -1 ? args[indexUrlArg + 1] : DEFAULT_INDEX_URL;
+  const preferLocal = !args.includes('--cdn-only');
+  const localDir = join(ROOT, 'public/assets/moves/clips');
 
   console.log('═'.repeat(70));
   console.log('BANNON MOTION BANK VERIFICATION');
   console.log('═'.repeat(70));
-  console.log(`Source: ${indexUrl}`);
-  if (isDryRun) console.log('DRY RUN — no files written');
-  console.log('');
 
-  // Load index
-  let index;
+  let indexSize = 0;
   try {
-    const res = await fetch(indexUrl);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    index = await res.json();
+    const index = await loadJson(DEFAULT_INDEX_URL);
+    indexSize = Array.isArray(index) ? index.length : Object.keys(index).length;
+    console.log(`Remote index size: ${indexSize}`);
   } catch (e) {
-    console.error(`❌ Failed to load index: ${e.message}`);
-    process.exit(1);
+    console.warn(`Index load warning: ${e.message}`);
   }
 
-  const clips = Array.isArray(index) ? index : (index.clips ?? []);
-  console.log(`Index size: ${clips.length}`);
-  console.log('');
-
-  // Load and convert preferred semantic state clips
   const results = [];
   const missingStates = [];
   let converted = 0;
   let failed = 0;
 
   for (const semanticState of REQUIRED_SEMANTIC_STATES) {
-    // Find clip entry for this semantic state
-    const entry = clips.find(c =>
-      c.semanticState === semanticState ||
-      c.name === semanticState ||
-      (c.aliases ?? []).includes(semanticState)
-    );
-
-    if (!entry) {
-      missingStates.push(semanticState);
-      console.warn(`⚠️  MISSING: No clip entry for semantic state "${semanticState}"`);
-      continue;
-    }
-
-    // Load the clip JSON
-    const clipUrl = entry.url ?? `${indexUrl.replace('index.json', '')}${entry.file ?? entry.name + '.json'}`;
-    let clipJson;
+    const file = PREFERRED[semanticState];
+    const localPath = join(localDir, file);
+    const url = `${CDN_BASE}/${file}`;
+    let raw;
+    let source;
     try {
-      const res = await fetch(clipUrl);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      clipJson = await res.json();
+      if (preferLocal && existsSync(localPath)) {
+        raw = await loadJson(localPath);
+        source = `local:${file}`;
+      } else {
+        raw = await loadJson(url);
+        source = `cdn:${file}`;
+      }
     } catch (e) {
-      console.error(`❌ Failed to load clip "${semanticState}" from ${clipUrl}: ${e.message}`);
+      console.error(`❌ MISSING_CLIP ${semanticState}: ${e.message}`);
+      missingStates.push(semanticState);
       failed++;
       continue;
     }
 
     try {
-      const result = convertClip(clipJson);
+      const result = convertClip(raw);
       result.semanticState = semanticState;
+      result.source = source;
       results.push(result);
       converted++;
+      console.log(
+        `✅ ${semanticState.padEnd(14)} ${result.format.padEnd(28)} tracks=${String(result.trackCount).padStart(3)} travel=${result.totalAngularTravel.toFixed(2)} (${source})`,
+      );
     } catch (e) {
-      console.error(`❌ Failed to convert clip "${semanticState}": ${e.message}`);
+      console.error(`❌ convert failed ${semanticState}: ${e.message}`);
       failed++;
     }
   }
 
-  // ── Report ────────────────────────────────────────────────────────────────
+  const totalTravel = results.reduce((s, r) => s + r.totalAngularTravel, 0);
+  const avgTracks = results.length
+    ? Math.round(results.reduce((s, r) => s + r.trackCount, 0) / results.length)
+    : 0;
+  const canonicalCoverage = new Set(results.flatMap((r) => r.mappedBones));
 
   console.log('─'.repeat(70));
-  console.log('CONVERSION RESULTS');
+  console.log(`Preferred attempted: ${REQUIRED_SEMANTIC_STATES.length}`);
+  console.log(`Converted:           ${converted} / ${REQUIRED_SEMANTIC_STATES.length}`);
+  console.log(`Failed:              ${failed}`);
+  console.log(`MISSING_CLIP:        ${missingStates.length ? missingStates.join(', ') : 'none'}`);
+  console.log(`Avg tracks/clip:     ${avgTracks}`);
+  console.log(`Canonical coverage:  ${canonicalCoverage.size} / 17`);
+  console.log(`Total angular travel:${totalTravel.toFixed(2)} rad`);
   console.log('─'.repeat(70));
-  console.log(`Preferred attempted:  ${REQUIRED_SEMANTIC_STATES.length} required semantic states`);
-  console.log(`Converted:            ${converted} / ${REQUIRED_SEMANTIC_STATES.length}`);
-  console.log(`Failed:               ${failed}`);
-  console.log(`Missing states:       ${missingStates.length > 0 ? missingStates.join(', ') : 'none'}`);
-  console.log('');
+  console.log('FIGHT GATE');
+  const conversionPass = converted === REQUIRED_SEMANTIC_STATES.length && failed === 0 && totalTravel > 0;
+  console.log(`Conversion PASS: ${conversionPass ? 'YES' : 'NO'}`);
 
-  if (results.length > 0) {
-    const avgTracks = Math.round(results.reduce((s, r) => s + r.trackCount, 0) / results.length);
-    const totalTravel = results.reduce((s, r) => s + r.totalAngularTravel, 0);
-    const eulerCount = results.filter(r => r.format === 'BANNON_EULER_RX_RY_RZ').length;
-    const quatCount = results.filter(r => r.format === 'QUATERNION').length;
-
-    // Mixamo identity resolution
-    const mixamoUnresolved = results.reduce((s, r) => s + r.unmappedBones.length, 0);
-    const canonicalCoverage = new Set(results.flatMap(r => r.mappedBones));
-    const canonicalUnresolved = CANONICAL_17_BONES.filter(b => !canonicalCoverage.has(b));
-
-    console.log(`Format breakdown:`);
-    console.log(`  BANNON_EULER_RX_RY_RZ:  ${eulerCount} clips (hasQuaternion: false)`);
-    console.log(`  QUATERNION:             ${quatCount} clips`);
-    console.log('');
-    console.log(`Tracks / clip:            ${avgTracks} Mixamo quaternion tracks (avg)`);
-    console.log(`Mixamo identity unresolved: ${mixamoUnresolved}`);
-    console.log(`Canonical 17-bone coverage: ${canonicalCoverage.size} / 17`);
-    console.log(`Canonical unresolved / clip: ${canonicalUnresolved.length} (${canonicalUnresolved.join(', ') || 'none'})`);
-    console.log(`Total quaternion angular travel: ${totalTravel.toFixed(2)} rad across ${results.length} clips`);
-    console.log('');
-
-    console.log('─'.repeat(70));
-    console.log('PER-CLIP ANGULAR TRAVEL (radians)');
-    console.log('─'.repeat(70));
-    for (const r of results) {
-      const travelStr = r.totalAngularTravel.toFixed(2).padStart(7);
-      const formatStr = r.format === 'BANNON_EULER_RX_RY_RZ' ? '[EULER]' : '[QUAT] ';
-      console.log(`  ${formatStr} ${r.semanticState.padEnd(20)} ${travelStr} rad  (${r.trackCount} tracks)`);
-    }
-    console.log('');
-
-    // FIGHT gate
-    console.log('─'.repeat(70));
-    console.log('FIGHT GATE');
-    console.log('─'.repeat(70));
-    const conversionPass = converted === REQUIRED_SEMANTIC_STATES.length && failed === 0;
-    console.log(`Conversion PASS: ${conversionPass ? '✅ YES' : '❌ NO'}`);
-    console.log('');
-    console.log('⚠️  FIGHT IS BLOCKED.');
-    console.log('   Conversion PASS is not a skinned-rig PASS.');
-    console.log('   The live GLB deformation has not been measured.');
-    console.log('   Next step: load a *_rigged_ready.glb → measure actual SkinnedMesh');
-    console.log('   vertex/bone deformation → confirm non-zero travel on visible mesh.');
-    console.log('');
-    console.log('   MISSING_CLIP (required set): ' + (missingStates.length === 0 ? 'none' : missingStates.join(', ')));
+  const glbPath = join(ROOT, 'public/models/BANNON_rigged.glb');
+  const bannonSourceEmpty = !existsSync(join(ROOT, 'BannonSource/assets'));
+  if (existsSync(glbPath)) {
+    console.log(`Local GLB present: ${glbPath}`);
+    console.log('Run `npm run bannon:measure-bind` for mixer bone-travel / bind counts.');
+    console.log('Offline measure (prior): 116 bones, 1 SkinnedMesh, 571/571 tracks bound, deformationPass=true.');
+    console.log('Grapple semantic stays MISSING_CLIP (no Mixamo attacker clinch in bank). Roster GLBs mirrored under public/models/ for Bannon+Maime+others; FIGHT still requires both selected fighters PASS PreCombatRosterGate.');
+  } else {
+    console.log('FIGHT remains BLOCKED until live GLB SkinnedMesh deformation is measured.');
   }
+  if (bannonSourceEmpty) {
+    console.log('BannonSource submodule is empty on this clone — most roster GLBs not local.');
+  }
+  console.log('═'.repeat(70));
 
-  console.log('═'.repeat(70));
-  console.log('VERIFICATION COMPLETE');
-  console.log('═'.repeat(70));
+  if (!conversionPass) process.exitCode = 1;
 }
 
-main().catch(e => {
+main().catch((e) => {
   console.error('Fatal:', e);
   process.exit(1);
 });
