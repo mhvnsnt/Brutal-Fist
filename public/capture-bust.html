@@ -1,0 +1,151 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Brutal Fist bust capture</title>
+    <style>
+      html, body { margin: 0; background: #0a0a0c; overflow: hidden; }
+      canvas { display: block; }
+    </style>
+  </head>
+  <body>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://unpkg.com/three@0.186.0/build/three.module.js",
+          "three/addons/": "https://unpkg.com/three@0.186.0/examples/jsm/"
+        }
+      }
+    </script>
+    <script type="module">
+      import * as THREE from 'three';
+      import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+      import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+      import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
+
+      const params = new URLSearchParams(location.search);
+      const model = params.get('model') || 'BANNON_rigged.glb';
+      const url = model.startsWith('/') ? model : `/models/${model}`;
+      const yaw = Number(params.get('yaw') || String(Math.PI));
+
+      const SIBLING = {
+        'MAIME_skinned.glb': '/models/textures/MAIME_0.png',
+        'MAIME_tattered_skinned.glb': '/models/textures/MAIME_tattered_0.png',
+        'BANNON_rigged.glb': '/models/textures/BANNON_rigged_0.png',
+      };
+      const file = url.split('/').pop();
+
+      const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, preserveDrawingBuffer: true });
+      renderer.setSize(512, 640);
+      renderer.setPixelRatio(1);
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      document.body.appendChild(renderer.domElement);
+
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color('#10131a');
+      const camera = new THREE.PerspectiveCamera(28, 512 / 640, 0.05, 50);
+      camera.position.set(0, 1.52, 3.05);
+      camera.lookAt(0, 1.36, 0);
+
+      scene.add(new THREE.AmbientLight('#e8eaf0', 0.45));
+      const key = new THREE.DirectionalLight('#fff5e8', 2.3);
+      key.position.set(2.2, 3.2, 3.0);
+      scene.add(key);
+      const fill = new THREE.DirectionalLight('#c8d8ff', 0.9);
+      fill.position.set(-2.0, 2.2, 2.4);
+      scene.add(fill);
+      const rim = new THREE.DirectionalLight('#9eb6ff', 1.2);
+      rim.position.set(-1.4, 2.4, -2.8);
+      scene.add(rim);
+
+      function meshBox(root) {
+        const box = new THREE.Box3();
+        root.updateMatrixWorld(true);
+        root.traverse((child) => {
+          if (!child.isMesh || !child.geometry) return;
+          const geom = child.geometry;
+          if (!geom.boundingBox) geom.computeBoundingBox();
+          if (!geom.boundingBox || geom.boundingBox.isEmpty()) return;
+          const local = geom.boundingBox.clone();
+          local.applyMatrix4(child.matrixWorld);
+          box.union(local);
+        });
+        return box;
+      }
+
+      function restoreMap(root) {
+        const mapUrl = SIBLING[file];
+        if (!mapUrl) return;
+        let missing = false;
+        root.traverse((child) => {
+          if (!child.isMesh || !child.material) return;
+          const mats = Array.isArray(child.material) ? child.material : [child.material];
+          mats.forEach((m) => { if (m && !m.map) missing = true; });
+        });
+        if (!missing) return;
+        const tex = new THREE.TextureLoader().load(mapUrl, (t) => {
+          t.colorSpace = THREE.SRGBColorSpace;
+          t.flipY = false;
+          t.needsUpdate = true;
+          renderer.render(scene, camera);
+          window.__BF_CAPTURE_READY = true;
+        });
+        tex.colorSpace = THREE.SRGBColorSpace;
+        tex.flipY = false;
+        root.traverse((child) => {
+          if (!child.isMesh || !child.material) return;
+          const mats = Array.isArray(child.material) ? child.material : [child.material];
+          mats.forEach((m) => {
+            if (m && !m.map) {
+              m.map = tex;
+              m.needsUpdate = true;
+            }
+          });
+        });
+      }
+
+      const loader = new GLTFLoader();
+      loader.setMeshoptDecoder(MeshoptDecoder);
+      loader.load(url, (gltf) => {
+        const cloned = SkeletonUtils.clone(gltf.scene);
+        cloned.traverse((child) => {
+          if (child.isSkinnedMesh) child.frustumCulled = false;
+          if (child.isMesh && child.material) {
+            const mats = Array.isArray(child.material) ? child.material : [child.material];
+            mats.forEach((m) => {
+              if (m.map) {
+                m.map.colorSpace = THREE.SRGBColorSpace;
+                m.map.flipY = false;
+              }
+              if ('skinning' in m) m.skinning = true;
+            });
+          }
+        });
+        restoreMap(cloned);
+        cloned.rotation.set(0, 0, 0);
+        cloned.position.set(0, 0, 0);
+        cloned.scale.set(1, 1, 1);
+        cloned.updateMatrixWorld(true);
+        const box = meshBox(cloned);
+        const size = box.getSize(new THREE.Vector3());
+        const scale = size.y > 0.01 ? 2.0 / size.y : 1;
+        cloned.scale.setScalar(scale);
+        cloned.updateMatrixWorld(true);
+        const scaled = meshBox(cloned);
+        const center = scaled.getCenter(new THREE.Vector3());
+        cloned.position.set(-center.x, -scaled.min.y - 0.04, -center.z);
+
+        const wrapper = new THREE.Group();
+        wrapper.rotation.y = yaw;
+        wrapper.add(cloned);
+        scene.add(wrapper);
+        renderer.render(scene, camera);
+        window.__BF_DEBUG = { yaw };
+        if (!SIBLING[file]) window.__BF_CAPTURE_READY = true;
+        else setTimeout(() => { renderer.render(scene, camera); window.__BF_CAPTURE_READY = true; }, 500);
+      }, undefined, () => {
+        window.__BF_CAPTURE_READY = 'error';
+      });
+    </script>
+  </body>
+</html>

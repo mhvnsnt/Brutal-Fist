@@ -1,0 +1,65 @@
+import { useEffect, useState } from 'react';
+import { resolveGlbUrl } from '../data/bannonGlbUrl';
+
+function getConfiguredUrl(modelFile?: string) {
+  const queryUrl = new URLSearchParams(window.location.search).get('model');
+  const envUrl = process.env.NEXT_PUBLIC_MODEL_URL;
+  if (queryUrl && queryUrl !== 'undefined') return queryUrl;
+  if (modelFile) return resolveGlbUrl(modelFile);
+  if (envUrl && envUrl !== 'undefined') return envUrl;
+  return resolveGlbUrl('BANNON_rigged.glb');
+}
+
+/** Loads the exact manifest-selected Bannon GLB; Drive is only an unbound development override.
+ *  A 404 is treated as "model not yet available" — modelUrl stays null, no error is set,
+ *  so the game can still proceed without a loaded mesh.
+ */
+export function useDriveModel(startFetch: boolean, modelFile?: string) {
+  const [modelUrl, setModelUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!startFetch) {
+      setModelUrl(null);
+      setLoading(false);
+      setError(null);
+      return;
+    }
+    let active = true;
+    let objectUrl: string | null = null;
+
+    async function loadModel() {
+      setLoading(true);
+      setError(null);
+      setModelUrl(null);
+      try {
+        const publicUrl = getConfiguredUrl(modelFile);
+        const response = await fetch(publicUrl);
+        if (!response.ok) {
+          // GLB not yet deployed or unavailable — not a fatal error, game proceeds without mesh
+          console.warn(`Fighter GLB not available (HTTP ${response.status}): ${modelFile ?? 'unconfigured'} — proceeding without model`);
+          if (active) { setModelUrl(null); setError(null); }
+          return;
+        }
+        const blob = await response.blob();
+        if (!blob.size) throw new Error('Fighter GLB was empty');
+        objectUrl = URL.createObjectURL(blob);
+        if (active) setModelUrl(objectUrl);
+      } catch (err) {
+        console.error('Exact Bannon fighter GLB load failed:', err);
+        if (active) setError(err instanceof Error ? err.message : 'Failed to load exact Bannon fighter GLB');
+      } finally {
+        if (active) setLoading(false);
+      }
+    }
+
+    void loadModel();
+    return () => {
+      active = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [startFetch, modelFile]);
+
+  return { modelUrl, loading, error };
+}

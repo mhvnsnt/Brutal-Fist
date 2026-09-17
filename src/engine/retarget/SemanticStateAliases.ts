@@ -1,0 +1,106 @@
+/**
+ * SemanticStateAliases.ts
+ * Canonical semantic state alias tables shared between CharacterPipeline,
+ * AnimationBridge, and FighterMesh.
+ */
+
+export const SEMANTIC_STATE_ALIASES: Record<string, string[]> = {
+  idle:           ['idle', 'Idle', 'IDLE', 'BOX_IDLE', 'STANCE_BLADED', 'STANCE_WIDE', 'DRUNK_IDLE_VARIATION', 'ACTION_IDLE_TO_STANDING_IDLE', 'neutral', 'Neutral', 'standing', 'Standing', 'stance', 'Stance', 'combatIdle', 'CombatIdle', 'idle_procedural_placeholder'],
+  walk_forward:   ['walk_forward', 'walk', 'Walk', 'DWARF_WALK', 'DRUNK_WALK', 'GINGA_FORWARD', 'LOCO_STRUT', 'LOCO_LIGHT', 'DRUNK_RUN_FORWARD', 'walkForward', 'WalkForward', 'walking', 'Walking', 'walk_fwd', 'SBW_walk_fwd', 'walk_forward_procedural_placeholder'],
+  walk_back:      ['walk_back', 'walkBack', 'WalkBack', 'GINGA_BACKWARD', 'INJURED_RUN_BACKWARDS_RIGHT_TURN', 'walkBackward', 'WalkBackward', 'walk_bwd', 'SBW_walk_back', 'walk_back_procedural_placeholder'],
+  strafe_left:    ['strafe_left', 'strafeLeft', 'StrafeLeft', 'GINGA_SIDEWAYS_2', 'LOCO_PROWL', 'sidestepLeft', 'SidestepLeft', 'SBW_strafe_left', 'sidestepUp'],
+  strafe_right:   ['strafe_right', 'strafeRight', 'StrafeRight', 'CROUCH_TORCH_WALK_RIGHT', 'INJURED_TURN_RIGHT', 'sidestepRight', 'SidestepRight', 'SBW_strafe_right', 'sidestepDown'],
+  attack_1:       ['attack_1', 'lightAttack', 'LightAttack', 'BOXING', 'BODY_JAB_CROSS', 'BOXING__1_', 'punch', 'Punch', 'jab', 'Jab', 'attack', 'Attack', 'LP', 'T_1', 'bf_jab', 'attack_1_procedural_placeholder'],
+  attack_rp:      ['attack_rp', 'heavyAttack', 'HeavyAttack', 'COMBO_PUNCH', 'BOXING__2_', 'BOXING__3_', 'ILLEGAL_ELBOW_PUNCH', 'ILLEGAL_ELBOW_PUNCH__1_', 'BASEBALL_HIT', 'cross', 'Cross', 'RP', 'T_2', 'bf_cross'],
+  attack_2:       ['attack_2', 'HURRICANE_KICK', 'DROP_KICK', 'ILLEGAL_KNEE', 'TIGER_FEINT_KICK', 'BASH', 'AU', 'CAPOEIRA', 'kick', 'Kick', 'bf_kick'],
+  attack_lk:      ['attack_lk', 'lightKick', 'LightKick', 'DROP_KICK', 'ILLEGAL_KNEE', 'TIGER_FEINT_KICK', 'LK', 'T_3', 'bf_lk'],
+  attack_rk:      ['attack_rk', 'heavyKick', 'HeavyKick', 'HURRICANE_KICK', 'AU', 'CAPOEIRA', 'BASH', 'CROSS_JUMPS', 'RK', 'T_4', 'bf_rk'],
+  block:          ['block', 'guard', 'Guard', 'CENTER_BLOCK', 'GUARD_HIGH', 'GUARD_LOW', 'DEFENDER', 'ESQUIVA_4', 'Block', 'defend', 'Defend', 'SBW_guard', 'T_guard', 'block_procedural_placeholder'],
+  hit_reaction:   ['hit_reaction', 'hit', 'Hit', 'HIT_REACTION', 'HIT_TO_BODY', 'HIT_TO_HEAD', 'BIG_RIB_HIT', 'HIT_ON_THE_BACK', 'HIT_ON_SIDE_OF_HEAD', 'BIG_BODY_BLOW', 'hurt', 'Hurt', 'flinch', 'Flinch', 'hitstun', 'Hitstun', 'SBW_hit', 'T_hit', 'hit_reaction_procedural_placeholder'],
+  knockdown:      ['knockdown', 'Knockdown', 'FALLING_FLAT_IMPACT', 'FALLING_FORWARD_DEATH', 'DEFEAT', 'DYING_BACKWARDS', 'ko', 'KO', 'fall', 'Fall', 'SBW_knockdown', 'T_knockdown', 'knockdown_procedural_placeholder'],
+  getup:          ['getup', 'getUp', 'GetUp', 'KIP_UP', 'CORKSCREW_KIP_UP', 'CORKSCREW_EVADE', 'quickStand', 'QuickStand', 'gettingUp', 'GettingUp', 'T_quickstand', 'getup_procedural_placeholder'],
+  grapple:        ['grapple', 'grab', 'Grab', 'SUPLEX', 'GERMANSUPLEX', 'DDT', 'CHOKESLAM', 'DOUBLE_LEG_TAKEDOWN___VICTIM', 'throw', 'Throw', 'SBW_throw', 'T_1_3'],
+  crouch:         ['crouch', 'Crouch', 'STANCE_CROUCH', 'CROUCH_IDLE_02_LOOKING_AROUND', 'CROUCH_WALK_FORWARD', 'duck', 'Duck', 'SBW_crouch', 'T_crouch'],
+  run:            ['run', 'Run', 'DRUNK_RUN_FORWARD', 'LOCO_LIGHT', 'running', 'Running', 'sprint', 'Sprint'],
+  dash_forward:   ['dash_forward', 'dashForward', 'DashForward', 'dash', 'Dash', 'DRUNK_RUN_FORWARD'],
+  backdash:       ['backdash', 'Backdash', 'backDash', 'BackDash', 'GINGA_BACKWARD', 'SBW_backdash', 'T_backdash', 'Backdashing'],
+  jump:           ['jump', 'Jump', 'hop', 'Hop', 'CROSS_JUMPS', 'jumpForward', 'jumpBack'],
+  victory:        ['victory', 'Victory', 'win', 'Win', 'BREAKDANCE_READY', 'STANCE_WIDE', 'victoryPose', 'VictoryPose'],
+  defeat:         ['defeat', 'Defeat', 'DEFEAT', 'lose', 'Lose', 'knockdown', 'Knockdown'],
+  taunt:          ['taunt', 'Taunt', 'TAUNT', 'TAUNT_CALLOUT', 'BREAKDANCE_READY', 'CAPOEIRA', 'idle', 'Idle'],
+};
+
+export const COMBAT_STATE_TO_SEMANTIC: Record<string, string> = {
+  idle:              'idle',
+  Neutral:           'idle',
+  standing:          'idle',
+  walk:              'walk_forward',
+  walkForward:       'walk_forward',
+  Walking:           'walk_forward',
+  walkBackward:      'walk_back',
+  strafeLeft:        'strafe_left',
+  strafeRight:       'strafe_right',
+  sidestepLeft:      'strafe_left',
+  sidestepRight:     'strafe_right',
+  Backdashing:       'backdash',
+  run:               'run',
+  dash:              'dash_forward',
+  dashForward:       'dash_forward',
+  jump:              'jump',
+  jumpForward:       'jump',
+  jumpBack:          'jump',
+  Jumping:           'jump',
+  crouch:            'crouch',
+  crouchWalk:        'walk_forward',
+  lightAttack:       'attack_1',
+  light:             'attack_1',
+  Startup:           'attack_1',
+  Active:            'attack_1',
+  heavyAttack:       'attack_rp',
+  heavy:             'attack_rp',
+  lightKick:         'attack_lk',
+  heavyKick:         'attack_rk',
+  heatBurst:         'attack_rk',
+  rageArt:           'attack_rk',
+  powerCrush:        'attack_rp',
+  crouchLightAttack: 'attack_1',
+  crouchHeavyAttack: 'attack_lk',
+  jumpAttack:        'attack_rk',
+  runAttack:         'attack_rp',
+  CommandThrow:      'grapple',
+  ThrowWhiff:        'idle',
+  guard:             'block',
+  Guard:             'block',
+  block:             'block',
+  Blockstun:         'block',
+  guardLow:          'block',
+  hit:               'hit_reaction',
+  Hitstun:           'hit_reaction',
+  HitStun:           'hit_reaction',
+  Stunned:           'hit_reaction',
+  hitLow:            'hit_reaction',
+  hitHigh:           'hit_reaction',
+  knockdown:         'knockdown',
+  Knockdown:         'knockdown',
+  ko:                'knockdown',
+  KO:                'knockdown',
+  Crumple:           'knockdown',
+  WakeupTechRoll:    'getup',
+  WakeupBackrise:    'getup',
+  WakeupQuickStand:  'getup',
+  wake:              'getup',
+  victory:           'victory',
+  defeat:            'knockdown',
+  taunt:             'taunt',
+  intro:             'idle',
+};
+
+export function inferSemanticStateFromClipName(clipName: string): string | null {
+  const lower = clipName.toLowerCase();
+  for (const [semanticState, aliases] of Object.entries(SEMANTIC_STATE_ALIASES)) {
+    if (aliases.some((a) => a.toLowerCase() === lower || lower === semanticState.toLowerCase())) {
+      return semanticState;
+    }
+  }
+  return null;
+}

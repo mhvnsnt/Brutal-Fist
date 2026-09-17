@@ -1,0 +1,1696 @@
+{
+ "INJURED_RUN_BACKWARDS_RIGHT_TURN": {
+  "file": "INJURED_RUN_BACKWARDS_RIGHT_TURN.json",
+  "bytes": 92316,
+  "dur": 0.5333,
+  "keys": 24,
+  "bones": 52,
+  "src": "Injured Run Backwards Right Turn.fbx"
+ },
+ "INJURED_TURN_RIGHT": {
+  "file": "INJURED_TURN_RIGHT.json",
+  "bytes": 92221,
+  "dur": 0.7,
+  "keys": 24,
+  "bones": 52,
+  "src": "Injured Turn Right.fbx"
+ },
+ "DWARF_WALK": {
+  "file": "DWARF_WALK.json",
+  "bytes": 92012,
+  "dur": 1.1,
+  "keys": 24,
+  "bones": 52,
+  "src": "Dwarf Walk.fbx"
+ },
+ "HIT_TO_BODY": {
+  "file": "HIT_TO_BODY.json",
+  "bytes": 91868,
+  "dur": 1.2,
+  "keys": 24,
+  "bones": 52,
+  "src": "Hit To Body.fbx"
+ },
+ "ACTION_IDLE_TO_STANDING_IDLE": {
+  "file": "ACTION_IDLE_TO_STANDING_IDLE.json",
+  "bytes": 91763,
+  "dur": 0.9333,
+  "keys": 24,
+  "bones": 52,
+  "src": "Action Idle To Standing Idle.fbx"
+ },
+ "HURRICANE_KICK": {
+  "file": "HURRICANE_KICK.json",
+  "bytes": 91761,
+  "dur": 1.8333,
+  "keys": 24,
+  "bones": 52,
+  "src": "Hurricane Kick.fbx"
+ },
+ "CROUCH_TORCH_WALK_RIGHT": {
+  "file": "CROUCH_TORCH_WALK_RIGHT.json",
+  "bytes": 92152,
+  "dur": 1.1,
+  "keys": 24,
+  "bones": 52,
+  "src": "Crouch Torch Walk Right.fbx"
+ },
+ "CROUCH_WALK_FORWARD": {
+  "file": "CROUCH_WALK_FORWARD.json",
+  "bytes": 93343,
+  "dur": 1.1333,
+  "keys": 24,
+  "bones": 52,
+  "src": "Crouch Walk Forward.fbx"
+ },
+ "GINGA_BACKWARD": {
+  "file": "GINGA_BACKWARD.json",
+  "bytes": 91738,
+  "dur": 1.1333,
+  "keys": 24,
+  "bones": 52,
+  "src": "Ginga Backward.fbx"
+ },
+ "BIG_RIB_HIT": {
+  "file": "BIG_RIB_HIT.json",
+  "bytes": 91900,
+  "dur": 1.6,
+  "keys": 24,
+  "bones": 52,
+  "src": "Big Rib Hit.fbx"
+ },
+ "BOXING": {
+  "file": "BOXING.json",
+  "bytes": 92194,
+  "dur": 1.7333,
+  "keys": 24,
+  "bones": 52,
+  "src": "Boxing.fbx"
+ },
+ "BREAKDANCE_READY": {
+  "file": "BREAKDANCE_READY.json",
+  "bytes": 91850,
+  "dur": 1.4333,
+  "keys": 24,
+  "bones": 52,
+  "src": "Breakdance Ready.fbx"
+ },
+ "ILLEGAL_ELBOW_PUNCH__1_": {
+  "file": "ILLEGAL_ELBOW_PUNCH__1_.json",
+  "bytes": 91789,
+  "dur": 2.0333,
+  "keys": 24,
+  "bones": 52,
+  "src": "Illegal Elbow Punch (1).fbx"
+ },
+ "ILLEGAL_ELBOW_PUNCH__2_": {
+  "file": "ILLEGAL_ELBOW_PUNCH__2_.json",
+  "bytes": 91789,
+  "dur": 2.0333,
+  "keys": 24,
+  "bones": 52,
+  "src": "Illegal Elbow Punch (2).fbx"
+ },
+ "BRACED_HANG_HOP_UP": {
+  "file": "BRACED_HANG_HOP_UP.json",
+  "bytes": 89641,
+  "dur": 1.6667,
+  "keys": 24,
+  "bones": 52,
+  "src": "Braced Hang Hop Up.fbx"
+ },
+ "BODY_JAB_CROSS": {
+  "file": "BODY_JAB_CROSS.json",
+  "bytes": 92001,
+  "dur": 2.1,
+  "keys": 24,
+  "bones": 52,
+  "src": "Body Jab Cross.fbx"
+ },
+ "BOXING__4_": {
+  "file": "BOXING__4_.json",
+  "bytes": 92037,
+  "dur": 2.1,
+  "keys": 24,
+  "bones": 52,
+  "src": "Boxing (4).fbx"
+ },
+ "FALLING_FLAT_IMPACT": {
+  "file": "FALLING_FLAT_IMPACT.json",
+  "bytes": 91021,
+  "dur": 1.5667,
+  "keys": 24,
+  "bones": 52,
+  "src": "Falling Flat Impact.fbx"
+ },
+ "BOXING__1_": {
+  "file": "BOXING__1_.json",
+  "bytes": 91855,
+  "dur": 2.2,
+  "keys": 24,
+  "bones": 52,
+  "src": "Boxing (1).fbx"
+ },
+ "BOXING__3_": {
+  "file": "BOXING__3_.json",
+  "bytes": 91781,
+  "dur": 2.2,
+  "keys": 24,
+  "bones": 52,
+  "src": "Boxing (3).fbx"
+ },
+ "ILLEGAL_KNEE": {
+  "file": "ILLEGAL_KNEE.json",
+  "bytes": 91815,
+  "dur": 2.2667,
+  "keys": 24,
+  "bones": 52,
+  "src": "Illegal Knee.fbx"
+ },
+ "ILLEGAL_ELBOW_PUNCH": {
+  "file": "ILLEGAL_ELBOW_PUNCH.json",
+  "bytes": 91962,
+  "dur": 2.2667,
+  "keys": 24,
+  "bones": 52,
+  "src": "Illegal Elbow Punch.fbx"
+ },
+ "HIT_REACTION": {
+  "file": "HIT_REACTION.json",
+  "bytes": 91753,
+  "dur": 2.4333,
+  "keys": 24,
+  "bones": 52,
+  "src": "Hit Reaction.fbx"
+ },
+ "CENTER_BLOCK": {
+  "file": "CENTER_BLOCK.json",
+  "bytes": 91726,
+  "dur": 1.7667,
+  "keys": 24,
+  "bones": 52,
+  "src": "Center Block.fbx"
+ },
+ "CLIMBING_UP_WALL": {
+  "file": "CLIMBING_UP_WALL.json",
+  "bytes": 89333,
+  "dur": 2,
+  "keys": 24,
+  "bones": 52,
+  "src": "Climbing Up Wall.fbx"
+ },
+ "DRUNK_RUN_FORWARD": {
+  "file": "DRUNK_RUN_FORWARD.json",
+  "bytes": 91896,
+  "dur": 1.8333,
+  "keys": 24,
+  "bones": 52,
+  "src": "Drunk Run Forward.fbx"
+ },
+ "BASEBALL_HIT": {
+  "file": "BASEBALL_HIT.json",
+  "bytes": 91956,
+  "dur": 1.9667,
+  "keys": 24,
+  "bones": 52,
+  "src": "Baseball Hit.fbx"
+ },
+ "CROSS_JUMPS": {
+  "file": "CROSS_JUMPS.json",
+  "bytes": 91923,
+  "dur": 2.0333,
+  "keys": 24,
+  "bones": 52,
+  "src": "Cross Jumps.fbx"
+ },
+ "COMBO_PUNCH": {
+  "file": "COMBO_PUNCH.json",
+  "bytes": 91832,
+  "dur": 2.9667,
+  "keys": 24,
+  "bones": 52,
+  "src": "Combo Punch.fbx"
+ },
+ "Y_BOT": {
+  "file": "Y_BOT.json",
+  "bytes": 73480,
+  "dur": 0.0333,
+  "keys": 24,
+  "bones": 52,
+  "src": "Y Bot.fbx"
+ },
+ "FALLING_FORWARD_DEATH": {
+  "file": "FALLING_FORWARD_DEATH.json",
+  "bytes": 92663,
+  "dur": 2.5667,
+  "keys": 24,
+  "bones": 52,
+  "src": "Falling Forward Death.fbx"
+ },
+ "GINGA_SIDEWAYS_2": {
+  "file": "GINGA_SIDEWAYS_2.json",
+  "bytes": 91941,
+  "dur": 2.2667,
+  "keys": 24,
+  "bones": 52,
+  "src": "Ginga Sideways 2.fbx"
+ },
+ "BIG_JUMP": {
+  "file": "BIG_JUMP.json",
+  "bytes": 91578,
+  "dur": 2.3667,
+  "keys": 24,
+  "bones": 52,
+  "src": "Big Jump.fbx"
+ },
+ "CLIMBING_A_ROPE__1_": {
+  "file": "CLIMBING_A_ROPE__1_.json",
+  "bytes": 91726,
+  "dur": 2.4,
+  "keys": 24,
+  "bones": 52,
+  "src": "Climbing A Rope (1).fbx"
+ },
+ "CORKSCREW_EVADE": {
+  "file": "CORKSCREW_EVADE.json",
+  "bytes": 91939,
+  "dur": 2.5,
+  "keys": 24,
+  "bones": 52,
+  "src": "Corkscrew Evade.fbx"
+ },
+ "HIT_ON_THE_BACK": {
+  "file": "HIT_ON_THE_BACK.json",
+  "bytes": 92012,
+  "dur": 2.5,
+  "keys": 24,
+  "bones": 52,
+  "src": "Hit On The Back.fbx"
+ },
+ "CLIMBING_A_ROPE": {
+  "file": "CLIMBING_A_ROPE.json",
+  "bytes": 91855,
+  "dur": 2.5667,
+  "keys": 24,
+  "bones": 52,
+  "src": "Climbing A Rope.fbx"
+ },
+ "HIT_TO_HEAD": {
+  "file": "HIT_TO_HEAD.json",
+  "bytes": 91641,
+  "dur": 2.5333,
+  "keys": 24,
+  "bones": 52,
+  "src": "Hit To Head.fbx"
+ },
+ "BIG_BODY_BLOW": {
+  "file": "BIG_BODY_BLOW.json",
+  "bytes": 91679,
+  "dur": 2.5667,
+  "keys": 24,
+  "bones": 52,
+  "src": "Big Body Blow.fbx"
+ },
+ "DEFEAT": {
+  "file": "DEFEAT.json",
+  "bytes": 91908,
+  "dur": 4.7667,
+  "keys": 24,
+  "bones": 52,
+  "src": "Defeat.fbx"
+ },
+ "ESQUIVA_4": {
+  "file": "ESQUIVA_4.json",
+  "bytes": 91342,
+  "dur": 2.8,
+  "keys": 24,
+  "bones": 52,
+  "src": "Esquiva 4.fbx"
+ },
+ "DROP_KICK": {
+  "file": "DROP_KICK.json",
+  "bytes": 91848,
+  "dur": 2.9,
+  "keys": 24,
+  "bones": 52,
+  "src": "Drop Kick.fbx"
+ },
+ "AU": {
+  "file": "AU.json",
+  "bytes": 91869,
+  "dur": 2.9,
+  "keys": 24,
+  "bones": 52,
+  "src": "Au.fbx"
+ },
+ "HEAVY_WEAPON_SWING": {
+  "file": "HEAVY_WEAPON_SWING.json",
+  "bytes": 92052,
+  "dur": 5.2,
+  "keys": 24,
+  "bones": 52,
+  "src": "Heavy Weapon Swing.fbx"
+ },
+ "DRUNK_WALK": {
+  "file": "DRUNK_WALK.json",
+  "bytes": 91755,
+  "dur": 3,
+  "keys": 24,
+  "bones": 52,
+  "src": "Drunk Walk.fbx"
+ },
+ "DEATH_FROM_BACK_HEADSHOT": {
+  "file": "DEATH_FROM_BACK_HEADSHOT.json",
+  "bytes": 93065,
+  "dur": 3.7,
+  "keys": 24,
+  "bones": 52,
+  "src": "Death From Back Headshot.fbx"
+ },
+ "HIT_ON_SIDE_OF_HEAD": {
+  "file": "HIT_ON_SIDE_OF_HEAD.json",
+  "bytes": 92050,
+  "dur": 3.3,
+  "keys": 24,
+  "bones": 52,
+  "src": "Hit On Side Of Head.fbx"
+ },
+ "ZOMBIE_DYING": {
+  "file": "ZOMBIE_DYING.json",
+  "bytes": 93108,
+  "dur": 3.3333,
+  "keys": 24,
+  "bones": 52,
+  "src": "Zombie Dying.fbx"
+ },
+ "BRUTAL_ASSASSINATION": {
+  "file": "BRUTAL_ASSASSINATION.json",
+  "bytes": 91606,
+  "dur": 4.9333,
+  "keys": 24,
+  "bones": 52,
+  "src": "Brutal Assassination.fbx"
+ },
+ "BOXING__2_": {
+  "file": "BOXING__2_.json",
+  "bytes": 91939,
+  "dur": 4.2333,
+  "keys": 24,
+  "bones": 52,
+  "src": "Boxing (2).fbx"
+ },
+ "CAPOEIRA": {
+  "file": "CAPOEIRA.json",
+  "bytes": 91585,
+  "dur": 3.4333,
+  "keys": 24,
+  "bones": 52,
+  "src": "Capoeira.fbx"
+ },
+ "DOUBLE_LEG_TAKEDOWN___VICTIM__1_": {
+  "file": "DOUBLE_LEG_TAKEDOWN___VICTIM__1_.json",
+  "bytes": 91821,
+  "dur": 3.5,
+  "keys": 24,
+  "bones": 52,
+  "src": "Double Leg Takedown - Victim (1).fbx"
+ },
+ "DEFENDER": {
+  "file": "DEFENDER.json",
+  "bytes": 91714,
+  "dur": 3.6,
+  "keys": 24,
+  "bones": 52,
+  "src": "Defender.fbx"
+ },
+ "IDLE": {
+  "file": "IDLE.json",
+  "bytes": 89175,
+  "dur": 4,
+  "keys": 24,
+  "bones": 52,
+  "src": "Idle.fbx"
+ },
+ "DYING_BACKWARDS": {
+  "file": "DYING_BACKWARDS.json",
+  "bytes": 90574,
+  "dur": 4.6,
+  "keys": 24,
+  "bones": 52,
+  "src": "Dying Backwards.fbx"
+ },
+ "CAN_CAN": {
+  "file": "CAN_CAN.json",
+  "bytes": 91765,
+  "dur": 3.6667,
+  "keys": 24,
+  "bones": 52,
+  "src": "Can Can.fbx"
+ },
+ "BREAKDANCE_FOOTWORK_3": {
+  "file": "BREAKDANCE_FOOTWORK_3.json",
+  "bytes": 90534,
+  "dur": 4.5667,
+  "keys": 24,
+  "bones": 52,
+  "src": "Breakdance Footwork 3.fbx"
+ },
+ "BREAKDANCE_FOOTWORK_3__1_": {
+  "file": "BREAKDANCE_FOOTWORK_3__1_.json",
+  "bytes": 90534,
+  "dur": 4.5667,
+  "keys": 24,
+  "bones": 52,
+  "src": "Breakdance Footwork 3 (1).fbx"
+ },
+ "CAPOEIRA__1_": {
+  "file": "CAPOEIRA__1_.json",
+  "bytes": 91428,
+  "dur": 4.8,
+  "keys": 24,
+  "bones": 52,
+  "src": "Capoeira (1).fbx"
+ },
+ "BROOKLYN_UPROCK": {
+  "file": "BROOKLYN_UPROCK.json",
+  "bytes": 91955,
+  "dur": 4.8667,
+  "keys": 24,
+  "bones": 52,
+  "src": "Brooklyn Uprock.fbx"
+ },
+ "DRUNK_IDLE_VARIATION": {
+  "file": "DRUNK_IDLE_VARIATION.json",
+  "bytes": 91877,
+  "dur": 3.9667,
+  "keys": 24,
+  "bones": 52,
+  "src": "Drunk Idle Variation.fbx"
+ },
+ "BOX_IDLE": {
+  "file": "BOX_IDLE.json",
+  "bytes": 91868,
+  "dur": 6.3,
+  "keys": 24,
+  "bones": 52,
+  "src": "Box Idle.fbx"
+ },
+ "DANCING": {
+  "file": "DANCING.json",
+  "bytes": 83367,
+  "dur": 8.1,
+  "keys": 24,
+  "bones": 52,
+  "src": "Dancing.fbx"
+ },
+ "INJURED_HURTING_IDLE": {
+  "file": "INJURED_HURTING_IDLE.json",
+  "bytes": 91938,
+  "dur": 6.0333,
+  "keys": 24,
+  "bones": 52,
+  "src": "Injured Hurting Idle.fbx"
+ },
+ "BREAKDANCE_FREEZES": {
+  "file": "BREAKDANCE_FREEZES.json",
+  "bytes": 91874,
+  "dur": 6.7,
+  "keys": 24,
+  "bones": 52,
+  "src": "Breakdance Freezes.fbx"
+ },
+ "DOUBLE_LEG_TAKEDOWN___VICTIM": {
+  "file": "DOUBLE_LEG_TAKEDOWN___VICTIM.json",
+  "bytes": 91974,
+  "dur": 7.2333,
+  "keys": 24,
+  "bones": 52,
+  "src": "Double Leg Takedown - Victim.fbx"
+ },
+ "DANCING_RUNNING_MAN": {
+  "file": "DANCING_RUNNING_MAN.json",
+  "bytes": 91993,
+  "dur": 10.8333,
+  "keys": 24,
+  "bones": 52,
+  "src": "Dancing Running Man.fbx"
+ },
+ "TAU_BUTTSLAP": {
+  "file": "TAU_BUTTSLAP.json",
+  "bytes": 244404,
+  "dur": 3,
+  "keys": 24,
+  "bones": 248,
+  "src": "Tau_ButtSlap.fbx"
+ },
+ "TAU_GENERALFEMALE": {
+  "file": "TAU_GENERALFEMALE.json",
+  "bytes": 233088,
+  "dur": 5,
+  "keys": 24,
+  "bones": 234,
+  "src": "Tau_GeneralFemale.fbx"
+ },
+ "TAUNT_KOFIKINGSTON": {
+  "file": "TAUNT_KOFIKINGSTON.json",
+  "bytes": 244164,
+  "dur": 6,
+  "keys": 24,
+  "bones": 247,
+  "src": "Taunt_KofiKingston.fbx"
+ },
+ "TAUNT2": {
+  "file": "TAUNT2.json",
+  "bytes": 247022,
+  "dur": 6.3333,
+  "keys": 24,
+  "bones": 253,
+  "src": "Taunt2.fbx"
+ },
+ "RAPIDCHESTBEATING": {
+  "file": "RAPIDCHESTBEATING.json",
+  "bytes": 251074,
+  "dur": 3,
+  "keys": 24,
+  "bones": 249,
+  "src": "RapidChestBeating.fbx"
+ },
+ "CROTCHCHOP": {
+  "file": "CROTCHCHOP.json",
+  "bytes": 245179,
+  "dur": 5,
+  "keys": 24,
+  "bones": 251,
+  "src": "CrotchChop.fbx"
+ },
+ "WBTC": {
+  "file": "WBTC.json",
+  "bytes": 246668,
+  "dur": 3.5667,
+  "keys": 24,
+  "bones": 251,
+  "src": "WBTC.fbx"
+ },
+ "CARTWHEEL": {
+  "file": "CARTWHEEL.json",
+  "bytes": 245025,
+  "dur": 4.8333,
+  "keys": 24,
+  "bones": 251,
+  "src": "Cartwheel.fbx"
+ },
+ "TAUNT": {
+  "file": "TAUNT.json",
+  "bytes": 365042,
+  "dur": 6.5,
+  "keys": 24,
+  "bones": 365,
+  "src": "Taunt.fbx"
+ },
+ "TAU_GAMEOVER": {
+  "file": "TAU_GAMEOVER.json",
+  "bytes": 244279,
+  "dur": 4,
+  "keys": 24,
+  "bones": 246,
+  "src": "Tau_GameOver.fbx"
+ },
+ "SPINNINGARMSSPREAD": {
+  "file": "SPINNINGARMSSPREAD.json",
+  "bytes": 242965,
+  "dur": 6.6667,
+  "keys": 24,
+  "bones": 249,
+  "src": "SpinningArmsSpread.fbx"
+ },
+ "LOLA_B_STYPEREK": {
+  "file": "LOLA_B_STYPEREK.json",
+  "bytes": 72208,
+  "dur": 0.0333,
+  "keys": 24,
+  "bones": 52,
+  "src": "Lola B Styperek.fbx"
+ },
+ "SHELBYIKRIG_ARREGLADO": {
+  "file": "SHELBYIKRIG_ARREGLADO.json",
+  "bytes": 143502,
+  "dur": 1,
+  "keys": 24,
+  "bones": 115,
+  "src": "ShelbyIKRig arreglado.fbx"
+ },
+ "TAU_DIVA": {
+  "file": "TAU_DIVA.json",
+  "bytes": 364713,
+  "dur": 5,
+  "keys": 24,
+  "bones": 354,
+  "src": "Tau_Diva.fbx"
+ },
+ "TAU_HEADCRACK": {
+  "file": "TAU_HEADCRACK.json",
+  "bytes": 368198,
+  "dur": 5,
+  "keys": 24,
+  "bones": 355,
+  "src": "Tau_HEADCRACK.fbx"
+ },
+ "PASSIVE_MARKER_MAN": {
+  "file": "PASSIVE_MARKER_MAN.json",
+  "bytes": 74248,
+  "dur": 0.0333,
+  "keys": 24,
+  "bones": 52,
+  "src": "passive_marker_man.fbx"
+ },
+ "SUPLEX": {
+  "file": "SUPLEX.json",
+  "bytes": 608986,
+  "dur": 6,
+  "keys": 24,
+  "bones": 607,
+  "src": "Suplex.fbx"
+ },
+ "RAINTRIGGER": {
+  "file": "RAINTRIGGER.json",
+  "bytes": 529339,
+  "dur": 6,
+  "keys": 24,
+  "bones": 511,
+  "src": "RainTrigger.fbx"
+ },
+ "GERMANSUPLEX": {
+  "file": "GERMANSUPLEX.json",
+  "bytes": 503917,
+  "dur": 7.8333,
+  "keys": 24,
+  "bones": 498,
+  "src": "GermanSuplex.fbx"
+ },
+ "ALTERNATINGFOREARMS": {
+  "file": "ALTERNATINGFOREARMS.json",
+  "bytes": 491471,
+  "dur": 4,
+  "keys": 24,
+  "bones": 514,
+  "src": "AlternatingForearms.fbx"
+ },
+ "FACEGOUGE": {
+  "file": "FACEGOUGE.json",
+  "bytes": 492900,
+  "dur": 5,
+  "keys": 24,
+  "bones": 520,
+  "src": "FaceGouge.fbx"
+ },
+ "TOMBSTONE": {
+  "file": "TOMBSTONE.json",
+  "bytes": 534301,
+  "dur": 8,
+  "keys": 24,
+  "bones": 510,
+  "src": "Tombstone.fbx"
+ },
+ "HURRICANERANA": {
+  "file": "HURRICANERANA.json",
+  "bytes": 636347,
+  "dur": 4.8333,
+  "keys": 24,
+  "bones": 615,
+  "src": "HurricaneRana.fbx"
+ },
+ "VIOLENCEPARTY": {
+  "file": "VIOLENCEPARTY.json",
+  "bytes": 520414,
+  "dur": 6,
+  "keys": 24,
+  "bones": 519,
+  "src": "ViolenceParty.fbx"
+ },
+ "DRAGONSCREW": {
+  "file": "DRAGONSCREW.json",
+  "bytes": 594843,
+  "dur": 6,
+  "keys": 24,
+  "bones": 634,
+  "src": "DragonScrew.fbx"
+ },
+ "HAMMERTHROW": {
+  "file": "HAMMERTHROW.json",
+  "bytes": 514577,
+  "dur": 5,
+  "keys": 24,
+  "bones": 499,
+  "src": "HammerThrow.fbx"
+ },
+ "SCHOOLBOYSUPERKICK": {
+  "file": "SCHOOLBOYSUPERKICK.json",
+  "bytes": 504513,
+  "dur": 7,
+  "keys": 24,
+  "bones": 528,
+  "src": "SchoolBoySuperkick.fbx"
+ },
+ "BRAINBUSTER": {
+  "file": "BRAINBUSTER.json",
+  "bytes": 624575,
+  "dur": 7.4667,
+  "keys": 24,
+  "bones": 602,
+  "src": "BrainBuster.fbx"
+ },
+ "GIANTSWING": {
+  "file": "GIANTSWING.json",
+  "bytes": 518443,
+  "dur": 7,
+  "keys": 24,
+  "bones": 508,
+  "src": "Giantswing.fbx"
+ },
+ "HAMMERLOCKDDT": {
+  "file": "HAMMERLOCKDDT.json",
+  "bytes": 495368,
+  "dur": 8,
+  "keys": 24,
+  "bones": 520,
+  "src": "HammerlockDDT.fbx"
+ },
+ "POWERBOMBWHIP": {
+  "file": "POWERBOMBWHIP.json",
+  "bytes": 626355,
+  "dur": 7,
+  "keys": 24,
+  "bones": 608,
+  "src": "PowerbombWhip.fbx"
+ },
+ "CRUCIFIXPIN": {
+  "file": "CRUCIFIXPIN.json",
+  "bytes": 503528,
+  "dur": 8,
+  "keys": 24,
+  "bones": 523,
+  "src": "CrucifixPin.fbx"
+ },
+ "NOFUTURE": {
+  "file": "NOFUTURE.json",
+  "bytes": 527322,
+  "dur": 10,
+  "keys": 24,
+  "bones": 507,
+  "src": "NoFuture.fbx"
+ },
+ "CHOKESLAM": {
+  "file": "CHOKESLAM.json",
+  "bytes": 519044,
+  "dur": 5.6667,
+  "keys": 24,
+  "bones": 521,
+  "src": "Chokeslam.fbx"
+ },
+ "SPINTORTURERACKBOMB": {
+  "file": "SPINTORTURERACKBOMB.json",
+  "bytes": 526971,
+  "dur": 6.3667,
+  "keys": 24,
+  "bones": 526,
+  "src": "SpinTortureRackBomb.fbx"
+ },
+ "CEMETERYDRIVE": {
+  "file": "CEMETERYDRIVE.json",
+  "bytes": 514576,
+  "dur": 5.8333,
+  "keys": 24,
+  "bones": 514,
+  "src": "CemeteryDrive.fbx"
+ },
+ "TABLEIMPACT": {
+  "file": "TABLEIMPACT.json",
+  "bytes": 501203,
+  "dur": 10,
+  "keys": 24,
+  "bones": 501,
+  "src": "TableImpact.fbx"
+ },
+ "NECKBREAKER": {
+  "file": "NECKBREAKER.json",
+  "bytes": 763439,
+  "dur": 4.4,
+  "keys": 24,
+  "bones": 708,
+  "src": "NeckBreaker.fbx"
+ },
+ "DDT": {
+  "file": "DDT.json",
+  "bytes": 758172,
+  "dur": 5.7333,
+  "keys": 24,
+  "bones": 712,
+  "src": "DDT.fbx"
+ },
+ "SHARPSHOOTER": {
+  "file": "SHARPSHOOTER.json",
+  "bytes": 649179,
+  "dur": 14,
+  "keys": 24,
+  "bones": 622,
+  "src": "SharpShooter.fbx"
+ },
+ "FENCEM_KICK": {
+  "file": "FENCEM_KICK.json",
+  "bytes": 516043,
+  "dur": 4,
+  "keys": 24,
+  "bones": 524,
+  "src": "FenceM-Kick.fbx"
+ },
+ "CODERED": {
+  "file": "CODERED.json",
+  "bytes": 642466,
+  "dur": 10,
+  "keys": 24,
+  "bones": 624,
+  "src": "CodeRed.fbx"
+ },
+ "SHOULDERBAG": {
+  "file": "SHOULDERBAG.json",
+  "bytes": 774256,
+  "dur": 6,
+  "keys": 24,
+  "bones": 719,
+  "src": "ShoulderBag.fbx"
+ },
+ "FIN_F10": {
+  "file": "FIN_F10.json",
+  "bytes": 521118,
+  "dur": 10,
+  "keys": 24,
+  "bones": 524,
+  "src": "Fin_F10.fbx"
+ },
+ "OVREHEADPRESS": {
+  "file": "OVREHEADPRESS.json",
+  "bytes": 524714,
+  "dur": 6,
+  "keys": 24,
+  "bones": 526,
+  "src": "OvreheadPress.fbx"
+ },
+ "FENCETHROW_002": {
+  "file": "FENCETHROW_002.json",
+  "bytes": 626676,
+  "dur": 6,
+  "keys": 24,
+  "bones": 627,
+  "src": "FenceThrow_002.fbx"
+ },
+ "PALADIN_J_NORDSTROM": {
+  "file": "PALADIN_J_NORDSTROM.json",
+  "bytes": 73480,
+  "dur": 0.0333,
+  "keys": 24,
+  "bones": 52,
+  "src": "Paladin J Nordstrom.fbx"
+ },
+ "FENCETHROW": {
+  "file": "FENCETHROW.json",
+  "bytes": 648265,
+  "dur": 6,
+  "keys": 24,
+  "bones": 628,
+  "src": "FenceThrow.fbx"
+ },
+ "VERTICALBRAINBUSTER": {
+  "file": "VERTICALBRAINBUSTER.json",
+  "bytes": 770941,
+  "dur": 9,
+  "keys": 24,
+  "bones": 721,
+  "src": "VerticalBrainBuster.fbx"
+ },
+ "JAYKICK": {
+  "file": "JAYKICK.json",
+  "bytes": 639478,
+  "dur": 7.5,
+  "keys": 24,
+  "bones": 636,
+  "src": "JayKick.fbx"
+ },
+ "APRONJAYKICK": {
+  "file": "APRONJAYKICK.json",
+  "bytes": 512431,
+  "dur": 11.3333,
+  "keys": 24,
+  "bones": 518,
+  "src": "ApronJayKick.fbx"
+ },
+ "POPUPGERMANSUPLEX": {
+  "file": "POPUPGERMANSUPLEX.json",
+  "bytes": 738076,
+  "dur": 7,
+  "keys": 24,
+  "bones": 778,
+  "src": "PopUpGermanSuplex.fbx"
+ },
+ "TAGSUPERKICK": {
+  "file": "TAGSUPERKICK.json",
+  "bytes": 962738,
+  "dur": 4.6667,
+  "keys": 24,
+  "bones": 993,
+  "src": "TagSuperkick.fbx"
+ },
+ "ASSISTEDREVERSEGOOZLECHOP": {
+  "file": "ASSISTEDREVERSEGOOZLECHOP.json",
+  "bytes": 774410,
+  "dur": 9.2667,
+  "keys": 24,
+  "bones": 772,
+  "src": "AssistedReverseGoozleChop.fbx"
+ },
+ "DOUBLESUPLEX": {
+  "file": "DOUBLESUPLEX.json",
+  "bytes": 862363,
+  "dur": 11,
+  "keys": 24,
+  "bones": 871,
+  "src": "DoubleSuplex.fbx"
+ },
+ "ASSISTEDCUTTER": {
+  "file": "ASSISTEDCUTTER.json",
+  "bytes": 835743,
+  "dur": 12,
+  "keys": 24,
+  "bones": 899,
+  "src": "AssistedCutter.fbx"
+ },
+ "BUCKLEBOMBENZUGIRI": {
+  "file": "BUCKLEBOMBENZUGIRI.json",
+  "bytes": 938389,
+  "dur": 9.5,
+  "keys": 24,
+  "bones": 998,
+  "src": "BuckleBombEnzugiri.fbx"
+ },
+ "FATALITY": {
+  "file": "FATALITY.json",
+  "bytes": 748599,
+  "dur": 12,
+  "keys": 24,
+  "bones": 784,
+  "src": "Fatality.fbx"
+ },
+ "SNAPPILEDRIVERS": {
+  "file": "SNAPPILEDRIVERS.json",
+  "bytes": 873026,
+  "dur": 12,
+  "keys": 24,
+  "bones": 901,
+  "src": "SnapPiledrivers.fbx"
+ },
+ "ASSISTEDDIVSENTON": {
+  "file": "ASSISTEDDIVSENTON.json",
+  "bytes": 895339,
+  "dur": 12,
+  "keys": 24,
+  "bones": 888,
+  "src": "AssistedDivSenton.fbx"
+ },
+ "REVERSEGOOZLEDIVFOOTSTOMP": {
+  "file": "REVERSEGOOZLEDIVFOOTSTOMP.json",
+  "bytes": 897687,
+  "dur": 12,
+  "keys": 24,
+  "bones": 893,
+  "src": "ReverseGoozleDivFootStomp.fbx"
+ },
+ "STEREOSUPERKICK": {
+  "file": "STEREOSUPERKICK.json",
+  "bytes": 950168,
+  "dur": 13.6,
+  "keys": 24,
+  "bones": 1000,
+  "src": "StereoSuperkick.fbx"
+ },
+ "STRONGZERO": {
+  "file": "STRONGZERO.json",
+  "bytes": 1026257,
+  "dur": 12,
+  "keys": 24,
+  "bones": 1007,
+  "src": "StrongZero.fbx"
+ },
+ "PUMPKINHULK_L_SHAW": {
+  "file": "PUMPKINHULK_L_SHAW.json",
+  "bytes": 78256,
+  "dur": 0.0333,
+  "keys": 24,
+  "bones": 52,
+  "src": "Pumpkinhulk L Shaw.fbx"
+ },
+ "FALL_B_LOOP": {
+  "file": "FALL_B_LOOP.json",
+  "bytes": 93405,
+  "dur": 1.0667,
+  "keys": 24,
+  "bones": 52,
+  "src": "Fall B Loop.fbx"
+ },
+ "GINGA_FORWARD": {
+  "file": "GINGA_FORWARD.json",
+  "bytes": 93097,
+  "dur": 1.2333,
+  "keys": 24,
+  "bones": 52,
+  "src": "Ginga Forward.fbx"
+ },
+ "BOXING__5_": {
+  "file": "BOXING__5_.json",
+  "bytes": 92828,
+  "dur": 2.1667,
+  "keys": 24,
+  "bones": 52,
+  "src": "Boxing (5).fbx"
+ },
+ "ARMADA": {
+  "file": "ARMADA.json",
+  "bytes": 93025,
+  "dur": 1.6333,
+  "keys": 24,
+  "bones": 52,
+  "src": "Armada.fbx"
+ },
+ "QUESHADA_2": {
+  "file": "QUESHADA_2.json",
+  "bytes": 92980,
+  "dur": 2,
+  "keys": 24,
+  "bones": 52,
+  "src": "Queshada 2.fbx"
+ },
+ "KIP_UP": {
+  "file": "KIP_UP.json",
+  "bytes": 93095,
+  "dur": 2.0333,
+  "keys": 24,
+  "bones": 52,
+  "src": "Kip Up.fbx"
+ },
+ "ESQUIVA_3": {
+  "file": "ESQUIVA_3.json",
+  "bytes": 92923,
+  "dur": 2.1667,
+  "keys": 24,
+  "bones": 52,
+  "src": "Esquiva 3.fbx"
+ },
+ "ESQUIVA_4__1_": {
+  "file": "ESQUIVA_4__1_.json",
+  "bytes": 92627,
+  "dur": 2.8,
+  "keys": 24,
+  "bones": 52,
+  "src": "Esquiva 4 (1).fbx"
+ },
+ "CORKSCREW_KIP_UP": {
+  "file": "CORKSCREW_KIP_UP.json",
+  "bytes": 93004,
+  "dur": 2.7667,
+  "keys": 24,
+  "bones": 52,
+  "src": "Corkscrew Kip Up.fbx"
+ },
+ "DROP_KICK__1_": {
+  "file": "DROP_KICK__1_.json",
+  "bytes": 93015,
+  "dur": 2.9,
+  "keys": 24,
+  "bones": 52,
+  "src": "Drop Kick (1).fbx"
+ },
+ "BREAKDANCE_UPROCK_TO_GROUND": {
+  "file": "BREAKDANCE_UPROCK_TO_GROUND.json",
+  "bytes": 92798,
+  "dur": 4.5333,
+  "keys": 24,
+  "bones": 52,
+  "src": "Breakdance Uprock To Ground.fbx"
+ },
+ "BREAKDANCE_FOOTWORK_TO_FREEZE": {
+  "file": "BREAKDANCE_FOOTWORK_TO_FREEZE.json",
+  "bytes": 92046,
+  "dur": 3.6667,
+  "keys": 24,
+  "bones": 52,
+  "src": "Breakdance Footwork To Freeze.fbx"
+ },
+ "CROUCH_IDLE_02_LOOKING_AROUND": {
+  "file": "CROUCH_IDLE_02_LOOKING_AROUND.json",
+  "bytes": 93115,
+  "dur": 5.8333,
+  "keys": 24,
+  "bones": 52,
+  "src": "Crouch Idle 02 Looking Around.fbx"
+ },
+ "BASH": {
+  "file": "BASH.json",
+  "bytes": 92815,
+  "dur": 4,
+  "keys": 24,
+  "bones": 52,
+  "src": "Bash.fbx"
+ },
+ "DANCING__1_": {
+  "file": "DANCING__1_.json",
+  "bytes": 90047,
+  "dur": 8.1,
+  "keys": 24,
+  "bones": 52,
+  "src": "Dancing (1).fbx"
+ },
+ "DANCING__2_": {
+  "file": "DANCING__2_.json",
+  "bytes": 93108,
+  "dur": 12.3667,
+  "keys": 24,
+  "bones": 52,
+  "src": "Dancing (2).fbx"
+ },
+ "DANCING_TWERK": {
+  "file": "DANCING_TWERK.json",
+  "bytes": 93116,
+  "dur": 15.2,
+  "keys": 24,
+  "bones": 52,
+  "src": "Dancing Twerk.fbx"
+ },
+ "HOUSE_DANCING": {
+  "file": "HOUSE_DANCING.json",
+  "bytes": 92957,
+  "dur": 21.3667,
+  "keys": 24,
+  "bones": 52,
+  "src": "House Dancing.fbx"
+ },
+ "CH24_NONPBR": {
+  "file": "CH24_NONPBR.json",
+  "bytes": 84640,
+  "dur": 0.0333,
+  "keys": 24,
+  "bones": 52,
+  "src": "Ch24_nonPBR.fbx"
+ },
+ "CH06_NONPBR": {
+  "file": "CH06_NONPBR.json",
+  "bytes": 75616,
+  "dur": 0.0333,
+  "keys": 24,
+  "bones": 52,
+  "src": "Ch06_nonPBR.fbx"
+ },
+ "CH44_NONPBR": {
+  "file": "CH44_NONPBR.json",
+  "bytes": 85240,
+  "dur": 0.0333,
+  "keys": 24,
+  "bones": 52,
+  "src": "Ch44_nonPBR.fbx"
+ },
+ "ZONE_SLIDE_IN_TEST": {
+  "file": "ZONE_SLIDE_IN_TEST.json",
+  "bytes": 52539,
+  "dur": 2.25,
+  "keys": 28,
+  "via": "text_to_clip/momask",
+  "prompt": "a person crouches low and slides forward along the ground then stands up",
+  "bones": 17
+ },
+ "ZONE_SLIDE_IN_A": {
+  "file": "ZONE_SLIDE_IN_A.json",
+  "bytes": 52402,
+  "dur": 2.4,
+  "keys": 28,
+  "via": "text_to_clip/momask",
+  "prompt": "a person crouches low and slides forward along the ground then stands up",
+  "bones": 17
+ },
+ "ZONE_SLIDE_IN_B": {
+  "file": "ZONE_SLIDE_IN_B.json",
+  "bytes": 52486,
+  "dur": 2.4,
+  "keys": 28,
+  "via": "text_to_clip/momask",
+  "prompt": "a person dives forward onto their stomach, slides, and pushes up to their feet",
+  "bones": 17
+ },
+ "ZONE_SLIDE_IN_C": {
+  "file": "ZONE_SLIDE_IN_C.json",
+  "bytes": 52400,
+  "dur": 3.25,
+  "keys": 28,
+  "via": "text_to_clip/momask",
+  "prompt": "a person drops to their knees, scrambles forward on all fours and rises",
+  "bones": 17
+ },
+ "ZONE_DUCK_A": {
+  "file": "ZONE_DUCK_A.json",
+  "bytes": 52472,
+  "dur": 2.1,
+  "keys": 28,
+  "via": "text_to_clip/momask",
+  "prompt": "a person bends forward at the waist and steps through a narrow opening",
+  "bones": 17
+ },
+ "ZONE_DUCK_B": {
+  "file": "ZONE_DUCK_B.json",
+  "bytes": 52236,
+  "dur": 2.15,
+  "keys": 28,
+  "via": "text_to_clip/momask",
+  "prompt": "a person crouches and ducks their head under a low bar, stepping through",
+  "bones": 17
+ },
+ "ZONE_DUCK_C": {
+  "file": "ZONE_DUCK_C.json",
+  "bytes": 52364,
+  "dur": 2.6,
+  "keys": 28,
+  "via": "text_to_clip/momask",
+  "prompt": "a person lifts one leg high over a low barrier and steps across",
+  "bones": 17
+ },
+ "ZONE_DROP_A": {
+  "file": "ZONE_DROP_A.json",
+  "bytes": 52319,
+  "dur": 1.6,
+  "keys": 28,
+  "via": "text_to_clip/momask",
+  "prompt": "a person steps off a low ledge, drops down and lands in a crouch",
+  "bones": 17
+ },
+ "ZONE_DROP_B": {
+  "file": "ZONE_DROP_B.json",
+  "bytes": 52566,
+  "dur": 2.2,
+  "keys": 28,
+  "via": "text_to_clip/momask",
+  "prompt": "a person hops down from a platform and absorbs the landing with bent knees",
+  "bones": 17
+ },
+ "ZONE_DROP_C": {
+  "file": "ZONE_DROP_C.json",
+  "bytes": 52427,
+  "dur": 2.2,
+  "keys": 28,
+  "via": "text_to_clip/momask",
+  "prompt": "a person jumps down backwards from a ledge and steadies themselves",
+  "bones": 17
+ },
+ "ZONE_PULLUP_A": {
+  "file": "ZONE_PULLUP_A.json",
+  "bytes": 52297,
+  "dur": 3.05,
+  "keys": 28,
+  "via": "text_to_clip/momask",
+  "prompt": "a person reaches up, grabs a ledge and pulls themselves up onto it",
+  "bones": 17
+ },
+ "ZONE_PULLUP_B": {
+  "file": "ZONE_PULLUP_B.json",
+  "bytes": 52404,
+  "dur": 3.15,
+  "keys": 28,
+  "via": "text_to_clip/momask",
+  "prompt": "a person climbs up onto a waist-high platform and stands",
+  "bones": 17
+ },
+ "ZONE_PULLUP_C": {
+  "file": "ZONE_PULLUP_C.json",
+  "bytes": 52446,
+  "dur": 2.65,
+  "keys": 28,
+  "via": "text_to_clip/momask",
+  "prompt": "a person steps up onto a raised edge and straightens up",
+  "bones": 17
+ },
+ "ZONE_ROLL_OUT_A": {
+  "file": "ZONE_ROLL_OUT_A.json",
+  "bytes": 52522,
+  "dur": 2.2,
+  "keys": 28,
+  "via": "text_to_clip/momask",
+  "prompt": "a person rolls sideways along the ground and comes up onto their feet",
+  "bones": 17
+ },
+ "ZONE_VAULT_A": {
+  "file": "ZONE_VAULT_A.json",
+  "bytes": 52297,
+  "dur": 1.95,
+  "keys": 28,
+  "via": "text_to_clip/momask",
+  "prompt": "a person vaults over a waist-high obstacle with one hand on top",
+  "bones": 17
+ },
+ "ZONE_CLIMB_A": {
+  "file": "ZONE_CLIMB_A.json",
+  "bytes": 52319,
+  "dur": 3.55,
+  "keys": 28,
+  "via": "text_to_clip/momask",
+  "prompt": "a person climbs up a tall structure hand over hand and stands at the top",
+  "bones": 17
+ },
+ "ZONE_MIDROPE_STEP": {
+  "file": "ZONE_MIDROPE_STEP.json",
+  "bytes": 52561,
+  "dur": 2.6,
+  "keys": 28,
+  "via": "text_to_clip/momask",
+  "prompt": "a person pushes two horizontal bars apart and steps between them",
+  "bones": 17
+ },
+ "ZONE_MIDROPE_POSE": {
+  "file": "ZONE_MIDROPE_POSE.json",
+  "bytes": 52549,
+  "dur": 3.85,
+  "keys": 28,
+  "via": "text_to_clip/momask",
+  "prompt": "a person steps through a gap, turns and raises both arms above their head",
+  "bones": 17
+ },
+ "ZONE_OVER_TOP_IN": {
+  "file": "ZONE_OVER_TOP_IN.json",
+  "bytes": 52514,
+  "dur": 1.55,
+  "keys": 28,
+  "via": "text_to_clip/momask",
+  "prompt": "a person lifts one leg high over a chest-high barrier and climbs across",
+  "bones": 17
+ },
+ "ZONE_APRON_HOP": {
+  "file": "ZONE_APRON_HOP.json",
+  "bytes": 52430,
+  "dur": 3.1,
+  "keys": 28,
+  "via": "text_to_clip/momask",
+  "prompt": "a person hops up onto a low platform and stands facing forward",
+  "bones": 17
+ },
+ "ZONE_VAULT_IN": {
+  "file": "ZONE_VAULT_IN.json",
+  "bytes": 52334,
+  "dur": 1.7,
+  "keys": 28,
+  "via": "text_to_clip/momask",
+  "prompt": "a person places both hands on a barrier and vaults over it feet first",
+  "bones": 17
+ },
+ "ZONE_ROLL_IN": {
+  "file": "ZONE_ROLL_IN.json",
+  "bytes": 52345,
+  "dur": 2.75,
+  "keys": 28,
+  "via": "text_to_clip/momask",
+  "prompt": "a person dives forward into a shoulder roll and comes up kneeling",
+  "bones": 17
+ },
+ "ZONE_RUN_SLIDE_IN": {
+  "file": "ZONE_RUN_SLIDE_IN.json",
+  "bytes": 52548,
+  "dur": 3.8,
+  "keys": 28,
+  "via": "text_to_clip/momask",
+  "prompt": "a person runs forward then drops and slides along the ground",
+  "bones": 17
+ },
+ "ZONE_OVER_TOP_OUT": {
+  "file": "ZONE_OVER_TOP_OUT.json",
+  "bytes": 52439,
+  "dur": 2.1,
+  "keys": 28,
+  "via": "text_to_clip/momask",
+  "prompt": "a person swings one leg over a chest-high barrier and drops to the ground",
+  "bones": 17
+ },
+ "ZONE_ROLL_OUT_B": {
+  "file": "ZONE_ROLL_OUT_B.json",
+  "bytes": 52376,
+  "dur": 2.1,
+  "keys": 28,
+  "via": "text_to_clip/momask",
+  "prompt": "a person rolls forward off a low edge and lands on their feet",
+  "bones": 17
+ },
+ "ZONE_SLIDE_OUT": {
+  "file": "ZONE_SLIDE_OUT.json",
+  "bytes": 52586,
+  "dur": 3.0,
+  "keys": 28,
+  "via": "text_to_clip/momask",
+  "prompt": "a person lies down and slides backwards off a low platform",
+  "bones": 17
+ },
+ "ZONE_CLIMB_B": {
+  "file": "ZONE_CLIMB_B.json",
+  "bytes": 52353,
+  "dur": 4.3,
+  "keys": 28,
+  "via": "text_to_clip/momask",
+  "prompt": "a person climbs up three steps of a ladder and balances at the top",
+  "bones": 17
+ },
+ "ZONE_PERCH_POSE": {
+  "file": "ZONE_PERCH_POSE.json",
+  "bytes": 52518,
+  "dur": 3.45,
+  "keys": 28,
+  "via": "text_to_clip/momask",
+  "prompt": "a person stands on a high narrow platform and raises both fists",
+  "bones": 17
+ },
+ "LOCO_STALK": {
+  "file": "LOCO_STALK.json",
+  "bytes": 52414,
+  "dur": 2.35,
+  "keys": 28,
+  "via": "text_to_clip/momask",
+  "prompt": "a person walks forward slowly and heavily with shoulders hunched",
+  "bones": 17
+ },
+ "LOCO_STRUT": {
+  "file": "LOCO_STRUT.json",
+  "bytes": 52532,
+  "dur": 2.9,
+  "keys": 28,
+  "via": "text_to_clip/momask",
+  "prompt": "a person walks forward with an arrogant swagger, chest out",
+  "bones": 17
+ },
+ "LOCO_PROWL": {
+  "file": "LOCO_PROWL.json",
+  "bytes": 52370,
+  "dur": 2.55,
+  "keys": 28,
+  "via": "text_to_clip/momask",
+  "prompt": "a person paces forward in a low crouch like a hunting animal",
+  "bones": 17
+ },
+ "LOCO_LIGHT": {
+  "file": "LOCO_LIGHT.json",
+  "bytes": 52354,
+  "dur": 2.2,
+  "keys": 28,
+  "via": "text_to_clip/momask",
+  "prompt": "a person bounces forward on the balls of their feet",
+  "bones": 17
+ },
+ "LOCO_LUMBER": {
+  "file": "LOCO_LUMBER.json",
+  "bytes": 52353,
+  "dur": 2.7,
+  "keys": 28,
+  "via": "text_to_clip/momask",
+  "prompt": "a very heavy person walks forward with slow ponderous steps",
+  "bones": 17
+ },
+ "STANCE_WIDE": {
+  "file": "STANCE_WIDE.json",
+  "bytes": 52598,
+  "dur": 2.8,
+  "keys": 28,
+  "via": "text_to_clip/momask",
+  "prompt": "a person stands with feet wide apart and arms held out from the body",
+  "bones": 17
+ },
+ "STANCE_CROUCH": {
+  "file": "STANCE_CROUCH.json",
+  "bytes": 52299,
+  "dur": 2.15,
+  "keys": 28,
+  "via": "text_to_clip/momask",
+  "prompt": "a person crouches low with knees bent and hands forward ready to grapple",
+  "bones": 17
+ },
+ "STANCE_BLADED": {
+  "file": "STANCE_BLADED.json",
+  "bytes": 52301,
+  "dur": 2.8,
+  "keys": 28,
+  "via": "text_to_clip/momask",
+  "prompt": "a person stands side on with one shoulder forward and fists raised",
+  "bones": 17
+ },
+ "GUARD_HIGH": {
+  "file": "GUARD_HIGH.json",
+  "bytes": 52320,
+  "dur": 2.2,
+  "keys": 28,
+  "via": "text_to_clip/momask",
+  "prompt": "a person raises both fists beside their head and tucks their chin",
+  "bones": 17
+ },
+ "GUARD_LOW": {
+  "file": "GUARD_LOW.json",
+  "bytes": 52540,
+  "dur": 2.8,
+  "keys": 28,
+  "via": "text_to_clip/momask",
+  "prompt": "a person holds both hands low in front of their waist, knees bent",
+  "bones": 17
+ },
+ "TAUNT_CALLOUT": {
+  "file": "TAUNT_CALLOUT.json",
+  "bytes": 52519,
+  "dur": 3.25,
+  "keys": 28,
+  "via": "text_to_clip/momask",
+  "prompt": "a person beckons someone forward with both hands, shouting",
+  "bones": 17
+ },
+ "TAUNT_ARMS_WIDE": {
+  "file": "TAUNT_ARMS_WIDE.json",
+  "bytes": 52509,
+  "dur": 3.6,
+  "keys": 28,
+  "via": "text_to_clip/momask",
+  "prompt": "a person spreads both arms wide and tilts their head back",
+  "bones": 17
+ },
+ "TAUNT_POINT": {
+  "file": "TAUNT_POINT.json",
+  "bytes": 52463,
+  "dur": 3.1,
+  "keys": 28,
+  "via": "text_to_clip/momask",
+  "prompt": "a person points forward aggressively with one arm extended",
+  "bones": 17
+ },
+ "TAUNT_FLEX": {
+  "file": "TAUNT_FLEX.json",
+  "bytes": 52473,
+  "dur": 3.6,
+  "keys": 28,
+  "via": "text_to_clip/momask",
+  "prompt": "a person flexes both arms in a bodybuilder pose",
+  "bones": 17
+ },
+ "TIGER_FEINT_KICK": {
+  "file": "TIGER_FEINT_KICK.json",
+  "bytes": 47066,
+  "dur": 4.2167,
+  "keys": 28,
+  "bones": 14,
+  "src": "owner capture"
+ },
+ "TIGER_FEINT_KICK__RECV": {
+  "file": "TIGER_FEINT_KICK__RECV.json",
+  "bytes": 47100,
+  "dur": 4.7186,
+  "keys": 28,
+  "bones": 14,
+  "src": "owner capture"
+ },
+ "JUNGLE_JUICE": {
+  "file": "JUNGLE_JUICE.json",
+  "bytes": 53742,
+  "dur": 2.1498,
+  "keys": 32,
+  "bones": 14,
+  "src": "c3bf291a-Edited_20260801_104320.mp4",
+  "via": "video_to_clip/mediapipe/two-body",
+  "role": "attacker",
+  "coverage": "50/66",
+  "coverFrac": 0.758,
+  "lowCoverage": false,
+  "roleBy": "travel (who closed the distance)"
+ },
+ "JUNGLE_JUICE__RECV": {
+  "file": "JUNGLE_JUICE__RECV.json",
+  "bytes": 53709,
+  "dur": 0.9591,
+  "keys": 32,
+  "bones": 14,
+  "src": "c3bf291a-Edited_20260801_104320.mp4",
+  "via": "video_to_clip/mediapipe/two-body",
+  "role": "receiver",
+  "coverage": "18/66",
+  "coverFrac": 0.273,
+  "lowCoverage": true,
+  "roleBy": "travel (who closed the distance)"
+ },
+ "TZ_SCOOP_SLAM": {
+  "file": "TZ_SCOOP_SLAM.json",
+  "bytes": 46775,
+  "dur": 17.4333,
+  "keys": 28,
+  "bones": 14,
+  "src": "1978662832884143.mp4",
+  "via": "video_to_clip/mediapipe/two-body",
+  "role": "attacker",
+  "coverage": "59/524",
+  "coverFrac": 0.113,
+  "lowCoverage": true,
+  "roleBy": "inversion (head below hip)"
+ },
+ "TZ_SCOOP_SLAM__RECV": {
+  "file": "TZ_SCOOP_SLAM__RECV.json",
+  "bytes": 46809,
+  "dur": 2.8,
+  "keys": 28,
+  "bones": 14,
+  "src": "1978662832884143.mp4",
+  "via": "video_to_clip/mediapipe/two-body",
+  "role": "receiver",
+  "coverage": "83/85",
+  "coverFrac": 0.976,
+  "lowCoverage": false,
+  "roleBy": "inversion (head below hip)"
+ },
+ "TZ_TILT_WHIRL_SLAM": {
+  "file": "TZ_TILT_WHIRL_SLAM.json",
+  "bytes": 46775,
+  "dur": 17.4333,
+  "keys": 28,
+  "bones": 14,
+  "src": "1978662832884143.mp4",
+  "via": "video_to_clip/mediapipe/two-body",
+  "role": "attacker",
+  "coverage": "59/524",
+  "coverFrac": 0.113,
+  "lowCoverage": true,
+  "roleBy": "inversion (head below hip)"
+ },
+ "TZ_TILT_WHIRL_SLAM__RECV": {
+  "file": "TZ_TILT_WHIRL_SLAM__RECV.json",
+  "bytes": 47044,
+  "dur": 1.8,
+  "keys": 28,
+  "bones": 14,
+  "src": "1978662832884143.mp4",
+  "via": "video_to_clip/mediapipe/two-body",
+  "role": "receiver",
+  "coverage": "46/60",
+  "coverFrac": 0.767,
+  "lowCoverage": false,
+  "roleBy": "inversion (head below hip)"
+ }
+}

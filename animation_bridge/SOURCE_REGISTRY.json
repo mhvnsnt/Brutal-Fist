@@ -1,0 +1,34 @@
+{
+  "version": 2,
+  "description": "Bannon animation source registry. Local motion bank plus Mixamo fill. Owner granted use of mhvnsnt motion, Schwarzerblitz engine, NightSky, and Tekken research for Brutal Fist.",
+  "canonical_bone_set": [
+    "Hips", "Spine", "Chest", "Neck", "Head",
+    "LUpperArm", "LForeArm", "LHand",
+    "RUpperArm", "RForeArm", "RHand",
+    "LUpperLeg", "LLowerLeg", "LFoot",
+    "RUpperLeg", "RLowerLeg", "RFoot"
+  ],
+  "semantic_states": [
+    "idle", "walk_forward", "walk_back", "strafe_left", "strafe_right",
+    "attack_1", "attack_2", "block", "hit_reaction", "knockdown", "getup",
+    "grapple", "crouch", "run", "dash_forward", "backdash", "victory", "defeat", "taunt"
+  ],
+  "sources": [
+    { "id": "bannon-idle", "file": "/motion/IDLE.json", "semantic_state": "idle", "source_convention": "mixamo", "license": "owner-granted", "provenance": "mhvnsnt/Bannon assets/moves/clips" },
+    { "id": "bannon-walk", "file": "/motion/DWARF_WALK.json", "semantic_state": "walk_forward", "source_convention": "mixamo", "license": "owner-granted", "provenance": "mhvnsnt/Bannon" },
+    { "id": "bannon-jab", "file": "/motion/BOXING.json", "semantic_state": "attack_1", "source_convention": "mixamo", "license": "owner-granted", "provenance": "mhvnsnt/Bannon" },
+    { "id": "bannon-kick", "file": "/motion/HURRICANE_KICK.json", "semantic_state": "attack_2", "source_convention": "mixamo", "license": "owner-granted", "provenance": "mhvnsnt/Bannon" },
+    { "id": "bannon-block", "file": "/motion/CENTER_BLOCK.json", "semantic_state": "block", "source_convention": "mixamo", "license": "owner-granted", "provenance": "mhvnsnt/Bannon" },
+    { "id": "bannon-hit", "file": "/motion/HIT_REACTION.json", "semantic_state": "hit_reaction", "source_convention": "mixamo", "license": "owner-granted", "provenance": "mhvnsnt/Bannon" },
+    { "id": "bannon-kd", "file": "/motion/FALLING_FLAT_IMPACT.json", "semantic_state": "knockdown", "source_convention": "mixamo", "license": "owner-granted", "provenance": "mhvnsnt/Bannon" },
+    { "id": "bannon-getup", "file": "/motion/KIP_UP.json", "semantic_state": "getup", "source_convention": "mixamo", "license": "owner-granted", "provenance": "mhvnsnt/Bannon" },
+    { "id": "bannon-suplex", "file": "/motion/SUPLEX.json", "semantic_state": "grapple", "source_convention": "mixamo", "license": "owner-granted", "provenance": "mhvnsnt/Bannon" },
+    { "id": "mixamo-fill", "file": "src/engine/retarget/MixamoFightingMotionBank.ts", "semantic_state": "idle", "source_convention": "mixamo", "license": "generated-fill", "provenance": "Mixamo-named quaternion fill for missing states" }
+  ],
+  "notes": [
+    "Local /motion/*.json copies of mhvnsnt/Bannon motion bank.",
+    "SchwarzerblitzEngine (AndreaJens, BSD-3) is engine/reference — fight bytes are Bannon.",
+    "NightSkyEngine and Tekken research remain architecture/frame-data references.",
+    "Select-screen portraits use /portraits/concept (HQ). In-game HUD uses /portraits/pixel."
+  ]
+}

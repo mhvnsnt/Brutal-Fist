@@ -1,0 +1,77 @@
+3 big issues that need to be fixed with open source and 1 question need to be answered, u know how we were going for plugins and triangles decimated and such type models? Maime base model carries that perfectly in game still and that needs to be done across all characters, with option for norma poly count and etc fir characters too like how I said we had default how maimes graphics are, option for 8 bit, and option for high res normal models, etc, it should be in conversation and repo and dev conversation if u are not creating a dev conversation between us or adding to the file u are breaking a agents MD rule, also u have destroyed the Bannon mesh and model and now his topology gas shred u need to fix those regressions and his model list the triangle count maime has still, but maime lost his texture on his model, and all other models are fine but don't have the low poly count and resolution maime and the default models are supposed to have and that maimae has still. And in combat model bideies are facing away from opponent, twisted, and torn apart, use open source fixes and fixes from Tekken and night sky engine and swarcherblitz and etc to fix the repos and games I have access to and You don’t need to reinvent the wheel to fix these WebGL rendering issues. The open-source community has already solved the skeleton desync, bounding box math, and fighting game state architecture.
+Here are the exact repositories and packages you need to have Rocket pull into the Brutal Fist Next.js stack. They handle the heavy lifting without touching your models' geometry or poly count.
+1. The Skeleton & Asset Pipeline (Fixing the Tears)
+These tools directly intercept how React Three Fiber handles rigged GLB files so they stop exploding.
+ * three-stdlib: Contains SkeletonUtils. This is mandatory. It is the only reliable way in Three.js to clone a rigged GLB for Player 1 and Player 2 without the bone matrices detaching from the skin.
+ * gltf-pipeline: A Node.js CLI tool by Cesium. Have Rocket run your raw Bannon GLBs through this. It can automatically clamp your vertex weights to the WebGL 4-bone limit and optimize the data buffers before the engine even sees the file.
+ * gltfjsx: Run this against your models to generate a strict React component tree. It exposes every single bone and node by name in the code, so Rocket never has to guess what the skeleton hierarchy looks like.
+ * @pixiv/three-vrm: The absolute gold standard for humanoid skeletons in WebGL. You don't need to use their anime models, but Rocket should study and pull their bone-mapping architecture to see how to normalize different skeletons onto a master rig.
+2. Hitboxes & Collision Math
+Do not try to build a physics engine from scratch in React. Pull these to handle bone-to-bone collision accurately.
+ * three-mesh-bvh: (Bounding Volume Hierarchy). This is the secret weapon for web games. It allows insanely fast, pixel-perfect spatial queries and hit detection on 3D meshes without melting a mobile processor. This is how you attach hitboxes to wrists and ankles.
+ * miniplex: A lightweight Entity Component System (ECS) built for React. It completely decouples your combat math (health, states, hitbox frames) from the visual rendering loop. This ensures touch inputs don't drop if the frame rate dips.
+ * xstate: A strict visual state machine. Fighting games live and die by state logic. This stops a character from playing a punch animation when the engine knows they are currently in a "crumpled" or "airborne" state.
+3. Fighting Game Architecture (The Blueprints)
+You mentioned having the repos for Schwarzerblitz and Night Sky Engine, but here is exactly what Rocket needs to extract from them, plus one more.
+ * Castagne: An open-source fighting game engine. Pull their input buffer logic. It shows exactly how to read a button press (like holding Block), hold it in memory for 10 frames, and execute it the millisecond the character recovers from being hit.
+ * Night Sky Engine: Look exclusively at their deterministic rollback architecture. You just need to see how they separate the visual 3D render from the raw math timeline so they never desync.
+ * Schwarzerblitz: Pull their specific math for Hit Stop (the micro-freeze on impact) and Juggle Gravity (how fast a character falls after being launched).
+4. Mobile Polish & Camera
+ * theatre.js: The ultimate animation sequencing tool for React Three Fiber. Pull this in to handle the cinematic, sweeping camera movements on your Stage Select screen without writing complex sine-wave math from scratch.
+ * howler.js: The audio manager. Browsers handle multiple audio tracks horribly. This manages the BGM, the Announcer, and the impact sounds seamlessly.
+ * @use-gesture/react: Replaces standard React onClick events. It handles complex multi-touch mobile inputs flawlessly, so if a player is holding Left on the D-pad and simultaneously tapping the Heavy Attack button, the browser doesn't drop the input.
+The Directive for Rocket
+You can drop this directly to Rocket to get the stack updated:
+> "Update the Brutal Fist dependencies to stabilize the 3D rendering and combat state.
+>  * SKELETON FIX: Install three-stdlib and implement SkeletonUtils.clone() for all character instantiation to fix the SkinnedMesh desync.
+>  * COMPONENT MAPPING: Use gltfjsx to generate strict TSX components for the Bannon and Maime GLBs so bone references are explicit.
+>  * HIT DETECTION: Install three-mesh-bvh to handle fast, mobile-friendly collision checks on the bone-parented hitboxes.
+>  * COMBAT STATE: Implement xstate or miniplex to govern the fighting game action state machine strictly outside of the R3F useFrame loop.
+>  * MOBILE INPUT: Install @use-gesture/react to guarantee zero dropped inputs when the user is pressing the D-pad and action buttons simultaneously."
+> 
+To fix the skin and joint tearing without altering your poly count or the PS1-style aesthetic, we have to address the math binding the mesh to the skeleton. The polygons aren't the problem; the weight distribution and WebGL limitations are.
+In a Next.js / React Three Fiber stack, 3D models break visually when the GLB file violates the strict rules of web rendering. To perfect the models non-destructively, you need to enforce these specific rules on the assets and the code.
+1. The WebGL 4-Bone Limit (Fixing "Spikey" Meshes)
+If your characters look like their skin is stretching or shooting spikes across the screen during a punch, it is because WebGL engines have a hard cap: a single vertex can only be influenced by a maximum of 4 bones.
+ * The Asset Fix: Before you export your Bannon or Maime GLBs, you must clean the weight paint. In Blender (or your 3D software), go to Weight Paint mode and run the "Limit Total" operation set to 4.
+ * Normalize Weights: Run a "Normalize All" command. Every vertex’s bone influences must equal exactly 1.0. If it equals 0.99, the WebGL renderer guesses the rest, which causes visual tearing at the joints (knees, elbows, shoulders).
+2. Zeroing the Armature (Fixing Displaced Limbs)
+If the model loads with a twisted torso or floats off the ground, the armature's base transforms were not frozen before export.
+ * The Asset Fix: The Root Bone of the skeleton must sit exactly at X: 0, Y: 0, Z: 0.
+ * Before exporting the GLB, you must apply all transforms (Location, Rotation, Scale). The skeleton’s scale must be exactly 1.0 on all axes, and rotation must be 0. If the rotation is left at 90 on export, the R3F engine will multiply that rotation twice, snapping the character in half.
+3. Disabling Frustum Culling (Fixing Disappearing Body Parts)
+In standard R3F, if the camera stops looking at the exact center of a mesh (the root bone), the engine tries to save memory by turning that mesh invisible. In fighting games, where a character's fist or foot might stretch far away from their root, this causes arms and legs to flicker or vanish mid-attack.
+ * The Code Fix: You must explicitly tell Rocket to bypass this optimization for the fighters.
+The Directive for Rocket
+While you lock in the 4-bone limit on the GLB files, feed this exact prompt to Rocket to ensure the renderer handles the skinned meshes flawlessly without altering the geometry:
+> "We need to perfect the SkinnedMesh rendering for the fighters without altering their geometry, poly count, or visual style.
+>  * PREVENT MESH FLICKERING (CULLING FIX): Skinned meshes in fighting games often stretch beyond their bounding boxes during heavy attacks. Traverse the cloned GLTF scene and force frustumCulled = false on every THREE.SkinnedMesh so body parts do not disappear when the root bone leaves the center of the camera.
+>  * PRESERVE MATERIALS: Do not alter or replace any of the existing materials or textures on the meshes. Ensure mesh.material.skinning = true is explicitly checked or set if the material requires it for WebGL rendering.
+>  * MAINTAIN CLONE ARCHITECTURE: Ensure the SkeletonUtils.clone() structure we established remains fully intact. Apply the culling fix directly to the cloned output before it mounts."
+> 
+By locking the weights in your exports and shutting off frustum culling in the code, the characters will animate exactly as intended—heavy, fluid, and visually intact.
+I need to perfect the skin, mesh, bones,joints, etc on our models while keeping brutal fist and its current style and amount of polygons the same but fixing the glitches not messing with the intended featuresI'm looking right at 1000168796.png. That is a classic web 3D engine nightmare. Your fighters are completely dismembered—torsos floating above the legs, and meshes displaced on the Y-axis.
+What This Glitch Is Called
+In 3D engineering, this is called SkinnedMesh Skeleton Desync (or Bind Matrix Corruption).
+When you load a rigged GLB character in React Three Fiber (R3F), the engine creates one instance of the mesh geometry and one instance of its Skeleton. When you try to spawn that exact same character twice (for P1 and P2), or when you load a modular character built from separate pieces (head, torso, legs), the default engine clone method copies the geometry but fails to clone the skeleton bindings properly.
+The bones get detached from the vertices, or the root transforms get applied twice. When the animation fires, it literally tears the character apart vertically.
+The AAA Fighting Game Architecture
+In Tekken or Schwarzerblitz, characters are heavily modular (you can swap pants, boots, and jackets). To prevent them from exploding, they use a Master Skeleton Architecture. The engine never loads five different skeletons for five clothing pieces. It loads one invisible Master Skeleton at the root, and every single sub-mesh rigidly binds its vertices to that exact master bone hierarchy.
+The Non-Destructive Fix for Brutal Fist (R3F)
+To merge this fix without destroying the useFrame animation mixer, the bounding box normalizations, and the state machine we just locked in, we have to bypass Three.js's native .clone() method entirely.
+We need to force R3F to mathematically rebuild the bone hierarchy for every character instance on the screen.
+Feed this exact prompt to Rocket so it patches the rendering pipeline non-destructively:
+> "CRITICAL FIX: We have a SkinnedMesh Skeleton Desync causing characters to visually separate. We need to implement a Master Skeleton clone without destroying the existing combat state machine.
+>  * NON-DESTRUCTIVE MERGE: Do not delete or alter the actionState, useAnimations, or the Box3 normalization logic inside FighterMesh.tsx.
+>  * IMPORT UTILS: Import SkeletonUtils from three-stdlib and useGraph from @react-three/fiber.
+>  * THE CLONE BYPASS: When useGLTF loads the character, you MUST clone it using SkeletonUtils inside a useMemo hook so it caches properly:
+>    const clone = useMemo(() => SkeletonUtils.clone(gltf.scene), [gltf.scene]);
+>  * EXTRACT GRAPH: Rebuild the valid bone hierarchy using:
+>    const { nodes, materials } = useGraph(clone);
+>  * RENDER: Use <primitive object={clone} /> inside the mesh container. This ensures that whether it's P1, P2, or a multi-part modular character, the SkinnedMesh stays perfectly glued to the correct Skeleton transforms."
+> 
+This forces the engine to recalculate the bind matrices correctly before it ever draws them to the screen. Once Rocket applies this, Bannon and Maime will snap back together instantly, and your animations will finally pull the whole body.
+Check out this Three.js bone breakdown to see exactly how these skeleton structures map to your character geometry under the hood.
+
+YouTube video views will be stored in your YouTube History, and your data will be stored and used by YouTube according to its Terms of Service
+I know we probably already talked about this. I can't find the conversation or where we talked about it. What's it called all the bone and mesh and skin and topology and stuff like that? Like when you're working on a video game and the models and the bones and limbs start twisting the wrong way and the meshes and textures start ripping and there's like tears in the model like holes and stuff like invisible pieces gone and stuff like that. Like what is that area of game development and model stuff and coding and game development and fixes and bugs called? Like what is that? And with the bones and having the bones and stuff fighting the right direction and orientating the right direction and stuff like when the pieces are like then joints and limbs are in pieces floating all over the place or the body parts are twisted all around in the wrong directions and stuff. And how to like fix that and perfect that and how do games like um Tekken and Switzer Blitz do it and Night Sky Engine do it and how do like games actually get that done and fixed because that's becoming the main problem in all of my games. The closer I get them to done that usually is the biggest problem that's keeping my game from looking good or being playable and I don't know how to fix it or what it's called.
