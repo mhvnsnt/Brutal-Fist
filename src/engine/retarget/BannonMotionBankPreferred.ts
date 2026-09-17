@@ -112,6 +112,7 @@ export function preferredSemanticManifest(): {
  *     and append 'grapple' to PREFERRED_REQUIRED_SEMANTIC_STATES.
  */
 export const GRAPPLE_SEMANTIC_VERDICT = 'MISSING_CLIP' as const;
+/** Hunt 2026-09-16: CDN/Drive/local/versioneight — all candidate filenames 404; see docs/GRAPPLE_MAPPING_REMEDIATION.md */
 export const GRAPPLE_REMEDIATION_CLIP_CANDIDATES = [
   'GRAPPLE_CLINCH.json',
   'CLINCH_INITIATE.json',
@@ -122,9 +123,13 @@ export const GRAPPLE_REMEDIATION_CLIP_CANDIDATES = [
 /** Rejected bank clips that look like grapple but must NOT be preferred-mapped. */
 export const GRAPPLE_REJECTED_BANK_CLIPS = {
   DOUBLE_LEG_TAKEDOWN___VICTIM: 'Mixamo 52-bone but VICTIM role — wrong semantic for initiate',
+  DOUBLE_LEG_TAKEDOWN___VICTIM__1_: 'Mixamo 52-bone but VICTIM role (duplicate FBX)',
   SUPLEX: 'Authored FBX but J_* 607-bone — 0-track bind on BANNON_rigged Mixamo',
   CHOKESLAM: 'Authored FBX but J_* 521-bone — incompatible with Mixamo roster GLBs',
   GERMANSUPLEX: 'Authored FBX but J_* 498-bone — incompatible',
   HAMMERTHROW: 'Authored FBX but J_* 499-bone — incompatible',
+  DDT: 'Authored FBX but J_* 712-bone — incompatible',
+  DOUBLESUPLEX: 'Authored FBX but J_* 871-bone — incompatible',
+  TZ_SCOOP_SLAM: 'MoMask/video-to-clip 14-bone — not authored preferred Euler',
   STANCE_CROUCH: 'MoMask text_to_clip — not authored; TEST_ONLY',
 } as const;
