@@ -14,6 +14,9 @@
 import type { CharacterMoveSet } from '../data/bannonRoster';
 import { getBannonFighter, getAllBannonFighters } from '../data/bannonRoster';
 import { getMoveById, getMovesByCategory, type MoveCategory, type BrutalFistMove } from './BrutalFistMoveCatalog';
+import type { FighterMotionState } from './retarget/AnimationController';
+import type { SpecialMoveDefinition, MoveWindow } from './combat/FighterStateMachine';
+import { MOVE_ID_TO_BANK_CLIPS } from './retarget/FighterMotionBank';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -248,4 +251,86 @@ export function importMoveSetConfig(
 
   customizedMoveSets.set(characterId, result);
   return result;
+}
+
+function motionForCatalogMove(move: BrutalFistMove): FighterMotionState {
+  if (move.category === 'kick') return move.low ? 'lightKick' : 'heavyKick';
+  if (move.category === 'combo') return 'lightAttack';
+  if (move.throw || move.category === 'throw' || move.category === 'grapple') return 'heavyAttack';
+  if (move.category === 'strike' && (move.startup ?? 10) <= 6) return 'lightAttack';
+  return 'heavyAttack';
+}
+
+function catalogToMoveWindow(move: BrutalFistMove): MoveWindow {
+  const fps = 60;
+  const startup = Math.max(0.08, (move.startup ?? 8) / fps);
+  const active = Math.max(0.08, (move.active ?? 3) / fps);
+  const recovery = Math.max(0.18, (move.recovery ?? 14) / fps);
+  return {
+    startup,
+    active,
+    recovery,
+    animation: motionForCatalogMove(move),
+    hitboxStartFrame: move.startup ?? 8,
+    hitboxEndFrame: (move.startup ?? 8) + (move.active ?? 3),
+    totalFrames: (move.startup ?? 0) + (move.active ?? 0) + (move.recovery ?? 0),
+    damage: Math.max(80, (move.damage ?? 12) * 10),
+    isSpecial: true,
+    specialName: move.displayName,
+    isThrow: !!move.throw,
+  };
+}
+
+/**
+ * Per-character specials from the Bannon kit (signature + combo + extras).
+ * Sequences are Tekken-style buffered taps so unique finishers actually fire.
+ */
+export function buildSpecialMovesForFighter(characterId: string): SpecialMoveDefinition[] {
+  const moveSet = getCharacterMoveSet(characterId);
+  const fighter = getBannonFighter(characterId);
+  if (!moveSet || !fighter) return [];
+
+  const specs: Array<{
+    id: string;
+    moveId: string | undefined;
+    sequence: Array<keyof import('./combat/FighterStateMachine').FighterInput>;
+  }> = [
+    { id: `${characterId}_signature`, moveId: moveSet.signature, sequence: ['heavy', 'heavy', 'light'] },
+    { id: `${characterId}_combo`, moveId: moveSet.primaryCombo, sequence: ['light', 'light', 'heavy'] },
+    { id: `${characterId}_extra1`, moveId: moveSet.extraMove1, sequence: ['light', 'heavy', 'light'] },
+    { id: `${characterId}_extra2`, moveId: moveSet.extraMove2, sequence: ['heavy', 'light', 'heavy'] },
+  ];
+
+  const out: SpecialMoveDefinition[] = [];
+  const seen = new Set<string>();
+  for (const spec of specs) {
+    if (!spec.moveId || seen.has(spec.moveId)) continue;
+    const move = getMoveById(spec.moveId);
+    const display = spec.moveId.replace(/^bf_/, '').replace(/_/g, ' ');
+    const window: MoveWindow = move
+      ? catalogToMoveWindow(move)
+      : {
+          startup: 0.18,
+          active: 0.16,
+          recovery: 0.52,
+          animation: MOVE_ID_TO_BANK_CLIPS[spec.moveId]?.[0]?.includes('KICK')
+            ? 'heavyKick'
+            : 'heavyAttack',
+          hitboxStartFrame: 11,
+          hitboxEndFrame: 21,
+          totalFrames: 52,
+          damage: 260,
+          isSpecial: true,
+          specialName: display,
+        };
+    if (!move && !MOVE_ID_TO_BANK_CLIPS[spec.moveId]) continue;
+    seen.add(spec.moveId);
+    out.push({
+      id: spec.id,
+      name: move?.displayName ?? display,
+      sequence: spec.sequence,
+      move: window,
+    });
+  }
+  return out;
 }

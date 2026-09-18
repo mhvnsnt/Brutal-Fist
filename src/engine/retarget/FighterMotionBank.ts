@@ -10,8 +10,23 @@ import { inferSemanticFromMotionKey } from './BannonEulerMotionAdapter';
 /** bf_* catalog IDs → Bannon motion-bank file stems (priority order). */
 export const MOVE_ID_TO_BANK_CLIPS: Record<string, string[]> = {
   bf_idle: ['BOX_IDLE', 'STANCE_WIDE', 'IDLE', 'STANCE_BLADED'],
+  bf_idle_wide: ['STANCE_WIDE', 'BOX_IDLE', 'IDLE'],
+  bf_idle_bladed: ['STANCE_BLADED', 'BOX_IDLE', 'IDLE'],
+  bf_idle_box: ['BOX_IDLE', 'STANCE_BLADED', 'IDLE'],
+  bf_idle_prowl: ['LOCO_PROWL', 'STANCE_BLADED', 'IDLE'],
+  bf_idle_drunk: ['DRUNK_IDLE_VARIATION', 'BOX_IDLE', 'IDLE'],
+  bf_idle_break: ['BREAKDANCE_READY', 'STANCE_WIDE', 'IDLE'],
   bf_walk_fwd: ['DWARF_WALK', 'LOCO_STRUT', 'LOCO_LIGHT', 'GINGA_FORWARD'],
+  bf_walk_lumber: ['LOCO_LUMBER', 'DWARF_WALK', 'LOCO_STRUT'],
+  bf_walk_strut: ['LOCO_STRUT', 'LOCO_LIGHT', 'DWARF_WALK'],
+  bf_walk_light: ['LOCO_LIGHT', 'LOCO_STRUT', 'GINGA_FORWARD'],
+  bf_walk_prowl: ['LOCO_STALK', 'LOCO_PROWL', 'GINGA_FORWARD'],
+  bf_walk_ginga: ['GINGA_FORWARD', 'LOCO_LIGHT', 'DWARF_WALK'],
+  bf_walk_drunk: ['DRUNK_WALK', 'DRUNK_RUN_FORWARD', 'DWARF_WALK'],
+  bf_walk_dwarf: ['DWARF_WALK', 'LOCO_LUMBER', 'LOCO_STRUT'],
   bf_walk_back: ['GINGA_BACKWARD', 'INJURED_RUN_BACKWARDS_RIGHT_TURN'],
+  bf_walk_back_ginga: ['GINGA_BACKWARD', 'INJURED_RUN_BACKWARDS_RIGHT_TURN'],
+  bf_walk_back_injured: ['INJURED_RUN_BACKWARDS_RIGHT_TURN', 'GINGA_BACKWARD'],
   bf_crouch: ['STANCE_CROUCH', 'CROUCH_IDLE_02_LOOKING_AROUND', 'CROUCH_WALK_FORWARD'],
   bf_guard: ['CENTER_BLOCK', 'GUARD_HIGH', 'GUARD_LOW', 'DEFENDER'],
 
@@ -33,6 +48,7 @@ export const MOVE_ID_TO_BANK_CLIPS: Record<string, string[]> = {
   bf_jab_cross: ['COMBO_PUNCH', 'BODY_JAB_CROSS', 'BOXING__2_'],
   bf_jab_cross_hook: ['COMBO_PUNCH', 'BOXING__3_', 'BOXING__2_'],
   bf_rush_combo: ['COMBO_PUNCH', 'BOXING__2_', 'BODY_JAB_CROSS'],
+  bf_kickbox_combo: ['COMBO_PUNCH', 'HURRICANE_KICK', 'BODY_JAB_CROSS'],
 
   bf_clinch: ['DOUBLE_LEG_TAKEDOWN___VICTIM', 'SUPLEX'],
   bf_powerbomb: ['CHOKESLAM', 'SUPLEX'],
@@ -57,8 +73,11 @@ export const MOVE_ID_TO_BANK_CLIPS: Record<string, string[]> = {
   bf_mars_counter: ['ESQUIVA_4', 'CORKSCREW_EVADE'],
 
   bf_knockdown: ['FALLING_FLAT_IMPACT', 'FALLING_FORWARD_DEATH', 'DEFEAT'],
+  bf_hard_knockdown: ['FALLING_FORWARD_DEATH', 'FALLING_FLAT_IMPACT', 'DEFEAT'],
   bf_wakeup: ['KIP_UP', 'CORKSCREW_KIP_UP', 'ACTION_IDLE_TO_STANDING_IDLE'],
+  bf_wakeup_kick: ['KIP_UP', 'CORKSCREW_KIP_UP', 'HURRICANE_KICK'],
   bf_hit_reaction: ['HIT_REACTION', 'HIT_TO_BODY', 'HIT_TO_HEAD'],
+  bf_heavy_hit_reaction: ['HIT_TO_HEAD', 'BIG_RIB_HIT', 'HIT_ON_THE_BACK'],
   bf_ko: ['DYING_BACKWARDS', 'DEFEAT', 'FALLING_FORWARD_DEATH'],
 
   bf_final_verdict: ['CHOKESLAM', 'GERMANSUPLEX'],

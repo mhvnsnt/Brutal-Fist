@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { type BannonFighterProfile } from '../data/bannonRoster';
 import { GameEngine } from '../engine/GameEngine';
-import { getCharacterMoveSet } from '../engine/CharacterMoveSetSystem';
+import { getCharacterMoveSet, buildSpecialMovesForFighter } from '../engine/CharacterMoveSetSystem';
 import { getMoveById } from '../engine/BrutalFistMoveCatalog';
 import { FighterState, type InputBitmask } from '../types';
 import MoveExecutionFeedback from './MoveExecutionFeedback';
@@ -18,7 +18,6 @@ import PostMatchScreen, { type RoundResult } from './PostMatchScreen';
 import {
   FighterStateMachine,
   type FighterInput as SMInput,
-  DEFAULT_SPECIAL_MOVES,
   COMMAND_THROW_MOVE,
 } from '../engine/combat/FighterStateMachine';
 import { FrameDataHitboxSystem } from '../engine/combat/FrameDataHitbox';
@@ -420,8 +419,8 @@ export default function GameBattleArena({
     // Reset state machines and hitbox systems for new match
     p1SMRef.current = new FighterStateMachine();
     p2SMRef.current = new FighterStateMachine();
-    p1SMRef.current.registerSpecialMoves(DEFAULT_SPECIAL_MOVES);
-    p2SMRef.current.registerSpecialMoves(DEFAULT_SPECIAL_MOVES);
+    p1SMRef.current.registerSpecialMoves(buildSpecialMovesForFighter(p1Fighter.id));
+    p2SMRef.current.registerSpecialMoves(buildSpecialMovesForFighter(p2Fighter.id));
     p1HitboxRef.current.reset();
     p2HitboxRef.current.reset();
 
@@ -2539,8 +2538,8 @@ export default function GameBattleArena({
                 p2LocoRef.current = new LocomotionSystem(1.8, 0, -1);
                 p1SMRef.current = new FighterStateMachine();
                 p2SMRef.current = new FighterStateMachine();
-                p1SMRef.current.registerSpecialMoves(DEFAULT_SPECIAL_MOVES);
-                p2SMRef.current.registerSpecialMoves(DEFAULT_SPECIAL_MOVES);
+                p1SMRef.current.registerSpecialMoves(buildSpecialMovesForFighter(p1Fighter.id));
+                p2SMRef.current.registerSpecialMoves(buildSpecialMovesForFighter(p2Fighter.id));
                 p1HitboxRef.current.reset();
                 p2HitboxRef.current.reset();
                 const freshP1Combo = createComboState('p1');

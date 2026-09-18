@@ -110,7 +110,7 @@ export const BANNON_ROSTER: readonly BannonFighterProfile[] = [
     model: 'BANNON_rigged.glb',
     portraitUrl: `${BANNON_RAW}/BANNON_rigged.glb`,
     defaultMoveSet: {
-      idle: 'bf_idle', walkForward: 'bf_walk_fwd', walkBackward: 'bf_walk_back',
+      idle: 'bf_idle_wide', walkForward: 'bf_walk_lumber', walkBackward: 'bf_walk_back_injured',
       crouch: 'bf_crouch', guard: 'bf_guard',
       lightAttack: 'bf_jab', heavyAttack: 'bf_cross',
       lowKick: 'bf_low_kick', highKick: 'bf_high_kick',
@@ -144,7 +144,7 @@ export const BANNON_ROSTER: readonly BannonFighterProfile[] = [
     pronouns: 'he/him',
     portraitUrl: `${BANNON_RAW}/MAIME_skinned.glb`,
     defaultMoveSet: {
-      idle: 'bf_idle', walkForward: 'bf_walk_fwd', walkBackward: 'bf_walk_back',
+      idle: 'bf_idle_bladed', walkForward: 'bf_walk_ginga', walkBackward: 'bf_walk_back_ginga',
       crouch: 'bf_crouch', guard: 'bf_guard',
       lightAttack: 'bf_jab', heavyAttack: 'bf_elbow',
       lowKick: 'bf_low_kick', highKick: 'bf_mid_kick',
@@ -177,7 +177,7 @@ export const BANNON_ROSTER: readonly BannonFighterProfile[] = [
     model: 'ONYX_street.glb',
     portraitUrl: `${BANNON_RAW}/ONYX_street.glb`,
     defaultMoveSet: {
-      idle: 'bf_idle', walkForward: 'bf_walk_fwd', walkBackward: 'bf_walk_back',
+      idle: 'bf_idle_wide', walkForward: 'bf_walk_dwarf', walkBackward: 'bf_walk_back_injured',
       crouch: 'bf_crouch', guard: 'bf_guard',
       lightAttack: 'bf_chop', heavyAttack: 'bf_hook',
       lowKick: 'bf_low_kick', highKick: 'bf_high_kick',
@@ -211,7 +211,7 @@ export const BANNON_ROSTER: readonly BannonFighterProfile[] = [
     attire: 'Ring',
     portraitUrl: `${BANNON_RAW}/CAIN_ELIAS_ring.glb`,
     defaultMoveSet: {
-      idle: 'bf_idle', walkForward: 'bf_walk_fwd', walkBackward: 'bf_walk_back',
+      idle: 'bf_idle_box', walkForward: 'bf_walk_strut', walkBackward: 'bf_walk_back',
       crouch: 'bf_crouch', guard: 'bf_guard',
       lightAttack: 'bf_elbow', heavyAttack: 'bf_uppercut',
       lowKick: 'bf_low_kick', highKick: 'bf_mid_kick',
@@ -244,7 +244,7 @@ export const BANNON_ROSTER: readonly BannonFighterProfile[] = [
     model: 'STICKUP.glb',
     portraitUrl: `${BANNON_RAW}/STICKUP.glb`,
     defaultMoveSet: {
-      idle: 'bf_idle', walkForward: 'bf_walk_fwd', walkBackward: 'bf_walk_back',
+      idle: 'bf_idle_bladed', walkForward: 'bf_walk_light', walkBackward: 'bf_walk_back',
       crouch: 'bf_crouch', guard: 'bf_guard',
       lightAttack: 'bf_jab', heavyAttack: 'bf_cross',
       lowKick: 'bf_low_kick', highKick: 'bf_spinning_kick',
@@ -277,7 +277,7 @@ export const BANNON_ROSTER: readonly BannonFighterProfile[] = [
     model: 'CIPHER_feral.glb',
     portraitUrl: `${BANNON_RAW}/CIPHER_feral.glb`,
     defaultMoveSet: {
-      idle: 'bf_idle', walkForward: 'bf_walk_fwd', walkBackward: 'bf_walk_back',
+      idle: 'bf_idle_prowl', walkForward: 'bf_walk_prowl', walkBackward: 'bf_walk_back_ginga',
       crouch: 'bf_crouch', guard: 'bf_guard',
       lightAttack: 'bf_jab', heavyAttack: 'bf_elbow',
       lowKick: 'bf_low_kick', highKick: 'bf_spinning_kick',
@@ -310,7 +310,7 @@ export const BANNON_ROSTER: readonly BannonFighterProfile[] = [
     model: 'ECHO.glb',
     portraitUrl: `${BANNON_RAW}/ECHO.glb`,
     defaultMoveSet: {
-      idle: 'bf_idle', walkForward: 'bf_walk_fwd', walkBackward: 'bf_walk_back',
+      idle: 'bf_idle_bladed', walkForward: 'bf_walk_prowl', walkBackward: 'bf_walk_back_ginga',
       crouch: 'bf_crouch', guard: 'bf_guard',
       lightAttack: 'bf_jab', heavyAttack: 'bf_hook',
       lowKick: 'bf_dragon_screw', highKick: 'bf_shining_wizard',
@@ -344,7 +344,7 @@ export const BANNON_ROSTER: readonly BannonFighterProfile[] = [
     attire: 'Sober',
     portraitUrl: `${BANNON_RAW}/CODY_sober.glb`,
     defaultMoveSet: {
-      idle: 'bf_idle', walkForward: 'bf_walk_fwd', walkBackward: 'bf_walk_back',
+      idle: 'bf_idle_drunk', walkForward: 'bf_walk_drunk', walkBackward: 'bf_walk_back_injured',
       crouch: 'bf_crouch', guard: 'bf_guard',
       lightAttack: 'bf_jab', heavyAttack: 'bf_hook',
       lowKick: 'bf_low_kick', highKick: 'bf_mid_kick',
@@ -377,7 +377,7 @@ export const BANNON_ROSTER: readonly BannonFighterProfile[] = [
     model: 'HALL_NIGHTER.glb',
     portraitUrl: `${BANNON_RAW}/HALL_NIGHTER.glb`,
     defaultMoveSet: {
-      idle: 'bf_idle', walkForward: 'bf_walk_fwd', walkBackward: 'bf_walk_back',
+      idle: 'bf_idle_wide', walkForward: 'bf_walk_lumber', walkBackward: 'bf_walk_back_injured',
       crouch: 'bf_crouch', guard: 'bf_guard',
       lightAttack: 'bf_chop', heavyAttack: 'bf_discus_clothesline',
       lowKick: 'bf_low_kick', highKick: 'bf_high_kick',
@@ -410,7 +410,7 @@ export const BANNON_ROSTER: readonly BannonFighterProfile[] = [
     model: 'STATIC.glb',
     portraitUrl: `${BANNON_RAW}/STATIC.glb`,
     defaultMoveSet: {
-      idle: 'bf_idle', walkForward: 'bf_walk_fwd', walkBackward: 'bf_walk_back',
+      idle: 'bf_idle_break', walkForward: 'bf_walk_strut', walkBackward: 'bf_walk_back',
       crouch: 'bf_crouch', guard: 'bf_guard',
       lightAttack: 'bf_jab', heavyAttack: 'bf_spinning_kick',
       lowKick: 'bf_low_kick', highKick: 'bf_shining_wizard',
@@ -443,7 +443,7 @@ export const BANNON_ROSTER: readonly BannonFighterProfile[] = [
     model: 'VIPER.glb',
     portraitUrl: `${BANNON_RAW}/VIPER.glb`,
     defaultMoveSet: {
-      idle: 'bf_idle', walkForward: 'bf_walk_fwd', walkBackward: 'bf_walk_back',
+      idle: 'bf_idle_bladed', walkForward: 'bf_walk_light', walkBackward: 'bf_walk_back_ginga',
       crouch: 'bf_crouch', guard: 'bf_guard',
       lightAttack: 'bf_jab', heavyAttack: 'bf_elbow',
       lowKick: 'bf_low_kick', highKick: 'bf_spinning_kick',
@@ -476,7 +476,7 @@ export const BANNON_ROSTER: readonly BannonFighterProfile[] = [
     model: 'KOBRA.glb',
     portraitUrl: `${BANNON_RAW}/KOBRA.glb`,
     defaultMoveSet: {
-      idle: 'bf_idle', walkForward: 'bf_walk_fwd', walkBackward: 'bf_walk_back',
+      idle: 'bf_idle_box', walkForward: 'bf_walk_strut', walkBackward: 'bf_walk_back',
       crouch: 'bf_crouch', guard: 'bf_guard',
       lightAttack: 'bf_jab', heavyAttack: 'bf_hook',
       lowKick: 'bf_low_kick', highKick: 'bf_high_kick',
@@ -509,7 +509,7 @@ export const BANNON_ROSTER: readonly BannonFighterProfile[] = [
     model: 'AARON_RUBEN.glb',
     portraitUrl: `${BANNON_RAW}/AARON_RUBEN.glb`,
     defaultMoveSet: {
-      idle: 'bf_idle', walkForward: 'bf_walk_fwd', walkBackward: 'bf_walk_back',
+      idle: 'bf_idle_box', walkForward: 'bf_walk_strut', walkBackward: 'bf_walk_back',
       crouch: 'bf_crouch', guard: 'bf_guard',
       lightAttack: 'bf_jab', heavyAttack: 'bf_elbow',
       lowKick: 'bf_low_kick', highKick: 'bf_mid_kick',
@@ -542,7 +542,7 @@ export const BANNON_ROSTER: readonly BannonFighterProfile[] = [
     model: 'HOLLOW.glb',
     portraitUrl: `${BANNON_RAW}/HOLLOW.glb`,
     defaultMoveSet: {
-      idle: 'bf_idle', walkForward: 'bf_walk_fwd', walkBackward: 'bf_walk_back',
+      idle: 'bf_idle_prowl', walkForward: 'bf_walk_prowl', walkBackward: 'bf_walk_back_ginga',
       crouch: 'bf_crouch', guard: 'bf_guard',
       lightAttack: 'bf_jab', heavyAttack: 'bf_cross',
       lowKick: 'bf_low_kick', highKick: 'bf_shining_wizard',
@@ -576,7 +576,7 @@ export const BANNON_ROSTER: readonly BannonFighterProfile[] = [
     attire: 'Mustached Mogul',
     portraitUrl: `${BANNON_RAW}/EDWIN_KENNEDY.glb`,
     defaultMoveSet: {
-      idle: 'bf_idle', walkForward: 'bf_walk_fwd', walkBackward: 'bf_walk_back',
+      idle: 'bf_idle_wide', walkForward: 'bf_walk_lumber', walkBackward: 'bf_walk_back',
       crouch: 'bf_crouch', guard: 'bf_guard',
       lightAttack: 'bf_elbow', heavyAttack: 'bf_hook',
       lowKick: 'bf_low_kick', highKick: 'bf_mid_kick',
@@ -610,7 +610,7 @@ export const BANNON_ROSTER: readonly BannonFighterProfile[] = [
     attire: 'Minotaur Painted',
     portraitUrl: `${BANNON_RAW}/PABLO.glb`,
     defaultMoveSet: {
-      idle: 'bf_idle', walkForward: 'bf_walk_fwd', walkBackward: 'bf_walk_back',
+      idle: 'bf_idle_wide', walkForward: 'bf_walk_lumber', walkBackward: 'bf_walk_back_injured',
       crouch: 'bf_crouch', guard: 'bf_guard',
       lightAttack: 'bf_chop', heavyAttack: 'bf_discus_clothesline',
       lowKick: 'bf_low_kick', highKick: 'bf_high_kick',
@@ -644,7 +644,7 @@ export const BANNON_ROSTER: readonly BannonFighterProfile[] = [
     attire: 'Wrestling Gear',
     portraitUrl: `${BANNON_RAW}/TYNESHIA.glb`,
     defaultMoveSet: {
-      idle: 'bf_idle', walkForward: 'bf_walk_fwd', walkBackward: 'bf_walk_back',
+      idle: 'bf_idle_bladed', walkForward: 'bf_walk_strut', walkBackward: 'bf_walk_back',
       crouch: 'bf_crouch', guard: 'bf_guard',
       lightAttack: 'bf_jab', heavyAttack: 'bf_hook',
       lowKick: 'bf_low_kick', highKick: 'bf_spinning_kick',
@@ -678,7 +678,7 @@ export const BANNON_ROSTER: readonly BannonFighterProfile[] = [
     attire: 'Default',
     portraitUrl: `${BANNON_RAW}/TRIPLE_XXX.glb`,
     defaultMoveSet: {
-      idle: 'bf_idle', walkForward: 'bf_walk_fwd', walkBackward: 'bf_walk_back',
+      idle: 'bf_idle_break', walkForward: 'bf_walk_light', walkBackward: 'bf_walk_back',
       crouch: 'bf_crouch', guard: 'bf_guard',
       lightAttack: 'bf_jab', heavyAttack: 'bf_elbow',
       lowKick: 'bf_low_kick', highKick: 'bf_shining_wizard',
@@ -711,7 +711,7 @@ export const BANNON_ROSTER: readonly BannonFighterProfile[] = [
     model: 'EL_TORO_DE_ORO.glb',
     portraitUrl: `${BANNON_RAW}/EL_TORO_DE_ORO.glb`,
     defaultMoveSet: {
-      idle: 'bf_idle', walkForward: 'bf_walk_fwd', walkBackward: 'bf_walk_back',
+      idle: 'bf_idle_wide', walkForward: 'bf_walk_dwarf', walkBackward: 'bf_walk_back_injured',
       crouch: 'bf_crouch', guard: 'bf_guard',
       lightAttack: 'bf_chop', heavyAttack: 'bf_discus_clothesline',
       lowKick: 'bf_low_kick', highKick: 'bf_shining_wizard',
@@ -745,7 +745,7 @@ export const BANNON_ROSTER: readonly BannonFighterProfile[] = [
     attire: 'Ring Gear',
     portraitUrl: `${BANNON_RAW}/STAN_COMBS_gear.glb`,
     defaultMoveSet: {
-      idle: 'bf_idle', walkForward: 'bf_walk_fwd', walkBackward: 'bf_walk_back',
+      idle: 'bf_idle_box', walkForward: 'bf_walk_strut', walkBackward: 'bf_walk_back',
       crouch: 'bf_crouch', guard: 'bf_guard',
       lightAttack: 'bf_jab', heavyAttack: 'bf_hook',
       lowKick: 'bf_low_kick', highKick: 'bf_mid_kick',
@@ -778,7 +778,7 @@ export const BANNON_ROSTER: readonly BannonFighterProfile[] = [
     model: 'BRUTUS.glb',
     portraitUrl: `${BANNON_RAW}/BRUTUS.glb`,
     defaultMoveSet: {
-      idle: 'bf_idle', walkForward: 'bf_walk_fwd', walkBackward: 'bf_walk_back',
+      idle: 'bf_idle_wide', walkForward: 'bf_walk_lumber', walkBackward: 'bf_walk_back_injured',
       crouch: 'bf_crouch', guard: 'bf_guard',
       lightAttack: 'bf_chop', heavyAttack: 'bf_discus_clothesline',
       lowKick: 'bf_low_kick', highKick: 'bf_high_kick',
@@ -811,7 +811,7 @@ export const BANNON_ROSTER: readonly BannonFighterProfile[] = [
     model: 'TITAN.glb',
     portraitUrl: `${BANNON_RAW}/TITAN.glb`,
     defaultMoveSet: {
-      idle: 'bf_idle', walkForward: 'bf_walk_fwd', walkBackward: 'bf_walk_back',
+      idle: 'bf_idle_wide', walkForward: 'bf_walk_dwarf', walkBackward: 'bf_walk_back_injured',
       crouch: 'bf_crouch', guard: 'bf_guard',
       lightAttack: 'bf_chop', heavyAttack: 'bf_hook',
       lowKick: 'bf_low_kick', highKick: 'bf_high_kick',
@@ -844,7 +844,7 @@ export const BANNON_ROSTER: readonly BannonFighterProfile[] = [
     model: 'MASTER_SENSEI.glb',
     portraitUrl: `${BANNON_RAW}/MASTER_SENSEI.glb`,
     defaultMoveSet: {
-      idle: 'bf_idle', walkForward: 'bf_walk_fwd', walkBackward: 'bf_walk_back',
+      idle: 'bf_idle_bladed', walkForward: 'bf_walk_ginga', walkBackward: 'bf_walk_back_ginga',
       crouch: 'bf_crouch', guard: 'bf_guard',
       lightAttack: 'bf_jab', heavyAttack: 'bf_elbow',
       lowKick: 'bf_low_kick', highKick: 'bf_spinning_kick',
@@ -877,7 +877,7 @@ export const BANNON_ROSTER: readonly BannonFighterProfile[] = [
     model: 'WRECK_PATTERSON.glb',
     portraitUrl: `${BANNON_RAW}/WRECK_PATTERSON.glb`,
     defaultMoveSet: {
-      idle: 'bf_idle', walkForward: 'bf_walk_fwd', walkBackward: 'bf_walk_back',
+      idle: 'bf_idle_wide', walkForward: 'bf_walk_lumber', walkBackward: 'bf_walk_back_injured',
       crouch: 'bf_crouch', guard: 'bf_guard',
       lightAttack: 'bf_chop', heavyAttack: 'bf_discus_clothesline',
       lowKick: 'bf_low_kick', highKick: 'bf_high_kick',
@@ -911,7 +911,7 @@ export const BANNON_ROSTER: readonly BannonFighterProfile[] = [
     attire: 'Default',
     portraitUrl: `${BANNON_RAW}/JAGER.glb`,
     defaultMoveSet: {
-      idle: 'bf_idle', walkForward: 'bf_walk_fwd', walkBackward: 'bf_walk_back',
+      idle: 'bf_idle_prowl', walkForward: 'bf_walk_prowl', walkBackward: 'bf_walk_back_ginga',
       crouch: 'bf_crouch', guard: 'bf_guard',
       lightAttack: 'bf_jab', heavyAttack: 'bf_cross',
       lowKick: 'bf_low_kick', highKick: 'bf_high_kick',
@@ -948,7 +948,7 @@ export const BANNON_ROSTER: readonly BannonFighterProfile[] = [
     portraitUrl: `${BANNON_RAW}/NPC_FINXSSE.glb`,
     gridPortrait: '/portraits/finxsse.png',
     defaultMoveSet: {
-      idle: 'bf_idle', walkForward: 'bf_walk_fwd', walkBackward: 'bf_walk_back',
+      idle: 'bf_idle_break', walkForward: 'bf_walk_strut', walkBackward: 'bf_walk_back',
       crouch: 'bf_crouch', guard: 'bf_guard',
       lightAttack: 'bf_jab', heavyAttack: 'bf_cross',
       lowKick: 'bf_low_kick', highKick: 'bf_high_kick',
@@ -985,7 +985,7 @@ export const BANNON_ROSTER: readonly BannonFighterProfile[] = [
     portraitUrl: `${BANNON_RAW}/TARZANIAN_DEVIL_skinned.glb`,
     gridPortrait: '/portraits/tarzanian_devil.png',
     defaultMoveSet: {
-      idle: 'bf_idle', walkForward: 'bf_walk_fwd', walkBackward: 'bf_walk_back',
+      idle: 'bf_idle_break', walkForward: 'bf_walk_ginga', walkBackward: 'bf_walk_back_ginga',
       crouch: 'bf_crouch', guard: 'bf_guard',
       lightAttack: 'bf_chop', heavyAttack: 'bf_cross',
       lowKick: 'bf_low_kick', highKick: 'bf_spin_kick',

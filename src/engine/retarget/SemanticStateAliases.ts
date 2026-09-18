@@ -5,8 +5,8 @@
  */
 
 export const SEMANTIC_STATE_ALIASES: Record<string, string[]> = {
-  idle:           ['idle', 'Idle', 'IDLE', 'BOX_IDLE', 'STANCE_BLADED', 'STANCE_WIDE', 'DRUNK_IDLE_VARIATION', 'ACTION_IDLE_TO_STANDING_IDLE', 'neutral', 'Neutral', 'standing', 'Standing', 'stance', 'Stance', 'combatIdle', 'CombatIdle', 'idle_procedural_placeholder'],
-  walk_forward:   ['walk_forward', 'walk', 'Walk', 'DWARF_WALK', 'DRUNK_WALK', 'GINGA_FORWARD', 'LOCO_STRUT', 'LOCO_LIGHT', 'DRUNK_RUN_FORWARD', 'walkForward', 'WalkForward', 'walking', 'Walking', 'walk_fwd', 'SBW_walk_fwd', 'walk_forward_procedural_placeholder'],
+  idle:           ['idle', 'Idle', 'IDLE', 'BOX_IDLE', 'STANCE_BLADED', 'STANCE_WIDE', 'DRUNK_IDLE_VARIATION', 'BREAKDANCE_READY', 'LOCO_PROWL', 'ACTION_IDLE_TO_STANDING_IDLE', 'neutral', 'Neutral', 'standing', 'Standing', 'stance', 'Stance', 'combatIdle', 'CombatIdle', 'idle_procedural_placeholder'],
+  walk_forward:   ['walk_forward', 'walk', 'Walk', 'DWARF_WALK', 'DRUNK_WALK', 'GINGA_FORWARD', 'LOCO_STRUT', 'LOCO_LIGHT', 'LOCO_LUMBER', 'LOCO_STALK', 'LOCO_PROWL', 'DRUNK_RUN_FORWARD', 'walkForward', 'WalkForward', 'walking', 'Walking', 'walk_fwd', 'SBW_walk_fwd', 'walk_forward_procedural_placeholder'],
   walk_back:      ['walk_back', 'walkBack', 'WalkBack', 'GINGA_BACKWARD', 'INJURED_RUN_BACKWARDS_RIGHT_TURN', 'walkBackward', 'WalkBackward', 'walk_bwd', 'SBW_walk_back', 'walk_back_procedural_placeholder'],
   strafe_left:    ['strafe_left', 'strafeLeft', 'StrafeLeft', 'GINGA_SIDEWAYS_2', 'LOCO_PROWL', 'sidestepLeft', 'SidestepLeft', 'SBW_strafe_left', 'sidestepUp'],
   strafe_right:   ['strafe_right', 'strafeRight', 'StrafeRight', 'CROUCH_TORCH_WALK_RIGHT', 'INJURED_TURN_RIGHT', 'sidestepRight', 'SidestepRight', 'SBW_strafe_right', 'sidestepDown'],

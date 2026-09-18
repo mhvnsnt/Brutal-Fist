@@ -1,4 +1,5 @@
 import type { FighterMotionState } from '../retarget/AnimationController';
+import { computeAttackLockDuration } from './ClipPlaybackGate';
 
 // ── Action States ─────────────────────────────────────────────────────────────
 export type ActionState =
@@ -504,7 +505,11 @@ export class FighterStateMachine {
   }
 
   registerSpecialMoves(moves: SpecialMoveDefinition[]) {
-    this.specialMoves = [...moves, ...DEFAULT_SPECIAL_MOVES];
+    // Character kit first so unique signatures win on shared sequences
+    // (heavy,heavy,light is both Power Surge and many finishers).
+    this.specialMoves = [...moves, ...DEFAULT_SPECIAL_MOVES.filter(
+      (def) => !moves.some((m) => m.id === def.id),
+    )];
   }
 
   // ── Apply HitStun (duration = active frames of the attacking move) ─────────
@@ -625,8 +630,9 @@ export class FighterStateMachine {
       return { active: false, progress: 0, move: null, currentFrame: 0 };
     }
     const move = this.currentMove;
-    const totalDuration = move.startup + move.active + move.recovery;
-    const elapsed = totalDuration - this.moveTimer;
+    // Tekken/SB: hitboxes follow authored startup/active, NOT the clip lock.
+    // Extra lock time after recovery is cancelable recovery, not extra active.
+    const elapsed = this.moveElapsed;
     const currentFrame = Math.floor(elapsed * this.FPS);
 
     const startFrame = move.hitboxStartFrame ?? Math.floor(move.startup * this.FPS);
@@ -1069,7 +1075,8 @@ export class FighterStateMachine {
     this.actionState = 'CommandThrow';
     this.motionState = 'heavyAttack';
     this.currentMove = move;
-    this.moveTimer = move.startup + move.active + move.recovery;
+    const frameTotal = move.startup + move.active + move.recovery;
+    this.moveTimer = computeAttackLockDuration('CommandThrow', frameTotal);
     this.moveElapsed = 0;
     this.queuedAction = null;
     this.commandThrowSucceeded = false;
@@ -1085,7 +1092,8 @@ export class FighterStateMachine {
     this.actionState = 'CommandThrow';
     this.motionState = 'heavyAttack';
     this.currentMove = COMMAND_THROW_MOVE;
-    this.moveTimer = COMMAND_THROW_MOVE.startup + COMMAND_THROW_MOVE.active + COMMAND_THROW_MOVE.recovery;
+    const frameTotal = COMMAND_THROW_MOVE.startup + COMMAND_THROW_MOVE.active + COMMAND_THROW_MOVE.recovery;
+    this.moveTimer = computeAttackLockDuration('CommandThrow', frameTotal);
     this.moveElapsed = 0;
     this.queuedAction = null;
     this.commandThrowSucceeded = false;
@@ -1255,15 +1263,15 @@ export class FighterStateMachine {
     this.actionState = 'Attacking';
     this.motionState = motion;
     this.currentMove = move;
-    this.moveTimer = move.startup + move.active + move.recovery;
+    const frameTotal = move.startup + move.active + move.recovery;
+    this.moveTimer = computeAttackLockDuration(motion, frameTotal);
     this.moveElapsed = 0;
     this.queuedAction = null;
-    // ── INSTRUMENTATION: log state transition ──────────────────────────────
     console.log(
       `[FSM] ⚔️  STATE TRANSITION: "${prevState}" → "${motion}" ` +
-      `[${move.specialName ?? (motion === 'lightAttack' ? 'lightAttack' : 'heavyAttack')}] ` +
+      `[${move.specialName ?? motion}] ` +
       `startup=${move.startup.toFixed(3)}s active=${move.active.toFixed(3)}s recovery=${move.recovery.toFixed(3)}s ` +
-      `damage=${move.damage ?? 'N/A'} isSpecial=${move.isSpecial ?? false}`
+      `lock=${this.moveTimer.toFixed(3)}s damage=${move.damage ?? 'N/A'} isSpecial=${move.isSpecial ?? false}`,
     );
     return motion;
   }

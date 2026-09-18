@@ -78,7 +78,7 @@ export interface EulerConversionResult {
 /** Preferred Bannon motion-bank files for each required semantic combat state. */
 export const SEMANTIC_PREFERRED_CLIPS: Record<string, string[]> = {
   idle:           ['BOX_IDLE', 'STANCE_WIDE', 'IDLE', 'ACTION_IDLE_TO_STANDING_IDLE', 'STANCE_BLADED'],
-  walk_forward:   ['DWARF_WALK', 'DRUNK_WALK', 'GINGA_FORWARD', 'LOCO_STRUT', 'LOCO_LIGHT'],
+  walk_forward:   ['DWARF_WALK', 'DRUNK_WALK', 'GINGA_FORWARD', 'LOCO_STRUT', 'LOCO_LIGHT', 'LOCO_LUMBER', 'LOCO_STALK'],
   walk_back:      ['GINGA_BACKWARD', 'INJURED_RUN_BACKWARDS_RIGHT_TURN'],
   strafe_left:    ['GINGA_SIDEWAYS_2', 'LOCO_PROWL'],
   strafe_right:   ['CROUCH_TORCH_WALK_RIGHT', 'INJURED_TURN_RIGHT'],

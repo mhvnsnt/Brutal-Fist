@@ -85,6 +85,141 @@ export const LOCOMOTION_MOVES: Record<string, BrutalFistMove> = {
     description: 'Standing block stance.',
     hitbox: { offsetX: 0, offsetZ: 0, width: 0, depth: 0, damage: 0, hitstun: 0, blockstun: 0, pushback: 0, launch: 0 }
   },
+  idleWide: {
+    id: 'bf_idle_wide', displayName: 'Wide Stance', category: 'locomotion',
+    startup: 0, active: 0, recovery: 0, damage: 0, hitAdvantage: 0, blockAdvantage: 0,
+    pushback: 0, hitstun: 0, blockstun: 0, animation: 'idle',
+    animationAliases: ['STANCE_WIDE', 'idle', 'Idle'],
+    minRange: 0, maxRange: 0, priority: 0, low: false, mid: false, overhead: false, throw: false, canCancel: true,
+    description: 'Power-wrestler wide stance.',
+    hitbox: { offsetX: 0, offsetZ: 0, width: 0, depth: 0, damage: 0, hitstun: 0, blockstun: 0, pushback: 0, launch: 0 }
+  },
+  idleBladed: {
+    id: 'bf_idle_bladed', displayName: 'Bladed Stance', category: 'locomotion',
+    startup: 0, active: 0, recovery: 0, damage: 0, hitAdvantage: 0, blockAdvantage: 0,
+    pushback: 0, hitstun: 0, blockstun: 0, animation: 'idle',
+    animationAliases: ['STANCE_BLADED', 'idle', 'Idle'],
+    minRange: 0, maxRange: 0, priority: 0, low: false, mid: false, overhead: false, throw: false, canCancel: true,
+    description: 'Bladed technical stance.',
+    hitbox: { offsetX: 0, offsetZ: 0, width: 0, depth: 0, damage: 0, hitstun: 0, blockstun: 0, pushback: 0, launch: 0 }
+  },
+  idleBox: {
+    id: 'bf_idle_box', displayName: 'Boxing Stance', category: 'locomotion',
+    startup: 0, active: 0, recovery: 0, damage: 0, hitAdvantage: 0, blockAdvantage: 0,
+    pushback: 0, hitstun: 0, blockstun: 0, animation: 'idle',
+    animationAliases: ['BOX_IDLE', 'idle', 'Idle'],
+    minRange: 0, maxRange: 0, priority: 0, low: false, mid: false, overhead: false, throw: false, canCancel: true,
+    description: 'Orthodox boxing guard idle.',
+    hitbox: { offsetX: 0, offsetZ: 0, width: 0, depth: 0, damage: 0, hitstun: 0, blockstun: 0, pushback: 0, launch: 0 }
+  },
+  idleProwl: {
+    id: 'bf_idle_prowl', displayName: 'Prowl Stance', category: 'locomotion',
+    startup: 0, active: 0, recovery: 0, damage: 0, hitAdvantage: 0, blockAdvantage: 0,
+    pushback: 0, hitstun: 0, blockstun: 0, animation: 'idle',
+    animationAliases: ['LOCO_PROWL', 'idle', 'Idle'],
+    minRange: 0, maxRange: 0, priority: 0, low: false, mid: false, overhead: false, throw: false, canCancel: true,
+    description: 'Low feral / hunter idle.',
+    hitbox: { offsetX: 0, offsetZ: 0, width: 0, depth: 0, damage: 0, hitstun: 0, blockstun: 0, pushback: 0, launch: 0 }
+  },
+  idleDrunk: {
+    id: 'bf_idle_drunk', displayName: 'Unsteady Stance', category: 'locomotion',
+    startup: 0, active: 0, recovery: 0, damage: 0, hitAdvantage: 0, blockAdvantage: 0,
+    pushback: 0, hitstun: 0, blockstun: 0, animation: 'idle',
+    animationAliases: ['DRUNK_IDLE_VARIATION', 'idle', 'Idle'],
+    minRange: 0, maxRange: 0, priority: 0, low: false, mid: false, overhead: false, throw: false, canCancel: true,
+    description: 'Volatile swaying idle.',
+    hitbox: { offsetX: 0, offsetZ: 0, width: 0, depth: 0, damage: 0, hitstun: 0, blockstun: 0, pushback: 0, launch: 0 }
+  },
+  idleBreak: {
+    id: 'bf_idle_break', displayName: 'Showman Stance', category: 'locomotion',
+    startup: 0, active: 0, recovery: 0, damage: 0, hitAdvantage: 0, blockAdvantage: 0,
+    pushback: 0, hitstun: 0, blockstun: 0, animation: 'idle',
+    animationAliases: ['BREAKDANCE_READY', 'idle', 'Idle'],
+    minRange: 0, maxRange: 0, priority: 0, low: false, mid: false, overhead: false, throw: false, canCancel: true,
+    description: 'Showman / break-ready idle.',
+    hitbox: { offsetX: 0, offsetZ: 0, width: 0, depth: 0, damage: 0, hitstun: 0, blockstun: 0, pushback: 0, launch: 0 }
+  },
+  walkLumber: {
+    id: 'bf_walk_lumber', displayName: 'Lumber Walk', category: 'locomotion',
+    startup: 0, active: 0, recovery: 0, damage: 0, hitAdvantage: 0, blockAdvantage: 0,
+    pushback: 0, hitstun: 0, blockstun: 0, animation: 'walkForward',
+    animationAliases: ['LOCO_LUMBER', 'walk', 'Walk'],
+    minRange: 0, maxRange: 0, priority: 0, low: false, mid: false, overhead: false, throw: false, canCancel: true,
+    description: 'Heavy power walk.',
+    hitbox: { offsetX: 0, offsetZ: 0, width: 0, depth: 0, damage: 0, hitstun: 0, blockstun: 0, pushback: 0, launch: 0 }
+  },
+  walkStrut: {
+    id: 'bf_walk_strut', displayName: 'Strut', category: 'locomotion',
+    startup: 0, active: 0, recovery: 0, damage: 0, hitAdvantage: 0, blockAdvantage: 0,
+    pushback: 0, hitstun: 0, blockstun: 0, animation: 'walkForward',
+    animationAliases: ['LOCO_STRUT', 'walk', 'Walk'],
+    minRange: 0, maxRange: 0, priority: 0, low: false, mid: false, overhead: false, throw: false, canCancel: true,
+    description: 'Showman strut walk.',
+    hitbox: { offsetX: 0, offsetZ: 0, width: 0, depth: 0, damage: 0, hitstun: 0, blockstun: 0, pushback: 0, launch: 0 }
+  },
+  walkLight: {
+    id: 'bf_walk_light', displayName: 'Light Step', category: 'locomotion',
+    startup: 0, active: 0, recovery: 0, damage: 0, hitAdvantage: 0, blockAdvantage: 0,
+    pushback: 0, hitstun: 0, blockstun: 0, animation: 'walkForward',
+    animationAliases: ['LOCO_LIGHT', 'walk', 'Walk'],
+    minRange: 0, maxRange: 0, priority: 0, low: false, mid: false, overhead: false, throw: false, canCancel: true,
+    description: 'Fast light-footed walk.',
+    hitbox: { offsetX: 0, offsetZ: 0, width: 0, depth: 0, damage: 0, hitstun: 0, blockstun: 0, pushback: 0, launch: 0 }
+  },
+  walkProwl: {
+    id: 'bf_walk_prowl', displayName: 'Prowl Walk', category: 'locomotion',
+    startup: 0, active: 0, recovery: 0, damage: 0, hitAdvantage: 0, blockAdvantage: 0,
+    pushback: 0, hitstun: 0, blockstun: 0, animation: 'walkForward',
+    animationAliases: ['LOCO_STALK', 'LOCO_PROWL', 'walk', 'Walk'],
+    minRange: 0, maxRange: 0, priority: 0, low: false, mid: false, overhead: false, throw: false, canCancel: true,
+    description: 'Stalking hunter walk.',
+    hitbox: { offsetX: 0, offsetZ: 0, width: 0, depth: 0, damage: 0, hitstun: 0, blockstun: 0, pushback: 0, launch: 0 }
+  },
+  walkGinga: {
+    id: 'bf_walk_ginga', displayName: 'Ginga', category: 'locomotion',
+    startup: 0, active: 0, recovery: 0, damage: 0, hitAdvantage: 0, blockAdvantage: 0,
+    pushback: 0, hitstun: 0, blockstun: 0, animation: 'walkForward',
+    animationAliases: ['GINGA_FORWARD', 'walk', 'Walk'],
+    minRange: 0, maxRange: 0, priority: 0, low: false, mid: false, overhead: false, throw: false, canCancel: true,
+    description: 'Capoeira ginga advance.',
+    hitbox: { offsetX: 0, offsetZ: 0, width: 0, depth: 0, damage: 0, hitstun: 0, blockstun: 0, pushback: 0, launch: 0 }
+  },
+  walkDrunk: {
+    id: 'bf_walk_drunk', displayName: 'Unsteady Walk', category: 'locomotion',
+    startup: 0, active: 0, recovery: 0, damage: 0, hitAdvantage: 0, blockAdvantage: 0,
+    pushback: 0, hitstun: 0, blockstun: 0, animation: 'walkForward',
+    animationAliases: ['DRUNK_WALK', 'walk', 'Walk'],
+    minRange: 0, maxRange: 0, priority: 0, low: false, mid: false, overhead: false, throw: false, canCancel: true,
+    description: 'Volatile staggering walk.',
+    hitbox: { offsetX: 0, offsetZ: 0, width: 0, depth: 0, damage: 0, hitstun: 0, blockstun: 0, pushback: 0, launch: 0 }
+  },
+  walkDwarf: {
+    id: 'bf_walk_dwarf', displayName: 'Planted Walk', category: 'locomotion',
+    startup: 0, active: 0, recovery: 0, damage: 0, hitAdvantage: 0, blockAdvantage: 0,
+    pushback: 0, hitstun: 0, blockstun: 0, animation: 'walkForward',
+    animationAliases: ['DWARF_WALK', 'walk', 'Walk'],
+    minRange: 0, maxRange: 0, priority: 0, low: false, mid: false, overhead: false, throw: false, canCancel: true,
+    description: 'Low planted power walk.',
+    hitbox: { offsetX: 0, offsetZ: 0, width: 0, depth: 0, damage: 0, hitstun: 0, blockstun: 0, pushback: 0, launch: 0 }
+  },
+  walkBackGinga: {
+    id: 'bf_walk_back_ginga', displayName: 'Ginga Retreat', category: 'locomotion',
+    startup: 0, active: 0, recovery: 0, damage: 0, hitAdvantage: 0, blockAdvantage: 0,
+    pushback: 0, hitstun: 0, blockstun: 0, animation: 'walkBackward',
+    animationAliases: ['GINGA_BACKWARD', 'walkBack', 'WalkBack'],
+    minRange: 0, maxRange: 0, priority: 0, low: false, mid: false, overhead: false, throw: false, canCancel: true,
+    description: 'Capoeira ginga retreat.',
+    hitbox: { offsetX: 0, offsetZ: 0, width: 0, depth: 0, damage: 0, hitstun: 0, blockstun: 0, pushback: 0, launch: 0 }
+  },
+  walkBackInjured: {
+    id: 'bf_walk_back_injured', displayName: 'Heavy Retreat', category: 'locomotion',
+    startup: 0, active: 0, recovery: 0, damage: 0, hitAdvantage: 0, blockAdvantage: 0,
+    pushback: 0, hitstun: 0, blockstun: 0, animation: 'walkBackward',
+    animationAliases: ['INJURED_RUN_BACKWARDS_RIGHT_TURN', 'walkBack', 'WalkBack'],
+    minRange: 0, maxRange: 0, priority: 0, low: false, mid: false, overhead: false, throw: false, canCancel: true,
+    description: 'Heavy backwards retreat.',
+    hitbox: { offsetX: 0, offsetZ: 0, width: 0, depth: 0, damage: 0, hitstun: 0, blockstun: 0, pushback: 0, launch: 0 }
+  },
 };
 
 // ─── STRIKES ─────────────────────────────────────────────────────────────────
@@ -698,7 +833,8 @@ export const BRUTAL_FIST_FULL_CATALOG: Record<string, BrutalFistMove> = {
 };
 
 export function getMoveById(id: string): BrutalFistMove | null {
-  return BRUTAL_FIST_FULL_CATALOG[id] ?? null;
+  if (BRUTAL_FIST_FULL_CATALOG[id]) return BRUTAL_FIST_FULL_CATALOG[id];
+  return Object.values(BRUTAL_FIST_FULL_CATALOG).find((m) => m.id === id) ?? null;
 }
 
 export function getMovesByCategory(category: MoveCategory): BrutalFistMove[] {

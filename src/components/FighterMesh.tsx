@@ -20,6 +20,15 @@ import {
 } from '../engine/combat/AnimationIntegrityGate';
 import { COMBAT_STATE_TO_SEMANTIC, SEMANTIC_STATE_ALIASES, inferSemanticStateFromClipName } from '../engine/retarget/SemanticStateAliases';
 import { AnimationBridge } from '../../animation_bridge/retarget';
+import {
+  computeVisualPlaybackLock,
+  computeOneshotTimeScale,
+  isOneshotCombatState,
+  isOneshotInterrupt,
+  shouldHoldOneshot,
+  isOneshotFinished,
+  type OneshotHold,
+} from '../engine/combat/ClipPlaybackGate';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props
@@ -95,12 +104,12 @@ export interface FighterMeshProps {
 // ─────────────────────────────────────────────────────────────────────────────
 const ANIMATION_ALIASES: Record<string, string[]> = {
   // ── Idle / Neutral ──────────────────────────────────────────────────────────
-  idle:              ['idle', 'Idle', 'neutral', 'Neutral', 'standing', 'Standing', 'stance', 'Stance', 'bind', 'T-pose', 'TPose', 'tpose', 'rest', 'Rest', 'combatIdle', 'CombatIdle', 'fightingStance', 'FightingStance', 'readyStance', 'ReadyStance'],
+  idle:              ['idle', 'Idle', 'neutral', 'Neutral', 'standing', 'Standing', 'stance', 'Stance', 'bind', 'T-pose', 'TPose', 'tpose', 'rest', 'Rest', 'combatIdle', 'CombatIdle', 'fightingStance', 'FightingStance', 'readyStance', 'ReadyStance', 'BOX_IDLE', 'STANCE_WIDE', 'STANCE_BLADED', 'LOCO_PROWL', 'BREAKDANCE_READY', 'DRUNK_IDLE_VARIATION'],
   Neutral:           ['idle', 'Idle', 'neutral', 'Neutral', 'standing', 'Standing', 'stance', 'Stance'],
   // ── Walk Forward ────────────────────────────────────────────────────────────
   walk:              ['walk', 'Walk', 'walking', 'Walking', 'run', 'Run', 'walkForward', 'WalkForward', 'walk_fwd', 'SBW_walk_fwd', 'T_walk_fwd', 'bf_walk_fwd'],
   Walking:           ['walk', 'Walk', 'walking', 'Walking', 'run', 'Run', 'walkForward', 'WalkForward'],
-  walkForward:       ['walkForward', 'WalkForward', 'walk', 'Walk', 'walking', 'Walking', 'forward', 'Forward', 'run', 'Run', 'walk_fwd', 'walk_forward', 'SBW_walk_fwd', 'T_walk_fwd', 'bf_walk_fwd', 'advance', 'approach', 'movingForward'],
+  walkForward:       ['walkForward', 'WalkForward', 'walk', 'Walk', 'walking', 'Walking', 'forward', 'Forward', 'run', 'Run', 'walk_fwd', 'walk_forward', 'SBW_walk_fwd', 'T_walk_fwd', 'bf_walk_fwd', 'advance', 'approach', 'movingForward', 'LOCO_LUMBER', 'LOCO_STRUT', 'LOCO_LIGHT', 'LOCO_STALK', 'GINGA_FORWARD', 'DWARF_WALK', 'DRUNK_WALK'],
   // ── Walk Backward ───────────────────────────────────────────────────────────
   walkBackward:      ['walkBack', 'WalkBack', 'walkBackward', 'WalkBackward', 'walk', 'Walk', 'backward', 'Backward', 'retreat', 'Retreat', 'walk_back', 'walk_bwd', 'SBW_walk_back', 'T_walk_back', 'bf_walk_back', 'movingBackward'],
   // ── Strafe ──────────────────────────────────────────────────────────────────
@@ -120,13 +129,13 @@ const ANIMATION_ALIASES: Record<string, string[]> = {
   guardLow:          ['guardLow', 'GuardLow', 'lowBlock', 'LowBlock', 'crouchBlock', 'CrouchBlock', 'guard', 'Guard', 'block', 'Block'],
   // ── Light Attack ────────────────────────────────────────────────────────────
   light:             ['light', 'Light', 'punch', 'Punch', 'attack', 'Attack', 'jab', 'Jab', 'lightAttack', 'LightAttack', 'LP', 'lp'],
-  lightAttack:       ['lightAttack', 'LightAttack', 'light', 'Light', 'punch', 'Punch', 'jab', 'Jab', 'attack', 'Attack', 'hit', 'Hit', 'strike', 'Strike', 'quickPunch', 'QuickPunch', 'punch1', 'Punch1', 'LP', 'lp', 'SBW_lightAttack', 'SBW_jab', 'T_jab', 'T_1', 'bf_jab', 'bf_chop', 'punchingLeft', 'punchingRight', 'attack_1', 'BOXING', 'BODY_JAB_CROSS'],
+  lightAttack:       ['lightAttack', 'LightAttack', 'light', 'Light', 'punch', 'Punch', 'jab', 'Jab', 'attack', 'Attack', 'hit', 'Hit', 'strike', 'Strike', 'quickPunch', 'QuickPunch', 'punch1', 'Punch1', 'LP', 'lp', 'SBW_lightAttack', 'SBW_jab', 'T_jab', 'T_1', 'bf_jab', 'bf_chop', 'punchingLeft', 'punchingRight', 'attack_1', 'BOXING', 'BOXING__1_', 'BODY_JAB_CROSS'],
   Startup:           ['lightAttack', 'LightAttack', 'attack', 'Attack', 'punch', 'Punch', 'jab', 'Jab', 'attack_1', 'BOXING'],
   Active:            ['lightAttack', 'LightAttack', 'attack', 'Attack', 'punch', 'Punch', 'kick', 'Kick'],
   crouchLightAttack: ['crouchLightAttack', 'CrouchLightAttack', 'crouchPunch', 'CrouchPunch', 'lowPunch', 'LowPunch', 'lightAttack', 'LightAttack', 'jab', 'Jab'],
   // ── Heavy Attack / kicks ────────────────────────────────────────────────────
   heavy:             ['heavy', 'Heavy', 'strong', 'Strong', 'heavyAttack', 'HeavyAttack', 'cross', 'Cross'],
-  heavyAttack:       ['heavyAttack', 'HeavyAttack', 'heavy', 'Heavy', 'strong', 'Strong', 'cross', 'Cross', 'attack_rp', 'COMBO_PUNCH', 'ILLEGAL_ELBOW_PUNCH', 'RP', 'rp', 'SBW_heavyAttack', 'SBW_cross', 'T_cross', 'T_2', 'bf_cross', 'bf_elbow', 'bf_uppercut'],
+  heavyAttack:       ['heavyAttack', 'HeavyAttack', 'heavy', 'Heavy', 'strong', 'Strong', 'cross', 'Cross', 'attack_rp', 'COMBO_PUNCH', 'BOXING__2_', 'BOXING__3_', 'ILLEGAL_ELBOW_PUNCH', 'BASH', 'BIG_BODY_BLOW', 'RP', 'rp', 'SBW_heavyAttack', 'SBW_cross', 'T_cross', 'T_2', 'bf_cross', 'bf_elbow', 'bf_uppercut'],
   lightKick:         ['lightKick', 'LightKick', 'attack_lk', 'DROP_KICK', 'ILLEGAL_KNEE', 'TIGER_FEINT_KICK', 'LK', 'lk', 'T_3', 'kick', 'Kick', 'kickingLeft'],
   heavyKick:         ['heavyKick', 'HeavyKick', 'attack_rk', 'HURRICANE_KICK', 'AU', 'CAPOEIRA', 'BASH', 'RK', 'rk', 'T_4', 'kickingRight', 'kickingForward'],
   crouchHeavyAttack: ['crouchHeavyAttack', 'CrouchHeavyAttack', 'crouchKick', 'CrouchKick', 'lowKick', 'LowKick', 'heavyAttack', 'HeavyAttack', 'kick', 'Kick'],
@@ -437,6 +446,9 @@ function FighterMeshInner({
   /** The resolved clip name of the last state we committed to */
   const committedClipRef = useRef<string | null>(null);
   const lastPlayedTriggerRef = useRef(0);
+  /** Tekken/SB oneshot hold — idle/walk cannot cut a punch still playing. */
+  const oneshotHoldRef = useRef<OneshotHold | null>(null);
+  const pendingLoopRef = useRef<string | null>(null);
 
   // ── Bone hitbox system ────────────────────────────────────────────────────
   const boneHitboxRef = useRef<BoneHitboxSystem>(new BoneHitboxSystem());
@@ -515,7 +527,22 @@ function FighterMeshInner({
     const inputKey = animation ?? state;
     let clipName = resolveClipName(inputKey, actions) as string | null;
 
-    const isAttack = ATTACK_STATES.has(inputKey);
+    const isAttack = ATTACK_STATES.has(inputKey) || isOneshotCombatState(inputKey);
+    const now = performance.now() / 1000;
+
+    // ── Tekken/SB gate: do not hard-cut a committed oneshot to idle/walk ──
+    const hold = oneshotHoldRef.current;
+    if (hold && !isOneshotInterrupt(inputKey)) {
+      const holdAction = actions[hold.clipName];
+      const holdClip = holdAction?.getClip();
+      const clipTime = holdAction?.time ?? 0;
+      const clipDur = holdClip?.duration ?? hold.lockDuration;
+      if (shouldHoldOneshot(inputKey, hold, clipTime, clipDur, now)) {
+        if (!isAttack) pendingLoopRef.current = inputKey;
+        return;
+      }
+      oneshotHoldRef.current = null;
+    }
     if (isAttack) {
       const profile = ATTACK_ROOT_MOTION_PROFILES[inputKey];
       if (profile?.hasRootMotion) {
@@ -651,24 +678,32 @@ function FighterMeshInner({
     const isLoop = LOOP_STATES.has(inputKey);
     const isUrgent = isAttack || ['hit', 'Hitstun', 'HitStun', 'Stunned', 'knockdown', 'Knockdown', 'ko', 'KO', 'Crumple', 'jump', 'jumpForward', 'jumpBack', 'Jumping'].includes(inputKey);
     const isSameClip = clipName === committedClipRef.current;
-    const now = performance.now() / 1000;
+    const nowPlay = performance.now() / 1000;
 
     if (isSameClip && isAttack) {
       if (animationTrigger <= lastPlayedTriggerRef.current) return;
       lastPlayedTriggerRef.current = animationTrigger;
     } else if (!isUrgent && isSameClip) {
       return;
-    } else if (!isUrgent && now - lastCrossfadeTimeRef.current < MIN_CROSSFADE_HOLD_S) {
+    } else if (!isUrgent && nowPlay - lastCrossfadeTimeRef.current < MIN_CROSSFADE_HOLD_S) {
       return;
     }
     if (isAttack) lastPlayedTriggerRef.current = animationTrigger;
+
+    const clipDuration = Math.max(0.08, nextAction.getClip().duration);
+    const lockDuration = isAttack
+      ? computeVisualPlaybackLock(inputKey)
+      : clipDuration;
+    const timeScale = isAttack
+      ? computeOneshotTimeScale(clipDuration, lockDuration)
+      : 1;
 
     nextAction.enabled = true;
     nextAction.paused = false;
     nextAction.setLoop(isLoop ? THREE.LoopRepeat : THREE.LoopOnce, isLoop ? Infinity : 1);
     nextAction.clampWhenFinished = !isLoop;
     nextAction.reset();
-    nextAction.setEffectiveTimeScale(1);
+    nextAction.setEffectiveTimeScale(timeScale);
     nextAction.setEffectiveWeight(1);
 
     const seen = new Set<THREE.AnimationAction>();
@@ -687,11 +722,26 @@ function FighterMeshInner({
       }
     }
     nextAction.play();
-    console.log(`[FighterMesh] ▶️ "${inputKey}" → "${clipName}" urgent=${isUrgent}`);
+    console.log(
+      `[FighterMesh] ▶️ "${inputKey}" → "${clipName}" urgent=${isUrgent} ` +
+      `dur=${clipDuration.toFixed(2)}s lock=${lockDuration.toFixed(2)}s scale=${timeScale.toFixed(2)}`,
+    );
+
+    if (isAttack) {
+      oneshotHoldRef.current = {
+        clipName,
+        inputKey,
+        lockDuration,
+        startedAt: nowPlay,
+      };
+      pendingLoopRef.current = null;
+    } else {
+      oneshotHoldRef.current = null;
+    }
 
     activeClipRef.current = clipName;
     committedClipRef.current = clipName;
-    lastCrossfadeTimeRef.current = now;
+    lastCrossfadeTimeRef.current = nowPlay;
   }, [state, animation, animationTrigger, normalized, gltfUrl]);
 
   // Idle kickstart is handled by the bind effect when `normalized` first lands.
@@ -740,6 +790,37 @@ function FighterMeshInner({
       // Update skeleton helper world matrices so bone lines track correctly
       if (normalized.skeletonHelper && showHitbox) {
         normalized.skeletonHelper.updateMatrixWorld(true);
+      }
+
+      const hold = oneshotHoldRef.current;
+      if (hold) {
+        const holdAction = normalized.actions[hold.clipName];
+        const holdClip = holdAction?.getClip();
+        const finished = !holdAction || !holdClip || isOneshotFinished(holdAction.time, holdClip.duration);
+        if (finished) {
+          oneshotHoldRef.current = null;
+          const pending = pendingLoopRef.current;
+          if (pending) {
+            pendingLoopRef.current = null;
+            const loopName = resolveClipName(pending, normalized.actions);
+            const loopAction = loopName ? normalized.actions[loopName] : null;
+            if (loopAction && loopName) {
+              loopAction.enabled = true;
+              loopAction.paused = false;
+              loopAction.setLoop(THREE.LoopRepeat, Infinity);
+              loopAction.clampWhenFinished = false;
+              loopAction.reset();
+              loopAction.setEffectiveTimeScale(1);
+              loopAction.setEffectiveWeight(1);
+              if (holdAction && holdAction !== loopAction) {
+                holdAction.fadeOut(0.08);
+              }
+              loopAction.play();
+              activeClipRef.current = loopName;
+              committedClipRef.current = loopName;
+            }
+          }
+        }
       }
     }
 

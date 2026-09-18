@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { retargetClipByRestPose, validateRetargetedClip } from './ClipRetarget';
+import { computeVisualPlaybackLock, computeOneshotTimeScale } from '../combat/ClipPlaybackGate';
 
 export type FighterMotionState =
   | 'idle' | 'walkForward' | 'walkBackward' | 'strafeLeft' | 'strafeRight' |'crouch'| 'crouchWalk' | 'guard' | 'guardLow' |'lightAttack'| 'heavyAttack' | 'lightKick' | 'heavyKick' | 'crouchLightAttack' | 'crouchHeavyAttack' |'jumpAttack'| 'runAttack' |'hit' | 'hitLow' | 'hitHigh' | 'knockdown' | 'wake'
@@ -188,16 +189,21 @@ export function buildAnimationController(
       nextAction.setLoop(THREE.LoopRepeat, Infinity);
     }
 
+    const lock = ONESHOT_STATES.has(next)
+      ? computeVisualPlaybackLock(next)
+      : 1;
+    const scale = ONESHOT_STATES.has(next)
+      ? computeOneshotTimeScale(nextAction.getClip().duration, lock)
+      : 1;
+
     if (currentAction && currentAction !== nextAction) {
-      // Crossfade: blend out current, blend in next
       nextAction.reset();
-      nextAction.setEffectiveTimeScale(1);
+      nextAction.setEffectiveTimeScale(scale);
       nextAction.setEffectiveWeight(1);
       currentAction.crossFadeTo(nextAction, fadeDuration, true);
       nextAction.play();
     } else {
-      // No current action — just start
-      nextAction.reset().fadeIn(fadeDuration).play();
+      nextAction.reset().setEffectiveTimeScale(scale).fadeIn(fadeDuration).play();
     }
 
     currentAction = nextAction;
