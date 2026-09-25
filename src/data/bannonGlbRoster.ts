@@ -3,6 +3,8 @@ import { getGraphicsQuality } from '../lib/graphicsSettings';
 
 export type BannonGlbRosterEntry = {
   id: string; name: string; model: string; attire?: string;
+  /** Alternate id used by older Brutal-Fist roster rows. */
+  characterId?: string;
   rigStatus: "named-part" | "skinned" | "single-mesh-needs-rigready" | "qa-weak" | "qa-fail";
   playableGate: "PASS" | "BLOCKED_QA" | "BLOCKED_RIG";
   source: "CANON_MODELS" | "MODEL_QA" | "BATCH_RERIG" | "DRIVE" | "OFFLINE_NAMEDPART_SKIN";

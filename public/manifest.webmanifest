@@ -1,0 +1,14 @@
+{
+  "name": "Brutal Fist",
+  "short_name": "Brutal Fist",
+  "description": "3D PS1-style fighting game built on the Schwarzerblitz combat lineage.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#050505",
+  "theme_color": "#050505",
+  "icons": [
+    { "src": "/icons/brutal-fist.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

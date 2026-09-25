@@ -79,7 +79,7 @@ export default function MatchmakingQueueScreen({ onBack, onMatchFound }: Matchma
   const subscriptionRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
   const playableFighters = BANNON_ROSTER.filter(f =>
-    BANNON_GLB_PLAYABLE_MODELS.some(m => m.id === f.id)
+    BANNON_GLB_PLAYABLE_MODELS.some(m => m.characterId === f.id || m.id === f.id)
   );
 
   // Load player ELO on mount

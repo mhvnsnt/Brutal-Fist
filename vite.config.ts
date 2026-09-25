@@ -149,6 +149,13 @@ const rootDir = fileURLToPath(new URL(".", import.meta.url));
 // The dev server starts once `src/router.tsx` and `src/routes/` exist — see
 // AGENTS.md § "First scaffold".
 export default defineConfig(({ command, isPreview }) => ({
+  // Brutal-Fist's Next app owns postcss.config.mjs. This preview uses the
+  // Tailwind Vite plugin and must not also run that PostCSS pipeline.
+  css: {
+    postcss: {
+      plugins: [],
+    },
+  },
   server: {
     host: "0.0.0.0",
     port: 8080,

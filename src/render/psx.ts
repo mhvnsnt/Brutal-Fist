@@ -1,3 +1,5 @@
+import { installBannonFallbackMixer } from '../engine/animation/BannonFallbackMixer';
+
 export type RenderQualityMode = 'retro8' | 'ps1' | 'native';
 
 export interface PsxRenderOptions {
@@ -48,3 +50,7 @@ export function psxVertexSnap(
 export function getRenderProfile(mode: RenderQualityMode): PsxRenderOptions {
   return RENDER_PROFILES[mode];
 }
+
+// Installed once. Plays Bannon fallback clips only when a mixer has no native
+// actions. Fighters that already have GLB clips keep those clips.
+installBannonFallbackMixer();
