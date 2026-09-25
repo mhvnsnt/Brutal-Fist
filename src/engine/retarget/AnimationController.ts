@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { retargetClipByRestPose, validateRetargetedClip } from './ClipRetarget';
-import { computeVisualPlaybackLock, computeOneshotTimeScale } from '../combat/ClipPlaybackGate';
+import { computeVisualPlaybackLock, computeStrikePlayback } from '../combat/ClipPlaybackGate';
 
 export type FighterMotionState =
   | 'idle' | 'walkForward' | 'walkBackward' | 'strafeLeft' | 'strafeRight' |'crouch'| 'crouchWalk' | 'guard' | 'guardLow' |'lightAttack'| 'heavyAttack' | 'lightKick' | 'heavyKick' | 'crouchLightAttack' | 'crouchHeavyAttack' |'jumpAttack'| 'runAttack' |'hit' | 'hitLow' | 'hitHigh' | 'knockdown' | 'wake'
@@ -193,18 +193,24 @@ export function buildAnimationController(
     const lock = ONESHOT_STATES.has(next)
       ? computeVisualPlaybackLock(next, nextAction.getClip().name, clipDur)
       : 1;
-    const scale = ONESHOT_STATES.has(next)
-      ? computeOneshotTimeScale(nextAction.getClip().duration, lock)
-      : 1;
+    const strike = ONESHOT_STATES.has(next)
+      ? computeStrikePlayback(clipDur, lock, nextAction.getClip().name)
+      : { timeScale: 1, startTime: 0 };
+
+    const arm = () => {
+      nextAction.reset();
+      if (strike.startTime > 0) nextAction.time = strike.startTime;
+      nextAction.setEffectiveTimeScale(strike.timeScale);
+      nextAction.setEffectiveWeight(1);
+    };
 
     if (currentAction && currentAction !== nextAction) {
-      nextAction.reset();
-      nextAction.setEffectiveTimeScale(scale);
-      nextAction.setEffectiveWeight(1);
+      arm();
       currentAction.crossFadeTo(nextAction, fadeDuration, true);
       nextAction.play();
     } else {
-      nextAction.reset().setEffectiveTimeScale(scale).fadeIn(fadeDuration).play();
+      arm();
+      nextAction.fadeIn(fadeDuration).play();
     }
 
     currentAction = nextAction;

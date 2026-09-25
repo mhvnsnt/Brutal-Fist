@@ -241,6 +241,22 @@ const LOCO_KITS = {
   sidestep: ['GINGA_SIDEWAYS_2', 'ESQUIVA_4', 'CORKSCREW_EVADE', 'CROUCH_TORCH_WALK_RIGHT'],
 };
 
+export function reactionPreferences(state: string): string[] {
+  switch (state) {
+    case 'hitHigh':
+      return ['HIT_TO_HEAD', 'HIT_ON_SIDE_OF_HEAD', 'SBW_hit_high', 'T_hit_high', 'hitHigh'];
+    case 'hitLow':
+      return ['HIT_TO_BODY', 'BIG_RIB_HIT', 'BIG_BODY_BLOW', 'SBW_hit_low', 'T_hit_low', 'hitLow'];
+    case 'hit':
+    case 'Hitstun':
+    case 'HitStun':
+    case 'Stunned':
+      return ['HIT_REACTION', 'HIT_TO_BODY', 'BIG_BODY_BLOW', 'SBW_hit', 'T_hit', 'hit'];
+    default:
+      return [];
+  }
+}
+
 export function locomotionPreferences(fighterId: string, state: string): string[] {
   const id = fighterId || 'fighter';
   switch (state) {
@@ -266,8 +282,9 @@ export function locomotionPreferences(fighterId: string, state: string): string[
     case 'Guard':
     case 'block':
     case 'Blockstun':
+      return ['GUARD_HIGH', 'CENTER_BLOCK', 'DEFENDER', 'GUARD_LOW'];
     case 'guardLow':
-      return rotated(LOCO_KITS.guard, 11, id);
+      return ['GUARD_LOW', 'CENTER_BLOCK', 'DEFENDER', 'GUARD_HIGH'];
     case 'strafeLeft':
     case 'sidestepLeft':
       return rotated(LOCO_KITS.sidestep, 13, id);

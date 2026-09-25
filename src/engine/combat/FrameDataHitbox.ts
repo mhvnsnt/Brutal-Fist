@@ -79,10 +79,10 @@ export interface CollisionResult {
 // ── Frame-data hitbox defaults per move type ──────────────────────────────────
 const HITBOX_DEFAULTS: Record<string, Partial<HitboxGeometry>> = {
   lightAttack: {
-    offsetX: 1.15,
+    offsetX: 1.05,
     offsetZ: 0.0,
-    width: 1.8,
-    depth: 1.1,
+    width: 0.72,
+    depth: 0.48,
     damage: 80,
     hitstun: 0.25,
     blockstun: 0.15,
@@ -92,10 +92,10 @@ const HITBOX_DEFAULTS: Record<string, Partial<HitboxGeometry>> = {
     attackLevel: 'mid',
   },
   heavyAttack: {
-    offsetX: 1.35,
+    offsetX: 1.15,
     offsetZ: 0.0,
-    width: 2.1,
-    depth: 1.2,
+    width: 0.8,
+    depth: 0.52,
     damage: 150,
     hitstun: 0.45,
     blockstun: 0.25,
@@ -281,11 +281,12 @@ export class FrameDataHitboxSystem {
     const hbCenterX = attackerX + hb.offsetX * facing;
     const hbCenterZ = attackerZ + hb.offsetZ;
 
-    // AABB overlap test
+    // Opponent body is added once. The old (width + 1.1) term turned a
+    // 0.7-wide jab into a box that reached behind the attacker.
+    const halfW = hb.width * 0.5 + 0.42;
+    const halfD = hb.depth * 0.5 + 0.36;
     const dx = Math.abs(opponentX - hbCenterX);
     const dz = Math.abs(opponentZ - hbCenterZ);
-    const halfW = (hb.width + 1.1) * 0.5;
-    const halfD = (hb.depth + 1.0) * 0.5;
 
     if (dx > halfW || dz > halfD) return null;
 

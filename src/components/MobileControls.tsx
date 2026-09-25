@@ -76,28 +76,6 @@ export function MobileControls({ inputRef }: MobileControlsProps) {
       light: (lp || lk) && !lpLkSimult && !rpLkSimult,
     } as InputBitmask;
 
-    // ── INSTRUMENTATION: log non-trivial input events ──────────────────────
-    const activeInputs: string[] = [];
-    if (snapshot.up)         activeInputs.push('UP');
-    if (snapshot.down)       activeInputs.push('DOWN');
-    if (snapshot.left)       activeInputs.push('LEFT');
-    if (snapshot.right)      activeInputs.push('RIGHT');
-    if (snapshot.lp)         activeInputs.push('LP(1)');
-    if (snapshot.rp)         activeInputs.push('RP(2)');
-    if (snapshot.lk)         activeInputs.push('LK(3)');
-    if (snapshot.rk)         activeInputs.push('RK(4)');
-    if (snapshot.light)      activeInputs.push('LIGHT');
-    if (snapshot.heavy)      activeInputs.push('HEAVY');
-    if (snapshot.guard)      activeInputs.push('GUARD');
-    if (snapshot.grapple)    activeInputs.push('GRAPPLE');
-    if (snapshot.heatBurst)  activeInputs.push('HEAT_BURST(2+3)');
-    if (snapshot.leftThrow)  activeInputs.push('LEFT_THROW(1+3)');
-    if (snapshot.rightThrow) activeInputs.push('RIGHT_THROW(2+4)');
-
-    if (activeInputs.length > 0) {
-      console.log(`[MobileControls] 🎮 INPUT → [${activeInputs.join(' | ')}]`);
-    }
-
     return snapshot;
   }, []);
 

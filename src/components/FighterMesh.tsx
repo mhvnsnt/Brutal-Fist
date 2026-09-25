@@ -20,11 +20,11 @@ import {
 } from '../engine/combat/AnimationIntegrityGate';
 import { COMBAT_STATE_TO_SEMANTIC, SEMANTIC_STATE_ALIASES, inferSemanticStateFromClipName } from '../engine/retarget/SemanticStateAliases';
 import { AnimationBridge } from '../../animation_bridge/retarget';
-import { locomotionPreferences } from '../engine/retarget/FighterMotionBank';
+import { locomotionPreferences, reactionPreferences } from '../engine/retarget/FighterMotionBank';
 import { evaluateLoadedRig } from '../engine/retarget/evaluateLoadedRig';
 import {
   computeVisualPlaybackLock,
-  computeOneshotTimeScale,
+  computeStrikePlayback,
   isOneshotCombatState,
   isOneshotInterrupt,
   shouldHoldOneshot,
@@ -78,6 +78,11 @@ export interface FighterMeshProps {
    * Used for velocity-weighted blend gating to prevent jitter on micro-inputs.
    */
   locomotionVelocity?: { forward: number; strafe: number };
+  /**
+   * Arena writes this every frame. useFrame copies it so walking
+   * does not re-render the skinned mesh.
+   */
+  poseSlot?: { current: { x: number; y: number; z: number; yaw: number } };
   /**
    * Hit-stop freeze: when true, the animation mixer is paused.
    * Set by GameBattleArena when a heavy attack lands.
@@ -313,8 +318,11 @@ function buildClipsByState(actions: Record<string, THREE.AnimationAction>): Map<
 function findActionName(actions: Record<string, THREE.AnimationAction>, name: string): string | null {
   if (actions[name]) return name;
   const lower = name.toLowerCase();
-  const hit = Object.keys(actions).find((k) => k.toLowerCase() === lower);
-  return hit ?? null;
+  const keys = Object.keys(actions);
+  const exact = keys.find((k) => k.toLowerCase() === lower);
+  if (exact) return exact;
+  const needle = '|' + lower;
+  return keys.find((k) => k.toLowerCase().endsWith(needle)) ?? null;
 }
 
 function resolveClipName(
@@ -444,7 +452,7 @@ function FighterMeshInner({
   paint,
   addon,
   characterId,
-  locomotionVelocity,
+  poseSlot,
   hitStopActive = false,
   onRigDiagnostic,
   onBoneHitboxReady,
@@ -466,6 +474,7 @@ function FighterMeshInner({
   addon?: GearAddon;
   characterId?: string;
   locomotionVelocity?: { forward: number; strafe: number };
+  poseSlot?: { current: { x: number; y: number; z: number; yaw: number } };
   hitStopActive?: boolean;
   onRigDiagnostic?: (report: RigDiagnosticReport) => void;
   onBoneHitboxReady?: (system: BoneHitboxSystem) => void;
@@ -549,6 +558,45 @@ function FighterMeshInner({
       boneHitboxRef.current.initFromSkeleton(result.scene);
       onBoneHitboxReady?.(boneHitboxRef.current);
 
+      // Integrity once at load, never on the first punch. The displacement
+      // check calls mixer.stopAllAction(), which used to kill the swing
+      // the player just threw and then restart it.
+      if (!combatEntryCheckedRef.current) {
+        combatEntryCheckedRef.current = true;
+        const characterName = gltfUrl.split('/').pop()?.replace('.glb', '') ?? gltfUrl;
+        const integrityInput: DeformationIntegrityInput = {
+          characterName,
+          modelUrl: gltfUrl,
+          clonedScene: result.scene,
+          mixer: result.mixer,
+          actions: result.actions,
+          forwardCorrectionY: result.forwardCorrectionY,
+        };
+        const report = runDeformationIntegrityTest(integrityInput);
+        const animIntegrityReport = runAnimationIntegrityGate({
+          characterName: characterName.toUpperCase(),
+          clonedScene: result.scene,
+          mixer: result.mixer,
+          actions: result.actions,
+          activeClipName: null,
+        });
+        (onAnimationIntegrityReport as ((r: AnimationIntegrityReport) => void) | undefined)?.(animIntegrityReport);
+        const isUnrenderable = report.verdict === 'BLOCKED' && report.failingChecks.includes('NO_VISIBLE_MESH');
+        if (isUnrenderable) {
+          deformationPassedRef.current = false;
+          console.error(
+            `[FighterMesh] 🚫 COMBAT FROZEN — ${characterName} has NO_VISIBLE_MESH: nothing to render.`,
+          );
+          onDeformationBlocked?.(characterName, report.failingChecks);
+          return;
+        }
+        if (report.verdict === 'BLOCKED') {
+          console.warn(
+            `[FighterMesh] ⚠️ Deformation integrity warnings for ${characterName}: [${report.failingChecks.join(', ')}]`,
+          );
+        }
+      }
+
       setNormalized(result);
     });
 
@@ -562,7 +610,7 @@ function FighterMeshInner({
   // ── Bind FighterStateMachine state → AnimationMixer playback ─────────────
   useEffect(() => {
     if (!normalized) return;
-    const { actions, mixer } = normalized;
+    const { actions } = normalized;
 
     const availableClips = Object.keys(actions);
     if (availableClips.length === 0) {
@@ -574,7 +622,10 @@ function FighterMeshInner({
     const isAttack = ATTACK_STATES.has(inputKey) || isOneshotCombatState(inputKey);
     const preferred = isAttack && attackClip
       ? [attackClip]
-      : locomotionPreferences(characterId ?? '', inputKey);
+      : [
+          ...reactionPreferences(inputKey),
+          ...locomotionPreferences(characterId ?? '', inputKey),
+        ];
     let clipName = resolveClipName(inputKey, actions, preferred) as string | null;
     const now = performance.now() / 1000;
 
@@ -604,104 +655,8 @@ function FighterMeshInner({
       activeAttackKeyRef.current = null;
     }
 
-    console.log(
-      `[FighterMesh] 🎬 input="${inputKey}" → clip="${clipName ?? 'NONE'}" trigger=${animationTrigger}`,
-    );
-
-    // ── COMBAT ENTRY: Run 14-point deformation integrity test ─────────────────
-    // AGENT LAW: The deformation integrity test runs ONCE when the first
-    // non-idle combat state is entered. This is DIAGNOSTIC ONLY — it logs
-    // warnings but NEVER blocks animation playback. The mixer is always
-    // recovered after the FIRST_FRAME_DISPLACEMENT check resets it.
-    //
-    // onDeformationBlocked is only fired for truly unrenderable assets
-    // (NO_VISIBLE_MESH) — not for skeleton-type classification mismatches.
-    const isCombatActiveState = inputKey !== 'idle' && inputKey !== 'Neutral' && inputKey !== 'bind';
-    if (isCombatActiveState && !combatEntryCheckedRef.current && normalized) {
-      combatEntryCheckedRef.current = true;
-
-      const integrityInput: DeformationIntegrityInput = {
-        characterName: gltfUrl.split('/').pop()?.replace('.glb', '') ?? gltfUrl,
-        modelUrl: gltfUrl,
-        clonedScene: normalized.scene,
-        mixer: normalized.mixer,
-        actions: normalized.actions,
-        forwardCorrectionY: normalized.forwardCorrectionY,
-      };
-
-      const report = runDeformationIntegrityTest(integrityInput);
-
-      // ── Run Animation Integrity Gate (per-fighter pre-combat report) ────────
-      // This produces the structured PASS/BLOCKED/UNKNOWN report documenting:
-      //   VISIBLE MESHES, SKINNED MESHES, SKELETON BONES, ANIMATION CLIPS,
-      //   TRACKS, RESOLVED TRACKS, UNRESOLVED TRACKS, ACTIVE CLIP,
-      //   MIXER ROOT, BONE TRAVEL
-      const animIntegrityReport = runAnimationIntegrityGate({
-        characterName: integrityInput.characterName.toUpperCase(),
-        clonedScene: normalized.scene,
-        mixer: normalized.mixer,
-        actions: normalized.actions,
-        activeClipName: activeClipRef.current,
-      });
-      // Fire callback so parent (CombatArena3D / GameBattleArena) can display the report
-      (onAnimationIntegrityReport as ((r: AnimationIntegrityReport) => void) | undefined)?.(animIntegrityReport);
-
-      // DIAGNOSTIC ONLY: log the result but never block animation playback.
-      // NOTE: FIRST_FRAME_DISPLACEMENT only calls mixer.stopAllAction() when
-      // SkinnedMeshes with valid skeletons are present. For static-mesh GLBs,
-      // the mixer is NOT stopped — so we only need to recover when the test
-      // actually ran the destructive path (i.e., skinnedMeshes with skeletons exist).
-      if (report.verdict === 'BLOCKED') {
-        // Only fire the blocked callback for truly unrenderable assets
-        const isUnrenderable = report.failingChecks.includes('NO_VISIBLE_MESH');
-        if (isUnrenderable) {
-          console.error(
-            `[FighterMesh] 🚫 COMBAT FROZEN — ${integrityInput.characterName} ` +
-            `has NO_VISIBLE_MESH: nothing to render. Fix the GLB asset.`
-          );
-          onDeformationBlocked?.(integrityInput.characterName, report.failingChecks);
-          return; // Truly unrenderable — stop here
-        }
-        // For all other failures (SKELETON_EXISTS, SKINNED_MESH_SKELETON, etc.)
-        // these are diagnostic warnings — the model may still animate correctly
-        // via Three.js internal skinning even without standard Bone/SkinnedMesh types.
-        console.warn(
-          `[FighterMesh] ⚠️ Deformation integrity warnings for ${integrityInput.characterName}: ` +
-          `[${report.failingChecks.join(', ')}] — animation playback continues (diagnostic only).`
-        );
-      }
-
-      // Check if FIRST_FRAME_DISPLACEMENT ran the destructive path (stopped the mixer).
-      // It only does so when SkinnedMeshes with valid skeletons exist.
-      // We detect this by checking if any action is currently running — if none are,
-      // the mixer was stopped and we must recover.
-      const anyActionRunning = Object.values(normalized.actions).some(a => a?.isRunning());
-      if (!anyActionRunning) {
-        // Mixer was stopped by FIRST_FRAME_DISPLACEMENT — recover ONLY the requested clip.
-        // Never silently substitute idle for a missing combat semantic state.
-        const recoverClip = resolveClipName(inputKey, normalized.actions);
-        if (recoverClip && normalized.actions[recoverClip]) {
-          const recoverAction = normalized.actions[recoverClip];
-          const isRecoverLoop = LOOP_STATES.has(inputKey);
-          recoverAction.setLoop(isRecoverLoop ? THREE.LoopRepeat : THREE.LoopOnce, isRecoverLoop ? Infinity : 1);
-          recoverAction.clampWhenFinished = !isRecoverLoop;
-          recoverAction.reset().play();
-          activeClipRef.current = recoverClip;
-          committedClipRef.current = recoverClip;
-          lastCrossfadeTimeRef.current = performance.now() / 1000;
-          console.log(`[FighterMesh] 🔄 Mixer recovered after integrity test — playing "${recoverClip}" for "${integrityInput.characterName}"`);
-        } else if (inputKey !== 'idle' && inputKey !== 'Neutral') {
-          console.warn(
-            `[FighterMesh] ⚠️ MISSING_CLIP after integrity recovery: combatState="${inputKey}" — not substituting idle`,
-          );
-        }
-      } else {
-        console.log(`[FighterMesh] ✅ Mixer still running after integrity test (static mesh path) — no recovery needed for "${integrityInput.characterName}"`);
-      }
-
-      // Integrity test handled — proceed to normal animation logic below
-      deformationPassedRef.current = true;
-    }
+    // ── COMBAT ENTRY integrity already ran at load (stopAllAction would
+    // restart the first punch if it ran here).
 
     // Only block animation for truly unrenderable assets (NO_VISIBLE_MESH)
     if (!deformationPassedRef.current) {
@@ -750,16 +705,17 @@ function FighterMeshInner({
     const lockDuration = isAttack
       ? computeVisualPlaybackLock(inputKey, clipName, clipDuration)
       : clipDuration;
-    const timeScale = isAttack
-      ? computeOneshotTimeScale(clipDuration, lockDuration)
-      : 1;
+    const strike = isAttack
+      ? computeStrikePlayback(clipDuration, lockDuration, clipName)
+      : { timeScale: 1, startTime: 0 };
 
     nextAction.enabled = true;
     nextAction.paused = false;
     nextAction.setLoop(isLoop ? THREE.LoopRepeat : THREE.LoopOnce, isLoop ? Infinity : 1);
     nextAction.clampWhenFinished = !isLoop;
     nextAction.reset();
-    nextAction.setEffectiveTimeScale(timeScale);
+    if (strike.startTime > 0) nextAction.time = strike.startTime;
+    nextAction.setEffectiveTimeScale(strike.timeScale);
     nextAction.setEffectiveWeight(1);
 
     const seen = new Set<THREE.AnimationAction>();
@@ -778,10 +734,6 @@ function FighterMeshInner({
       }
     }
     nextAction.play();
-    console.log(
-      `[FighterMesh] ▶️ "${inputKey}" → "${clipName}" urgent=${isUrgent} ` +
-      `dur=${clipDuration.toFixed(2)}s lock=${lockDuration.toFixed(2)}s scale=${timeScale.toFixed(2)}`,
-    );
 
     if (isAttack) {
       oneshotHoldRef.current = {
@@ -827,22 +779,22 @@ function FighterMeshInner({
   useFrame((_, delta) => {
     if (!groupRef.current) return;
 
-    const attacking = state === 'Startup' || state === 'Active' || ATTACK_STATES.has(state);
-    groupRef.current.position.set(position[0], position[1], position[2]);
-
-    // Rotation — driven entirely by rotationY prop from parent screen
-    groupRef.current.rotation.y = rotationY;
-
-    // Attack pulse — uniform scale, no mirroring
-    const attackScale = attacking ? 1.03 : 1.0;
-    groupRef.current.scale.set(attackScale, attackScale, attackScale);
+    const slot = poseSlot?.current;
+    if (slot) {
+      groupRef.current.position.set(slot.x, slot.y, slot.z);
+      groupRef.current.rotation.y = slot.yaw;
+    } else {
+      groupRef.current.position.set(position[0], position[1], position[2]);
+      groupRef.current.rotation.y = rotationY;
+    }
+    groupRef.current.scale.set(1, 1, 1);
 
     // AGENT LAW: ALWAYS call mixer.update() every frame.
     // Hit-stop is handled by mixer.timeScale = 0 (set in useEffect above).
     // Skipping mixer.update() entirely causes animation state to desync —
     // the mixer's internal clock stops tracking and crossfades break on resume.
     if (normalized) {
-      normalized.mixer.update(delta);
+      normalized.mixer.update(Math.min(delta, 0.1));
       // Update skeleton helper world matrices so bone lines track correctly
       if (normalized.skeletonHelper && showHitbox) {
         normalized.skeletonHelper.updateMatrixWorld(true);
@@ -976,6 +928,7 @@ export function FighterMesh({
   attackClip = null,
   characterId,
   locomotionVelocity,
+  poseSlot,
   hitStopActive = false,
   onRigDiagnostic,
   onBoneHitboxReady,
@@ -1002,6 +955,7 @@ export function FighterMesh({
         addon={addon}
         characterId={characterId}
         locomotionVelocity={locomotionVelocity}
+        poseSlot={poseSlot}
         hitStopActive={hitStopActive}
         onRigDiagnostic={onRigDiagnostic}
         onBoneHitboxReady={onBoneHitboxReady}

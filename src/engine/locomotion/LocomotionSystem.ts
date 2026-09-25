@@ -60,7 +60,7 @@ export interface LocomotionState {
 export const ATTACK_ROOT_MOTION_PROFILES: Record<string, { forwardDisplacement: number; hasRootMotion: boolean }> = {
   // Standard attacks — no root motion (stationary)
   lightAttack:   { forwardDisplacement: 0.0,  hasRootMotion: false },
-  heavyAttack:   { forwardDisplacement: 0.35, hasRootMotion: true  }, // slight lunge
+  heavyAttack:   { forwardDisplacement: 0.0,  hasRootMotion: false },
   CommandThrow:  { forwardDisplacement: 0.50, hasRootMotion: true  }, // grab lunge
   // Special moves — strong root motion
   power_surge:   { forwardDisplacement: 0.80, hasRootMotion: true  }, // Death Fist equivalent

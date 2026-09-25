@@ -1,5 +1,5 @@
 import type { FighterMotionState } from '../retarget/AnimationController';
-import { computeAttackLockDuration } from './ClipPlaybackGate';
+import { computeAttackLockDuration, isSpinClip } from './ClipPlaybackGate';
 import { directionalAttackClip } from '../retarget/FighterMotionBank';
 import {
   HEAT_DASH_HIT,
@@ -381,6 +381,9 @@ export class FighterStateMachine {
   private currentMove: MoveWindow | null = null;
   private moveTimer = 0;
   private moveElapsed = 0;
+  private prevMoveElapsed = 0;
+  /** Playback lock captured when the swing started. Hitboxes use this, not a second clock. */
+  private attackLock = 0;
   private readonly FPS = 60;
 
   private queuedAction: QueuedAction | null = null;
@@ -712,18 +715,24 @@ export class FighterStateMachine {
       return { active: false, progress: 0, move: null, currentFrame: 0 };
     }
     const move = this.currentMove;
-    // Tekken/SB: hitboxes follow authored startup/active, NOT the clip lock.
-    // Extra lock time after recovery is cancelable recovery, not extra active.
     const elapsed = this.moveElapsed;
     const currentFrame = Math.floor(elapsed * this.FPS);
-
-    const startFrame = move.hitboxStartFrame ?? Math.floor(move.startup * this.FPS);
-    const endFrame = move.hitboxEndFrame ?? Math.floor((move.startup + move.active) * this.FPS);
-
-    const active = currentFrame >= startFrame && currentFrame <= endFrame;
-    const progress = active
-      ? (currentFrame - startFrame) / Math.max(1, endFrame - startFrame)
-      : 0;
+    // Seconds, not "frame 8 of a 60fps chart." A 2-frame active used to
+    // fall between raf samples, so the fist visually connected and the
+    // hitbox never existed.
+    const lock = Math.max(0.16, this.attackLock || (move.startup + move.active + move.recovery));
+    let start = move.startup;
+    let end = move.startup + Math.max(move.active, 0.05);
+    if (isSpinClip(move.clip)) {
+      start = lock * 0.40;
+      end = Math.min(lock * 0.72, start + 0.28);
+    } else if (end > lock * 0.95) {
+      start = lock * 0.30;
+      end = lock * 0.62;
+    }
+    const active = elapsed >= start && this.prevMoveElapsed <= end;
+    const span = Math.max(0.001, end - start);
+    const progress = active ? Math.max(0, Math.min(1, (elapsed - start) / span)) : 0;
 
     return { active, progress, move, currentFrame };
   }
@@ -885,6 +894,7 @@ export class FighterStateMachine {
     // ── Command throw tick ────────────────────────────────────────────────
     if (this.actionState === 'CommandThrow') {
       this.moveTimer = Math.max(0, this.moveTimer - dt);
+      this.prevMoveElapsed = this.moveElapsed;
       this.moveElapsed += dt;
 
       if (this.moveTimer <= 0) {
@@ -918,6 +928,7 @@ export class FighterStateMachine {
     // ── Attack tick ──────────────────────────────────────────────────────────
     if (this.actionState === 'Attacking' && this.currentMove) {
       this.moveTimer = Math.max(0, this.moveTimer - dt);
+      this.prevMoveElapsed = this.moveElapsed;
       this.moveElapsed += dt;
 
       if (risingLp) this.queuedLimb = 'lp';
@@ -1472,7 +1483,9 @@ export class FighterStateMachine {
     this.currentMove = stamped;
     const frameTotal = move.startup + move.active + move.recovery;
     this.moveTimer = computeAttackLockDuration(motion, frameTotal, stamped.clip);
+    this.attackLock = this.moveTimer;
     this.moveElapsed = 0;
+    this.prevMoveElapsed = 0;
     this.queuedAction = null;
     console.log(
       `[FSM] ⚔️  STATE TRANSITION: "${prevState}" → "${motion}" ` +

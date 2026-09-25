@@ -61,7 +61,7 @@ import { checkThrowRange, detectThrowInput, getThrowDamage, THROW_CATALOG,  } fr
 // ── Global Audio Manager ──────────────────────────────────────────────────────
 import { getGlobalAudioManager } from '../engine/audio/GlobalAudioManager';
 // ── Hit Effect System ─────────────────────────────────────────────────────────
-import { type HitEffectPool } from '../engine/combat/HitEffectSystem';
+import { sparkContact, sparkWorldY, type AttackHeight } from '../engine/combat/HitEffectSystem';
 
 // ── 3D combat arena — loaded client-side only ─────────────────────────────────
 const CombatArena3D = dynamic(() => import('./CombatArena3D'), {
@@ -110,6 +110,20 @@ const INTRO_DURATION_MS = 2500;
 // Post-match screen delay after KO/victory cinematic
 const POST_MATCH_DELAY_MS = 3600;
 
+const FrameLabel = React.memo(function FrameLabel({ frameRef }: { frameRef: React.MutableRefObject<number> }) {
+  const el = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    let raf = 0;
+    const tick = () => {
+      if (el.current) el.current.textContent = `F${frameRef.current}`;
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [frameRef]);
+  return <div ref={el} className="text-[7px] text-zinc-400 tracking-widest" />;
+});
+
 export default function GameBattleArena({
   p1Fighter,
   p2Fighter,
@@ -126,7 +140,7 @@ export default function GameBattleArena({
   const engineRef = useRef<GameEngine | null>(null);
   const inputRef = useRef<InputBitmask>({ ...EMPTY_INPUT });
   const rafRef = useRef<number>(0);
-  const [frame, setFrame] = useState(0);
+  const frameRef = useRef(0);
   const [p1Health, setP1Health] = useState(p1Fighter.hp);
   const [p2Health, setP2Health] = useState(p2Fighter.hp);
   const [p1State, setP1State] = useState<string>('Neutral');
@@ -252,6 +266,9 @@ export default function GameBattleArena({
   const [p1RecoveryProgress, setP1RecoveryProgress] = useState(0);
   // ── Wakeup buffer display state ───────────────────────────────────────────
   const [p1WakeupBuffered, setP1WakeupBuffered] = useState<string | null>(null);
+  const p1QueueKeyRef = useRef('');
+  const p1RecoveryRef = useRef(0);
+  const p1WakeRef = useRef<string | null>(null);
 
   // ── Combo system state ────────────────────────────────────────────────────
   const [p1Combo, setP1Combo] = useState<ComboState>(() => createComboState('p1'));
@@ -324,6 +341,10 @@ export default function GameBattleArena({
   const p2XRef = useRef(1.8);
   const p1ZRef = useRef(0);
   const p2ZRef = useRef(0);
+  const livePoseRef = useRef({
+    p1x: -1.8, p1y: 0, p1z: 0,
+    p2x: 1.8, p2y: 0, p2z: 0,
+  });
   const p1JuggleRef = useRef(0);
   const p2JuggleRef = useRef(0);
   const p1ScrewRef = useRef(false);
@@ -361,6 +382,8 @@ export default function GameBattleArena({
   // ── Damage event state ────────────────────────────────────────────────────
   const [damageEvent, setDamageEvent] = useState<{
     count: number; player: 'p1' | 'p2'; damage: number; isCounter: boolean; factionColor: string;
+    attackLevel?: AttackHeight; blocked?: boolean; heat?: boolean; effect?: 'clean_hit' | 'block' | 'counter_hit' | 'wall_splat' | 'floor_slam';
+    worldX?: number; worldY?: number; worldZ?: number;
   } | undefined>(undefined);
   const damageEventCountRef = useRef(0);
 
@@ -388,6 +411,8 @@ export default function GameBattleArena({
   // ── Heat / Power Crush / Rage Art HUD state ───────────────────────────────
   const [p1HeatActive, setP1HeatActive] = useState(false);
   const [p2HeatActive, setP2HeatActive] = useState(false);
+  const p1HeatActiveRef = useRef(false);
+  const p2HeatActiveRef = useRef(false);
   const [p1RageArtAvailable, setP1RageArtAvailable] = useState(false);
   const [p2RageArtAvailable, setP2RageArtAvailable] = useState(false);
   const [p1PowerCrushActive, setP1PowerCrushActive] = useState(false);
@@ -401,6 +426,7 @@ export default function GameBattleArena({
     const p1MoveSet = getCharacterMoveSet(p1Fighter.id);
     const p2MoveSet = getCharacterMoveSet(p2Fighter.id);
     const engine = new GameEngine(p1Fighter, p2Fighter);
+    engine.arenaAuthoritative = true;
     if (p1MoveSet?.isCustomized) {
       const lightMove = getMoveById(p1MoveSet.lightAttack);
       const heavyMove = getMoveById(p1MoveSet.heavyAttack);
@@ -410,7 +436,7 @@ export default function GameBattleArena({
     engineRef.current = engine;
     setP1Health(p1Fighter.hp);
     setP2Health(p2Fighter.hp);
-    setFrame(0);
+    frameRef.current = 0;
     setKo(false);
     setWinner(null);
     setRoundTimer(99);
@@ -424,6 +450,10 @@ export default function GameBattleArena({
     // Reset fighter positions
     setP1X(-1.8); setP2X(1.8);
     p1XRef.current = -1.8; p2XRef.current = 1.8;
+    p1YRef.current = 0; p2YRef.current = 0;
+    livePoseRef.current.p1x = -1.8; livePoseRef.current.p2x = 1.8;
+    livePoseRef.current.p1y = 0; livePoseRef.current.p2y = 0;
+    livePoseRef.current.p1z = 0; livePoseRef.current.p2z = 0;
     p1LocoRef.current = new LocomotionSystem(-1.8, 0, 1);
     p2LocoRef.current = new LocomotionSystem(1.8, 0, -1);
 
@@ -585,7 +615,7 @@ export default function GameBattleArena({
       const engine = engineRef.current;
       if (!engine) return;
       if (now - lastTime < FRAME_MS - 1) return;
-      const dt = Math.min((now - lastTime) / 1000, 0.05);
+      const dt = Math.min((now - lastTime) / 1000, 0.1);
       lastTime = now;
 
       const prevP1Health = prevP1HealthRef.current;
@@ -631,6 +661,7 @@ export default function GameBattleArena({
         lp: smInput.lp, rp: smInput.rp, lk: smInput.lk, rk: smInput.rk,
       };
       const prevP1KiActive = p1KiChargeRef.current.active;
+      const prevP1KiFrames = p1KiChargeRef.current.framesRemaining;
       const newP1KiCharge = tickKiCharge(
         p1KiChargeRef.current,
         p1KiInput,
@@ -645,7 +676,12 @@ export default function GameBattleArena({
         console.log('[Arena] ⚡ P1 Ki Charge activated');
       }
       p1KiChargeRef.current = newP1KiCharge;
-      setP1KiCharge({ ...newP1KiCharge });
+      if (
+        prevP1KiActive !== newP1KiCharge.active
+        || (newP1KiCharge.active && Math.floor(prevP1KiFrames / 6) !== Math.floor(newP1KiCharge.framesRemaining / 6))
+      ) {
+        setP1KiCharge(newP1KiCharge);
+      }
 
       // ── Tick decoupled combat state (Night Sky Engine pattern) ─────────
       combatStateRef.current = tickCombatState(
@@ -791,10 +827,10 @@ export default function GameBattleArena({
           const landDmg = fbResult.state.landingDamage;
           if (victim === 'p1') {
             setP1Health(h => Math.max(0, h - landDmg));
-            setDamageEvent({ count: ++damageEventCountRef.current, player: 'p1', damage: landDmg, isCounter: false, factionColor: '#f97316' });
+            setDamageEvent({ count: ++damageEventCountRef.current, player: 'p1', damage: landDmg, isCounter: false, factionColor: '#f97316', effect: 'floor_slam', attackLevel: 'low', worldX: p1XRef.current, worldY: sparkWorldY('low'), worldZ: p1ZRef.current });
           } else {
             setP2Health(h => Math.max(0, h - landDmg));
-            setDamageEvent({ count: ++damageEventCountRef.current, player: 'p2', damage: landDmg, isCounter: false, factionColor: '#f97316' });
+            setDamageEvent({ count: ++damageEventCountRef.current, player: 'p2', damage: landDmg, isCounter: false, factionColor: '#f97316', effect: 'floor_slam', attackLevel: 'low', worldX: p2XRef.current, worldY: sparkWorldY('low'), worldZ: p2ZRef.current });
           }
           audioManagerRef.current.playSFX('floor_slam');
           console.log('[FloorBreak] 💥 Landing damage applied to', victim, ':', landDmg);
@@ -845,14 +881,12 @@ export default function GameBattleArena({
           const newX = p1XRef.current + (newBounce.p1TargetX - p1XRef.current) * lerpSpeed;
           p1XRef.current = newX;
           p1LocoRef.current.clampX(newX);
-          setP1X(newX);
         }
         if (newBounce.p2BounceActive && newBounce.p2BounceFrames > 0) {
           const lerpSpeed = 0.15;
           const newX = p2XRef.current + (newBounce.p2TargetX - p2XRef.current) * lerpSpeed;
           p2XRef.current = newX;
           p2LocoRef.current.clampX(newX);
-          setP2X(newX);
         }
       }
 
@@ -973,6 +1007,7 @@ export default function GameBattleArena({
             damage: throwDmg,
             isCounter: false,
             factionColor: p2Color,
+            ...sparkContact(p2XRef.current, p2ZRef.current, p1XRef.current, p1ZRef.current, 'mid', p2YRef.current),
           });
           setFeedbackEvents(prev => [...prev.slice(-6), {
             id: ++feedbackIdRef.current,
@@ -1007,9 +1042,13 @@ export default function GameBattleArena({
             audioMgrHeat.playSFX('heat_burst_activate');
             audioMgrHeat.playVOX('heat_burst_yell');
             setHeatBurstEvent({ count: ++heatBurstEventCountRef.current, player: 'p1' });
+            p1HeatActiveRef.current = true;
             setP1HeatActive(true);
             // Heat expires after ~5 seconds
-            setTimeout(() => setP1HeatActive(false), 5000);
+            setTimeout(() => {
+              p1HeatActiveRef.current = false;
+              setP1HeatActive(false);
+            }, 5000);
           }
 
           // ── Rage Art activation ───────────────────────────────────────
@@ -1051,6 +1090,7 @@ export default function GameBattleArena({
               damage: throwDmg,
               isCounter: false,
               factionColor: p2Color,
+              ...sparkContact(p2XRef.current, p2ZRef.current, p1XRef.current, p1ZRef.current, 'mid', p2YRef.current),
             });
             setSpecialMoveNotice({ name: throwDef.name, player: 'p1', id: ++specialNoticeIdRef.current });
             setTimeout(() => setSpecialMoveNotice(null), 1500);
@@ -1207,6 +1247,14 @@ export default function GameBattleArena({
           damage: p1ScaledDmg,
           isCounter,
           factionColor: p2Color,
+          blocked: isBlocked,
+          heat: p1HeatActiveRef.current,
+          ...sparkContact(
+            p2XRef.current, p2ZRef.current,
+            p1XRef.current, p1ZRef.current,
+            p1HitMove?.attackLevel,
+            p2LocoRef.current.airborneY,
+          ),
         });
         setFeedbackEvents(prev => [...prev.slice(-6), {
           id: ++feedbackIdRef.current,
@@ -1252,7 +1300,9 @@ export default function GameBattleArena({
 
       // ── Check P2 hitbox vs P1 ──────────────────────────────────────────
       const p1IsBlocking = p1SM.action === 'Guard';
-      const p2Hit = p2Hb.checkCollision(
+      const p2AttackIsLinear = !(p2HbWindow.move?.isSpecial);
+      const p2HitWhiffs = checkSidestepWhiff(p2ZRef.current, p1ZRef.current, !p2AttackIsLinear);
+      const p2Hit = p2HitWhiffs ? null : p2Hb.checkCollision(
         p2XRef.current, p2ZRef.current, -1,
         p1XRef.current, p1ZRef.current,
         p1IsBlocking,
@@ -1363,6 +1413,14 @@ export default function GameBattleArena({
           damage: p2ScaledDmg,
           isCounter,
           factionColor: p1Color,
+          blocked: isBlocked,
+          heat: p2HeatActiveRef.current,
+          ...sparkContact(
+            p1XRef.current, p1ZRef.current,
+            p2XRef.current, p2ZRef.current,
+            p2HitMove?.attackLevel,
+            p1LocoRef.current.airborneY,
+          ),
         });
         setFeedbackEvents(prev => [...prev.slice(-6), {
           id: ++feedbackIdRef.current,
@@ -1478,7 +1536,10 @@ export default function GameBattleArena({
         });
       }
 
-      // ── Tick legacy engine for health/state tracking ───────────────────
+      // ── Tick health ledger only. The visible hitboxes already applied damage.
+      // A full engine.tick() used to swing, walk, and hit a second pair of
+      // fighters the player cannot see, so HP dropped on punches that missed.
+      engine.syncWorld(p1XRef.current, p1ZRef.current, p2XRef.current, p2ZRef.current);
       engine.tick(inputRef.current);
 
       const p1Dmg = prevP1Health - engine.p1Health;
@@ -1491,17 +1552,16 @@ export default function GameBattleArena({
       const p1DisplayState = mapActionToDisplayState(p1SM.action, p1NextMotion, engine.state);
       const p2DisplayState = mapActionToDisplayState(p2SM.action, p2NextMotion, engine.p2State);
 
+      frameRef.current = engine.currentFrame;
+      if (p1Dmg !== 0) setP1Health(engine.p1Health);
+      if (p2Dmg !== 0) setP2Health(engine.p2Health);
+      if (p1DisplayState !== prevP1StateRef.current) setP1State(p1DisplayState);
+      if (p2DisplayState !== prevP2StateRef.current) setP2State(p2DisplayState);
+      if (p1NextMotion !== prevP1AnimRef.current) setP1Animation(p1NextMotion);
+      if (p2NextMotion !== prevP2AnimRef.current) setP2Animation(p2NextMotion);
+
       prevP1StateRef.current = p1DisplayState;
       prevP2StateRef.current = p2DisplayState;
-
-      setFrame(engine.currentFrame);
-      setP1Health(engine.p1Health);
-      setP2Health(engine.p2Health);
-      setP1State(p1DisplayState);
-      setP2State(p2DisplayState);
-      setP1Animation(p1NextMotion);
-      setP2Animation(p2NextMotion);
-      setHitStopActive(engine.hitStopFrames > 0);
 
       // ── Record frame to match recorder ────────────────────────────────────
       recordFrame({
@@ -1647,18 +1707,15 @@ export default function GameBattleArena({
         // Only trigger React re-render when position changes meaningfully (>0.01 units)
         if (Math.abs(newP1X - p1XRef.current) > 0.01) {
           p1XRef.current = newP1X;
-          setP1X(newP1X);
         }
         const jy = p1LocoRef.current.airborneY;
         if (Math.abs(jy - p1YRef.current) > 0.005 || (jy === 0 && p1YRef.current !== 0)) {
           p1YRef.current = jy;
           p1JumpYRef.current = jy;
-          setP1Y(jy);
         }
         const p2Air = p2LocoRef.current.airborneY;
         if (Math.abs(p2Air - p2YRef.current) > 0.005 || (p2Air === 0 && p2YRef.current !== 0)) {
           p2YRef.current = p2Air;
-          setP2Y(p2Air);
         }
         if (p1LocoRef.current.justLanded) {
           if (p1ScrewRef.current) {
@@ -1680,37 +1737,45 @@ export default function GameBattleArena({
         }
         if (Math.abs(newP2X - p2XRef.current) > 0.01) {
           p2XRef.current = newP2X;
-          setP2X(newP2X);
         }
 
         const newP1Z = p1LocoRef.current.position.z;
         const newP2Z = p2LocoRef.current.position.z;
         if (Math.abs(newP1Z - p1ZRef.current) > 0.01) {
           p1ZRef.current = newP1Z;
-          setP1Z(newP1Z);
         }
         if (Math.abs(newP2Z - p2ZRef.current) > 0.01) {
           p2ZRef.current = newP2Z;
-          setP2Z(newP2Z);
         }
 
-        // Update locomotion velocity for animation blending
-        const p1VelMag = Math.abs(p1Vel.forward) + Math.abs(p1Vel.strafe);
-        const p2VelMag = Math.abs(p2Vel.forward) + Math.abs(p2Vel.strafe);
-        if (Math.abs(p1VelMag - p1VelRef.current.forward) > 0.03) {
-          p1VelRef.current = p1Vel;
-          setP1LocomotionVelocity({ ...p1Vel });
-        }
-        if (Math.abs(p2VelMag - p2VelRef.current.forward) > 0.03) {
-          p2VelRef.current = p2Vel;
-          setP2LocomotionVelocity({ ...p2Vel });
-        }
+        p1VelRef.current = p1Vel;
+        p2VelRef.current = p2Vel;
       }
 
       // ── Update queued action HUD display ──────────────────────────────────
-      setP1QueuedAction(p1SM.getQueuedAction());
-      setP1RecoveryProgress(p1SM.getRecoveryProgress());
-      setP1WakeupBuffered(p1SM.getBufferedWakeup());
+      const queued = p1SM.getQueuedAction();
+      const queueKey = queued?.type ?? '';
+      if (queueKey !== p1QueueKeyRef.current) {
+        p1QueueKeyRef.current = queueKey;
+        setP1QueuedAction(queued);
+      }
+      const recovery = p1SM.getRecoveryProgress();
+      if (Math.abs(recovery - p1RecoveryRef.current) > 0.08 || (recovery === 0 && p1RecoveryRef.current !== 0)) {
+        p1RecoveryRef.current = recovery;
+        setP1RecoveryProgress(recovery);
+      }
+      if (p1SM.getBufferedWakeup() !== p1WakeRef.current) {
+        p1WakeRef.current = p1SM.getBufferedWakeup();
+        setP1WakeupBuffered(p1WakeRef.current);
+      }
+
+      const pose = livePoseRef.current;
+      pose.p1x = p1XRef.current;
+      pose.p1y = p1YRef.current;
+      pose.p1z = p1ZRef.current;
+      pose.p2x = p2XRef.current;
+      pose.p2y = p2YRef.current;
+      pose.p2z = p2ZRef.current;
 
       if (engine.isMatchOver() && !koHandledRef.current) {
         koHandledRef.current = true;
@@ -2018,6 +2083,7 @@ export default function GameBattleArena({
           p2X={p2X}
           p1Y={p1Y}
           p2Y={p2Y}
+          livePoseRef={livePoseRef}
           onP1BoneHitboxReady={(sys: BoneHitboxSystem) => { p1BoneHitboxRef.current = sys; }}
           onP2BoneHitboxReady={(sys: BoneHitboxSystem) => { p2BoneHitboxRef.current = sys; }}
           wallSplatEvent={wallSplatEvent}
@@ -2069,7 +2135,7 @@ export default function GameBattleArena({
                 >
                   {String(roundTimer).padStart(2, '0')}
                 </div>
-                <div className="text-[7px] text-zinc-400 tracking-widest">F{frame}</div>
+                <FrameLabel frameRef={frameRef} />
               </div>
 
               {/* P2 health bar */}
@@ -2641,6 +2707,10 @@ export default function GameBattleArena({
                 roundStartTimeRef.current = Date.now();
                 setP1X(-1.8); setP2X(1.8);
                 p1XRef.current = -1.8; p2XRef.current = 1.8;
+                p1YRef.current = 0; p2YRef.current = 0;
+                livePoseRef.current.p1x = -1.8; livePoseRef.current.p2x = 1.8;
+                livePoseRef.current.p1y = 0; livePoseRef.current.p2y = 0;
+                livePoseRef.current.p1z = 0; livePoseRef.current.p2z = 0;
                 p1LocoRef.current = new LocomotionSystem(-1.8, 0, 1);
                 p2LocoRef.current = new LocomotionSystem(1.8, 0, -1);
                 p1SMRef.current = new FighterStateMachine();

@@ -7,8 +7,9 @@
  * timeScale is clip.duration / lockDuration so EVERY keyframe plays across
  * the lock window. Idle/walk must not hard-cut a oneshot mid-punch.
  *
- * Play-fully ≠ 1.73s Mixamo boxing at 1.0× (too slow for a fighter). Long
- * Mixamo clips compress into ~0.55–0.90s so the whole punch is seen.
+ * Play-fully ≠ 1.73s Mixamo boxing at 1.0× (too slow) and ≠ 7.5× (two poses).
+ * Long files skip the chamber and play the strike at about 1–2.4× across the lock.
+ * Hurricane still starts at frame 0 and keeps its long lock.
  *
  * Hitstun / KO / knockdown may interrupt. Queued cancels during recovery
  * are allowed by the FSM; this gate only owns CLIP playback.
@@ -117,18 +118,54 @@ export function computeAttackLockDuration(
   return Math.min(cap, Math.max(minLock, frameTotalSeconds));
 }
 
+/** Readable strike rate. 7.5× smeared a Mixamo punch into two poses. */
+export const READABLE_TIMESCALE_CAP = 2.35;
+
+export interface StrikePlayback {
+  timeScale: number;
+  /** Seconds into the file. Long Mixamo clips start at the strike, not the chamber. */
+  startTime: number;
+}
+
 /**
- * timeScale so the whole clip fits the lock. BOXING ~1.73s jab → ~3× into 0.58s.
- * Short procedural clips (< lock) play slightly stretched so the pose holds
- * through recovery instead of popping back to bind at 0.38s of a 0.58s lock.
+ * Where a oneshot should start, and how fast it should play, so the swing
+ * is visible during the FSM lock. Spins play from the first frame.
  */
-export function computeOneshotTimeScale(clipDuration: number, lockDuration: number): number {
+export function computeStrikePlayback(
+  clipDuration: number,
+  lockDuration: number,
+  clipName?: string | null,
+): StrikePlayback {
   const dur = Math.max(0.08, clipDuration);
   const lock = Math.max(0.12, lockDuration);
-  const scale = dur / lock;
-  // A 1.7s Mixamo punch has to reach its strike inside ~0.10s or the
-  // combo cancel chops the windup and the swing never reads.
-  return Math.max(0.85, Math.min(7.5, scale));
+  if (isSpinClip(clipName)) {
+    return { timeScale: Math.max(0.85, Math.min(3, dur / lock)), startTime: 0 };
+  }
+  // Chamber + bow is most of a Mixamo punch. The strike is the middle.
+  if (dur > lock * 1.45) {
+    const startTime = dur * 0.32;
+    const slice = dur * 0.46;
+    return {
+      timeScale: Math.max(1.05, Math.min(READABLE_TIMESCALE_CAP, slice / lock)),
+      startTime,
+    };
+  }
+  return {
+    timeScale: Math.max(0.85, Math.min(READABLE_TIMESCALE_CAP, dur / lock)),
+    startTime: 0,
+  };
+}
+
+/**
+ * timeScale so the strike fits the lock. Prefer computeStrikePlayback when
+ * the caller can also skip the Mixamo chamber.
+ */
+export function computeOneshotTimeScale(
+  clipDuration: number,
+  lockDuration: number,
+  clipName?: string | null,
+): number {
+  return computeStrikePlayback(clipDuration, lockDuration, clipName).timeScale;
 }
 
 /**
@@ -140,11 +177,9 @@ export function computeVisualPlaybackLock(
   clipName?: string,
   clipDuration?: number,
 ): number {
-  if (isSpinClip(clipName)) {
-    const dur = Math.max(0.4, clipDuration ?? 1.5);
-    return Math.min(MAX_SPIN_LOCK_S, Math.max(1.15, dur));
-  }
-  return MIN_ATTACK_LOCK_S[motion] ?? DEFAULT_MIN_LOCK_S;
+  // Same clock as the hitbox lock. A shorter visual lock used to finish
+  // the punch and snap back to idle while the swing was still active.
+  return computeAttackLockDuration(motion, clipDuration ?? 0.4, clipName);
 }
 
 export function isOneshotCombatState(key: string): boolean {

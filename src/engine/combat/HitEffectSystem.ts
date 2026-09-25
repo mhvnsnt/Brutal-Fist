@@ -1,79 +1,111 @@
 /**
- * HitEffectSystem — AAA billboarded 3-layer spark system
+ * HitEffectSystem — short universal impact flashes.
  *
- * Architecture (Tekken hit effect layers):
- *  Layer 1: White-hot core — pure white center, always blown-out
- *  Layer 2: Character color corona — surrounds white core with fighter's identity color
- *  Layer 3: Directional streaks — sharp jagged streaks along attack trajectory
+ * Schwarzerblitz / Tekken shape, without per-fighter colors:
+ *  Layer 1: white-hot core
+ *  Layer 2: one shared heat tint (high / mid / low / block / counter)
+ *  Layer 3: a few directional streaks
  *
- * Contextual shapes:
- *  - Clean hit: explosive jagged starbursts in character color
- *  - Block: universal pale blue/grey circular shield spark
- *  - Counter-hit: same as clean hit but 200% scale, longer duration, + screen shake
+ * Life is a handful of frames at 60Hz (block 4, clean 5, wall 7, counter 8, heat 10).
+ * Age uses the real delta AND a wall clock, so a 2fps hitch cannot leave
+ * a spark on screen. Do not cap the decay at 50ms.
  *
- * Environmental illumination:
- *  - THREE.PointLight at impact XYZ, tinted to attacker's color
- *  - Exists for exactly 3-5 frames then vanishes (flashbulb, not glow stick)
- *
- * Object pooling:
- *  - Pre-allocate pool of 5 hit-spark effect slots
- *  - Reuse slots instead of creating new meshes on every hit
- *  - Prevents mobile GC stutter
- *
- * Camera shake:
- *  - Light punch: 1px for 3 frames
- *  - Heavy punch: 5px for 10 frames
- *  - Counter-hit: 8px for 15 frames
- *
- * NOTE: This system provides the data/state for hit effects.
- * The actual Three.js rendering is done in CombatArena3D.tsx using this data.
+ * Height is the attack level, not a single locked torso Y:
+ *  high 1.55, mid HIT_FX_WORLD_Y (1.05), low 0.38, plus airborne lift.
  */
+
+import { HIT_FX_WORLD_Y } from '../V7OrientationContract';
 
 // ── Hit effect types ──────────────────────────────────────────────────────────
 export type HitEffectType = 'clean_hit' | 'block' | 'counter_hit' | 'wall_splat' | 'floor_slam';
+
+export type AttackHeight = 'high' | 'mid' | 'low';
+
+/** Shared spark palette. No CHARACTER_BLOOM, no faction color. */
+export const SPARK_COLOR = {
+  high: '#fff7ea',
+  mid: '#ffb15a',
+  low: '#e8c27a',
+  block: '#b7d4ea',
+  counter: '#ffffff',
+  heat: '#ff7a18',
+  wall: '#fff4e0',
+} as const;
+
+/** Seconds. A few frames, then gone. */
+export const SPARK_LIFE_S: Record<HitEffectType | 'heat', number> = {
+  block: 4 / 60,
+  clean_hit: 5 / 60,
+  wall_splat: 7 / 60,
+  floor_slam: 7 / 60,
+  counter_hit: 8 / 60,
+  heat: 10 / 60,
+};
+
+export function sparkWorldY(level: AttackHeight | undefined, airborneY = 0): number {
+  const base = level === 'high' ? 1.55 : level === 'low' ? 0.38 : HIT_FX_WORLD_Y;
+  return base + Math.max(0, airborneY);
+}
+
+export function sparkColorFor(type: HitEffectType, level?: AttackHeight, heat = false): string {
+  if (heat) return SPARK_COLOR.heat;
+  if (type === 'block') return SPARK_COLOR.block;
+  if (type === 'counter_hit') return SPARK_COLOR.counter;
+  if (type === 'wall_splat' || type === 'floor_slam') return SPARK_COLOR.wall;
+  if (level === 'high') return SPARK_COLOR.high;
+  if (level === 'low') return SPARK_COLOR.low;
+  return SPARK_COLOR.mid;
+}
+
+/** Contact point, biased toward the victim so the flash sits on their body. */
+export function sparkContact(
+  victimX: number,
+  victimZ: number,
+  attackerX: number,
+  attackerZ: number,
+  level: AttackHeight | undefined,
+  airborneY = 0,
+): { attackLevel: AttackHeight; worldX: number; worldY: number; worldZ: number } {
+  const attackLevel: AttackHeight = level === 'high' || level === 'low' ? level : 'mid';
+  return {
+    attackLevel,
+    worldX: victimX + (attackerX - victimX) * 0.28,
+    worldY: sparkWorldY(attackLevel, airborneY),
+    worldZ: victimZ + (attackerZ - victimZ) * 0.28,
+  };
+}
 
 // ── Hit weight for camera shake ───────────────────────────────────────────────
 export type HitWeight = 'light' | 'medium' | 'heavy' | 'counter' | 'super';
 
 // ── Directional streak ────────────────────────────────────────────────────────
 export interface DirectionalStreak {
-  angle: number;   // radians
-  length: number;  // streak length in screen pixels
-  width: number;   // streak width
-  color: string;   // character color
-  alpha: number;   // 0-1
+  angle: number;
+  length: number;
+  width: number;
+  color: string;
+  alpha: number;
 }
 
 // ── Point light flash data ────────────────────────────────────────────────────
 export interface PointLightFlash {
-  /** World-space position of the impact */
   x: number;
   y: number;
   z: number;
-  /** Light color (attacker's character color) */
   color: string;
-  /** Current intensity (fades to 0 over 5 frames) */
   intensity: number;
-  /** Max intensity */
   maxIntensity: number;
-  /** Frames remaining (3-5 frames) */
   framesRemaining: number;
-  /** Total frames */
   totalFrames: number;
 }
 
 // ── Camera shake state ────────────────────────────────────────────────────────
 export interface CameraShakeState {
   active: boolean;
-  /** Current X offset in pixels */
   offsetX: number;
-  /** Current Y offset in pixels */
   offsetY: number;
-  /** Magnitude of shake */
   magnitude: number;
-  /** Frames remaining */
   framesRemaining: number;
-  /** Total frames */
   totalFrames: number;
 }
 
@@ -83,41 +115,32 @@ export function createCameraShakeState(): CameraShakeState {
 
 // ── Hit effect slot (pooled) ──────────────────────────────────────────────────
 export interface HitEffectSlot {
-  /** Whether this slot is currently active */
   active: boolean;
-  /** Type of hit effect */
   type: HitEffectType;
-  /** Screen-space X position */
   screenX: number;
-  /** Screen-space Y position */
   screenY: number;
-  /** World-space position for point light */
   worldX: number;
   worldY: number;
   worldZ: number;
-  /** Character color (corona layer) */
+  /** Universal spark tint. Not a per-fighter bloom. */
   characterColor: string;
-  /** Scale multiplier (1.0 = normal, 2.0 = counter-hit) */
+  attackLevel: AttackHeight;
   scale: number;
-  /** Life remaining (0-1, 1 = just spawned) */
+  /** Life remaining in seconds */
   life: number;
-  /** Max life in seconds */
   maxLife: number;
-  /** Directional streaks */
   streaks: DirectionalStreak[];
-  /** Attack direction angle (radians) for streak orientation */
   attackAngle: number;
-  /** Point light flash */
   pointLight: PointLightFlash | null;
+  /** performance.now() when the spark was spawned. 0 if inactive. */
+  bornAtMs: number;
 }
 
-// ── Hit effect pool ───────────────────────────────────────────────────────────
-export const HIT_EFFECT_POOL_SIZE = 5;
+export const HIT_EFFECT_POOL_SIZE = 8;
 
 export interface HitEffectPool {
   slots: HitEffectSlot[];
   cameraShake: CameraShakeState;
-  /** Global screen flash intensity (0-1) */
   screenFlash: number;
 }
 
@@ -130,12 +153,14 @@ export function createHitEffectPool(): HitEffectPool {
       screenX: 0, screenY: 0,
       worldX: 0, worldY: 0, worldZ: 0,
       characterColor: '#ffffff',
+      attackLevel: 'mid',
       scale: 1.0,
       life: 0,
-      maxLife: 0.4,
+      maxLife: SPARK_LIFE_S.clean_hit,
       streaks: [],
       attackAngle: 0,
       pointLight: null,
+      bornAtMs: 0,
     });
   }
   return {
@@ -145,35 +170,31 @@ export function createHitEffectPool(): HitEffectPool {
   };
 }
 
-// ── Streak generation ─────────────────────────────────────────────────────────
 function generateStreaks(
   type: HitEffectType,
-  characterColor: string,
+  sparkColor: string,
   attackAngle: number,
   scale: number,
 ): DirectionalStreak[] {
   const streaks: DirectionalStreak[] = [];
 
   if (type === 'block') {
-    // Block: circular shield sparks — no directional streaks, just radial
     for (let i = 0; i < 6; i++) {
       streaks.push({
         angle: (Math.PI * 2 * i) / 6,
         length: 12 * scale,
         width: 2,
-        color: '#8ab4d4', // pale blue shield color
+        color: SPARK_COLOR.block,
         alpha: 0.7,
       });
     }
     return streaks;
   }
 
-  // Clean hit / counter-hit: jagged directional streaks
-  const baseCount = type === 'counter_hit' ? 12 : 8;
-  const baseLength = type === 'counter_hit' ? 35 * scale : 20 * scale;
+  const baseCount = type === 'counter_hit' ? 8 : 6;
+  const baseLength = type === 'counter_hit' ? 28 * scale : 18 * scale;
 
   for (let i = 0; i < baseCount; i++) {
-    // Bias streaks toward attack direction
     const spread = Math.PI * 0.7;
     const angle = attackAngle + (Math.random() - 0.5) * spread;
     const length = baseLength * (0.5 + Math.random() * 0.8);
@@ -181,12 +202,11 @@ function generateStreaks(
       angle,
       length,
       width: 1.5 + Math.random() * 2,
-      color: characterColor,
+      color: sparkColor,
       alpha: 0.8 + Math.random() * 0.2,
     });
   }
 
-  // Add a few white-hot core streaks
   for (let i = 0; i < 4; i++) {
     const angle = attackAngle + (Math.random() - 0.5) * 0.8;
     streaks.push({
@@ -201,7 +221,6 @@ function generateStreaks(
   return streaks;
 }
 
-// ── Spawn hit effect ──────────────────────────────────────────────────────────
 export interface SpawnHitEffectParams {
   type: HitEffectType;
   screenX: number;
@@ -209,163 +228,160 @@ export interface SpawnHitEffectParams {
   worldX: number;
   worldY: number;
   worldZ: number;
-  characterColor: string;
+  /** Accepted so older call sites compile. The tint ignores this. */
+  characterColor?: string;
   attackAngle?: number;
   damage?: number;
+  attackLevel?: AttackHeight;
+  /** Heat burst / rage. Universal orange, still only a few frames. */
+  heat?: boolean;
+  /** Test clock. Omit in the game; spawn uses performance.now(). */
+  nowMs?: number;
 }
 
 /**
  * Spawn a hit effect into the pool.
- * Finds the oldest/inactive slot and reuses it.
+ * Finds an inactive slot and reuses it. Mutates the pool and returns it.
  */
 export function spawnHitEffect(pool: HitEffectPool, params: SpawnHitEffectParams): HitEffectPool {
   const {
     type, screenX, screenY, worldX, worldY, worldZ,
-    characterColor, attackAngle = 0, damage = 100,
+    attackAngle = 0, damage = 20, heat = false, nowMs,
   } = params;
 
-  // Find inactive slot, or steal the oldest active one
+  const attackLevel: AttackHeight = params.attackLevel
+    ?? (worldY >= 1.35 ? 'high' : worldY <= 0.62 ? 'low' : 'mid');
+  const color = sparkColorFor(type, attackLevel, heat);
+
   let slotIdx = pool.slots.findIndex(s => !s.active);
-  if (slotIdx === -1) slotIdx = 0; // steal first slot
+  if (slotIdx === -1) slotIdx = 0;
 
   const isCounter = type === 'counter_hit';
-  const isHeavy = damage > 150 || isCounter;
-  const scale = isCounter ? 2.0 : isHeavy ? 1.4 : 1.0;
-  const maxLife = isCounter ? 0.6 : isHeavy ? 0.45 : 0.35;
+  const scale = isCounter ? 1.35
+    : type === 'wall_splat' || type === 'floor_slam' ? 1.2
+    : damage > 80 ? 1.12
+    : 1;
+  const maxLife = heat ? SPARK_LIFE_S.heat : SPARK_LIFE_S[type];
 
-  // Point light: 3-5 frames
-  const pointLightFrames = isCounter ? 5 : isHeavy ? 4 : 3;
-  const pointLightIntensity = isCounter ? 8.0 : isHeavy ? 5.0 : 3.0;
+  const pointLightFrames = isCounter ? 4 : heat ? 5 : 3;
+  const pointLightIntensity = isCounter ? 2.2 : heat ? 2.6 : type === 'block' ? 0.8 : 1.6;
 
   const pointLight: PointLightFlash = {
     x: worldX, y: worldY, z: worldZ,
-    color: type === 'block' ? '#8ab4d4' : characterColor,
+    color,
     intensity: pointLightIntensity,
     maxIntensity: pointLightIntensity,
     framesRemaining: pointLightFrames,
     totalFrames: pointLightFrames,
   };
 
-  const newSlot: HitEffectSlot = {
+  pool.slots[slotIdx] = {
     active: true,
     type,
     screenX, screenY,
     worldX, worldY, worldZ,
-    characterColor,
+    characterColor: color,
+    attackLevel,
     scale,
     life: maxLife,
     maxLife,
-    streaks: generateStreaks(type, characterColor, attackAngle, scale),
+    streaks: generateStreaks(type, color, attackAngle, scale),
     attackAngle,
     pointLight,
+    bornAtMs: nowMs ?? (typeof performance !== 'undefined' ? performance.now() : 0),
   };
 
-  const newSlots = [...pool.slots];
-  newSlots[slotIdx] = newSlot;
-
-  // Camera shake
-  const shake = getCameraShakeForHit(type, damage);
-
-  // Screen flash
-  const flashIntensity = isCounter ? 0.9 : isHeavy ? 0.5 : 0.25;
-
-  return {
-    slots: newSlots,
-    cameraShake: shake,
-    screenFlash: Math.max(pool.screenFlash, flashIntensity),
-  };
+  pool.cameraShake = getCameraShakeForHit(type, damage);
+  const flashIntensity = isCounter ? 0.35 : heat ? 0.45 : type === 'block' ? 0.08 : 0.16;
+  pool.screenFlash = Math.max(pool.screenFlash, flashIntensity);
+  return pool;
 }
 
-// ── Camera shake calculation ──────────────────────────────────────────────────
 export function getCameraShakeForHit(type: HitEffectType, damage: number): CameraShakeState {
   if (type === 'block') {
     return { active: true, offsetX: 0, offsetY: 0, magnitude: 1, framesRemaining: 3, totalFrames: 3 };
   }
   if (type === 'counter_hit') {
-    return { active: true, offsetX: 0, offsetY: 0, magnitude: 8, framesRemaining: 15, totalFrames: 15 };
+    return { active: true, offsetX: 0, offsetY: 0, magnitude: 6, framesRemaining: 6, totalFrames: 6 };
   }
   if (type === 'floor_slam' || type === 'wall_splat') {
-    return { active: true, offsetX: 0, offsetY: 0, magnitude: 6, framesRemaining: 12, totalFrames: 12 };
+    return { active: true, offsetX: 0, offsetY: 0, magnitude: 5, framesRemaining: 6, totalFrames: 6 };
   }
-  if (damage > 200) {
-    return { active: true, offsetX: 0, offsetY: 0, magnitude: 5, framesRemaining: 10, totalFrames: 10 };
+  if (damage > 80) {
+    return { active: true, offsetX: 0, offsetY: 0, magnitude: 3, framesRemaining: 4, totalFrames: 4 };
   }
-  if (damage > 100) {
-    return { active: true, offsetX: 0, offsetY: 0, magnitude: 3, framesRemaining: 6, totalFrames: 6 };
-  }
-  return { active: true, offsetX: 0, offsetY: 0, magnitude: 1, framesRemaining: 3, totalFrames: 3 };
+  return { active: true, offsetX: 0, offsetY: 0, magnitude: 1.2, framesRemaining: 3, totalFrames: 3 };
 }
 
-// ── Tick hit effect pool ──────────────────────────────────────────────────────
-const TICK_DT = 1 / 60; // 60fps tick
+const TICK_DT = 1 / 60;
 
-export function tickHitEffectPool(pool: HitEffectPool): HitEffectPool {
-  // Tick slots
-  const newSlots = pool.slots.map(slot => {
-    if (!slot.active) return slot;
+/** Mutates the pool. A hitch must expire the spark, not freeze it at full alpha. */
+export function tickHitEffectPoolInPlace(pool: HitEffectPool, dt = TICK_DT, nowMs?: number): HitEffectPool {
+  const step = Math.max(0, dt);
+  const now = nowMs ?? (typeof performance !== 'undefined' ? performance.now() : 0);
+  const frames = step * 60;
 
-    const newLife = slot.life - TICK_DT;
-    if (newLife <= 0) {
-      return { ...slot, active: false, life: 0, pointLight: null };
+  for (const slot of pool.slots) {
+    if (!slot.active) continue;
+    const age = slot.bornAtMs > 0 ? Math.max(0, (now - slot.bornAtMs) / 1000) : 0;
+    const lived = Math.max(slot.maxLife - slot.life + step, age);
+    if (lived >= slot.maxLife - 1e-4) {
+      slot.active = false;
+      slot.life = 0;
+      slot.pointLight = null;
+      slot.bornAtMs = 0;
+      continue;
     }
-
-    // Tick point light
-    let newPointLight = slot.pointLight;
-    if (newPointLight && newPointLight.framesRemaining > 0) {
-      const newFrames = newPointLight.framesRemaining - 1;
-      const newIntensity = newFrames <= 0 ? 0 :
-        newPointLight.maxIntensity * (newFrames / newPointLight.totalFrames);
-      newPointLight = newFrames <= 0 ? null : {
-        ...newPointLight,
-        framesRemaining: newFrames,
-        intensity: newIntensity,
-      };
+    slot.life = slot.maxLife - lived;
+    const pl = slot.pointLight;
+    if (pl && pl.framesRemaining > 0) {
+      pl.framesRemaining -= frames;
+      if (pl.framesRemaining <= 0) {
+        slot.pointLight = null;
+      } else {
+        pl.intensity = pl.maxIntensity * (pl.framesRemaining / pl.totalFrames);
+      }
     }
-
-    return { ...slot, life: newLife, pointLight: newPointLight };
-  });
-
-  // Tick camera shake
-  let newShake = pool.cameraShake;
-  if (newShake.active && newShake.framesRemaining > 0) {
-    const t = newShake.framesRemaining / newShake.totalFrames;
-    const decayedMag = newShake.magnitude * t;
-    newShake = {
-      ...newShake,
-      offsetX: (Math.random() - 0.5) * 2 * decayedMag,
-      offsetY: (Math.random() - 0.5) * 2 * decayedMag,
-      framesRemaining: newShake.framesRemaining - 1,
-      active: newShake.framesRemaining > 1,
-    };
-  } else if (newShake.active) {
-    newShake = createCameraShakeState();
   }
 
-  // Fade screen flash
-  const newFlash = pool.screenFlash > 0.01 ? pool.screenFlash * 0.82 : 0;
+  const shake = pool.cameraShake;
+  if (shake.active && shake.framesRemaining > 0) {
+    shake.framesRemaining -= frames;
+    const t = Math.max(0, shake.framesRemaining / Math.max(1, shake.totalFrames));
+    const mag = shake.magnitude * t;
+    shake.offsetX = (Math.random() - 0.5) * 2 * mag;
+    shake.offsetY = (Math.random() - 0.5) * 2 * mag;
+    shake.active = shake.framesRemaining > 0;
+  } else if (shake.active) {
+    pool.cameraShake = createCameraShakeState();
+  }
 
-  return { slots: newSlots, cameraShake: newShake, screenFlash: newFlash };
+  pool.screenFlash = pool.screenFlash > 0.01
+    ? pool.screenFlash * Math.pow(0.72, frames)
+    : 0;
+
+  return pool;
 }
 
-// ── Get active point lights ───────────────────────────────────────────────────
+export function tickHitEffectPool(pool: HitEffectPool, dt = TICK_DT, nowMs?: number): HitEffectPool {
+  return tickHitEffectPoolInPlace(pool, dt, nowMs);
+}
+
 export function getActivePointLights(pool: HitEffectPool): PointLightFlash[] {
   return pool.slots
     .filter(s => s.active && s.pointLight !== null)
     .map(s => s.pointLight!);
 }
 
-// ── Render data for canvas overlay ───────────────────────────────────────────
 export interface HitEffectRenderData {
   screenX: number;
   screenY: number;
   characterColor: string;
   scale: number;
-  alpha: number; // life / maxLife
+  alpha: number;
   type: HitEffectType;
   streaks: DirectionalStreak[];
-  /** White core radius */
   coreRadius: number;
-  /** Corona radius */
   coronaRadius: number;
 }
 
@@ -373,8 +389,8 @@ export function getHitEffectRenderData(pool: HitEffectPool): HitEffectRenderData
   return pool.slots
     .filter(s => s.active)
     .map(s => {
-      const alpha = s.life / s.maxLife;
-      const baseRadius = s.type === 'block' ? 18 : s.type === 'counter_hit' ? 40 : 24;
+      const alpha = s.maxLife > 0 ? s.life / s.maxLife : 0;
+      const baseRadius = s.type === 'block' ? 18 : s.type === 'counter_hit' ? 28 : 20;
       return {
         screenX: s.screenX,
         screenY: s.screenY,

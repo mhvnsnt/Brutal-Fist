@@ -42,7 +42,40 @@ function NeonStrip({
   );
 }
 
-// Brick wall panel
+function getBrickTexture(): THREE.CanvasTexture | null {
+  if (typeof document === 'undefined') return null;
+  const c = document.createElement('canvas');
+  c.width = 128;
+  c.height = 64;
+  const g = c.getContext('2d');
+  if (!g) return null;
+  g.fillStyle = '#1a1210';
+  g.fillRect(0, 0, 128, 64);
+  g.fillStyle = '#241814';
+  g.fillRect(2, 2, 60, 28);
+  g.fillRect(68, 34, 58, 28);
+  g.strokeStyle = '#0d0b09';
+  g.lineWidth = 3;
+  g.beginPath();
+  g.moveTo(0, 32);
+  g.lineTo(128, 32);
+  g.moveTo(64, 0);
+  g.lineTo(64, 32);
+  g.moveTo(0, 32);
+  g.lineTo(0, 64);
+  g.moveTo(96, 32);
+  g.lineTo(96, 64);
+  g.stroke();
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+let sharedBrick: THREE.CanvasTexture | null | undefined;
+
+// Brick wall panel — one textured plane. A mesh per mortar line was ~1600
+// draw calls on the default stage and dropped the fight toward a slideshow.
 function BrickWallPanel({
   position,
   rotation,
@@ -54,37 +87,26 @@ function BrickWallPanel({
   width: number;
   height: number;
 }) {
+  const map = React.useMemo(() => {
+    if (sharedBrick === undefined) sharedBrick = getBrickTexture();
+    if (!sharedBrick) return null;
+    const tex = sharedBrick.clone();
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(Math.max(1, width / 1.6), Math.max(1, height / 0.8));
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.needsUpdate = true;
+    return tex;
+  }, [width, height]);
   return (
-    <group position={position} rotation={rotation as any}>
-      {/* Base wall */}
-      <mesh receiveShadow>
-        <planeGeometry args={[width, height]} />
-        <meshStandardMaterial color="#1a1210" roughness={0.95} metalness={0.0} />
-      </mesh>
-      {/* Brick row lines — horizontal */}
-      {Array.from({ length: Math.floor(height / 0.35) }).map((_, i) => (
-        <mesh key={`h${i}`} position={[0, -height / 2 + i * 0.35 + 0.175, 0.01]}>
-          <planeGeometry args={[width, 0.02]} />
-          <meshStandardMaterial color="#0d0b09" roughness={1} />
-        </mesh>
-      ))}
-      {/* Brick column lines — vertical, offset every other row */}
-      {Array.from({ length: Math.floor(height / 0.35) }).map((_, row) =>
-        Array.from({ length: Math.floor(width / 0.7) + 1 }).map((_, col) => (
-          <mesh
-            key={`v${row}-${col}`}
-            position={[
-              -width / 2 + col * 0.7 + (row % 2 === 0 ? 0 : 0.35),
-              -height / 2 + row * 0.35 + 0.175,
-              0.012,
-            ]}
-          >
-            <planeGeometry args={[0.02, 0.33]} />
-            <meshStandardMaterial color="#0d0b09" roughness={1} />
-          </mesh>
-        ))
-      )}
-    </group>
+    <mesh position={position} rotation={rotation as any} receiveShadow>
+      <planeGeometry args={[width, height]} />
+      <meshStandardMaterial
+        map={map ?? undefined}
+        color={map ? '#ffffff' : '#1a1210'}
+        roughness={0.95}
+        metalness={0.0}
+      />
+    </mesh>
   );
 }
 
@@ -219,9 +241,6 @@ export function UrbanNightStage({ p1Color, p2Color }: UrbanNightStageProps) {
         penumbra={0.5}
         distance={18}
         decay={1.5}
-        castShadow
-        shadow-mapSize-width={1024}
-        shadow-mapSize-height={1024}
       />
       {/* Fill spot — deep purple from left, hits background wall */}
       <spotLight

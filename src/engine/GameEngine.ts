@@ -54,6 +54,12 @@ export class GameEngine {
   private p2Guard = false;
   private readonly commandBuffer = new SchwarzerblitzInputBuffer();
   private suppressInternalHit = false;
+  /**
+   * The arena's hitboxes and locomotion are the fight the player sees.
+   * When this is set, tick() only keeps the health ledger. It must not
+   * start a second attack, walk a ghost body, or deal damage from it.
+   */
+  public arenaAuthoritative = false;
 
   constructor(p1Fighter: BannonFighterProfile = getBannonFighter('bannon')!, p2Fighter: BannonFighterProfile = getBannonFighter('maime')!) {
     this.p1Fighter = p1Fighter;
@@ -68,6 +74,10 @@ export class GameEngine {
   }
 
   public tick(currentInput: InputBitmask) {
+    if (this.arenaAuthoritative) {
+      this.tickLedger();
+      return;
+    }
     if (this.isMatchOver()) return;
     this.currentFrame++;
     this.inputBuffer.shift();
@@ -93,6 +103,33 @@ export class GameEngine {
     this.resolveBodySeparation();
     this.updateFacing();
     this.suppressInternalHit = false;
+  }
+
+  /**
+   * Health-only tick. applyIncomingHit already changed HP. Decaying the
+   * ledger's hitstun here stops a stale Hitstun/hit-stop flag from
+   * freezing the visible mixer after the arena hit is over.
+   */
+  private tickLedger() {
+    if (this.isMatchOver()) return;
+    this.currentFrame++;
+    if (this.hitStopFrames > 0) this.hitStopFrames--;
+    if (this.p1Hitstun > 0) {
+      this.p1Hitstun--;
+      if (!this.p1Hitstun && this.state === FighterState.Hitstun) this.state = FighterState.Neutral;
+    }
+    if (this.p2Hitstun > 0) {
+      this.p2Hitstun--;
+      if (!this.p2Hitstun && this.p2State === FighterState.Hitstun) this.p2State = FighterState.Neutral;
+    }
+    if (this.p1Blockstun > 0) {
+      this.p1Blockstun--;
+      if (!this.p1Blockstun && this.state === FighterState.Blockstun) this.state = FighterState.Neutral;
+    }
+    if (this.p2Blockstun > 0) {
+      this.p2Blockstun--;
+      if (!this.p2Blockstun && this.p2State === FighterState.Blockstun) this.p2State = FighterState.Neutral;
+    }
   }
 
   public getSnapshot(): { frame: number; p1: FighterSnapshot; p2: FighterSnapshot } {
