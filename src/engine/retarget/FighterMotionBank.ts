@@ -209,3 +209,144 @@ export function moveIdsForSemantic(rosterId: string, semantic: string): string[]
   }
   return ids;
 }
+
+function hashId(id: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < id.length; i++) {
+    h ^= id.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+function rotated(list: string[], salt: number, id: string): string[] {
+  if (!list.length) return [];
+  const i = (hashId(id || 'fighter') >>> salt) % list.length;
+  return [...list.slice(i), ...list.slice(0, i)];
+}
+
+/**
+ * Per-fighter locomotion kits from clips that actually live in /public/motion.
+ * Claude's stance picker (CharacterStances) is the model: style/id picks a
+ * signature clip, the rest of the pool is the fallback if that file isn't
+ * bound. Schwarzerblitz stance names that are not in this bank are omitted
+ * so a missing clip can never blank a working idle.
+ */
+const LOCO_KITS = {
+  idle: ['DRUNK_IDLE_VARIATION', 'BREAKDANCE_READY', 'LOCO_PROWL', 'BOX_IDLE', 'STANCE_BLADED', 'STANCE_WIDE'],
+  walk: ['LOCO_LUMBER', 'LOCO_STRUT', 'LOCO_LIGHT', 'LOCO_STALK', 'GINGA_FORWARD', 'DWARF_WALK', 'DRUNK_WALK', 'LOCO_PROWL'],
+  walkBack: ['GINGA_BACKWARD', 'INJURED_RUN_BACKWARDS_RIGHT_TURN', 'DRUNK_WALK'],
+  crouch: ['STANCE_CROUCH', 'CROUCH_IDLE_02_LOOKING_AROUND', 'CROUCH_WALK_FORWARD'],
+  guard: ['CENTER_BLOCK', 'GUARD_LOW', 'GUARD_HIGH', 'DEFENDER'],
+  sidestep: ['GINGA_SIDEWAYS_2', 'ESQUIVA_4', 'CORKSCREW_EVADE', 'CROUCH_TORCH_WALK_RIGHT'],
+};
+
+export function locomotionPreferences(fighterId: string, state: string): string[] {
+  const id = fighterId || 'fighter';
+  switch (state) {
+    case 'idle':
+    case 'Idle':
+    case 'Neutral':
+    case 'neutral':
+      return rotated(LOCO_KITS.idle, 0, id);
+    case 'walkForward':
+    case 'walk':
+    case 'Walking':
+    case 'run':
+    case 'dash':
+    case 'dashForward':
+      return rotated(LOCO_KITS.walk, 3, id);
+    case 'walkBackward':
+    case 'Backdashing':
+      return rotated(LOCO_KITS.walkBack, 5, id);
+    case 'crouch':
+    case 'crouchWalk':
+      return rotated(LOCO_KITS.crouch, 7, id);
+    case 'guard':
+    case 'Guard':
+    case 'block':
+    case 'Blockstun':
+    case 'guardLow':
+      return rotated(LOCO_KITS.guard, 11, id);
+    case 'strafeLeft':
+    case 'sidestepLeft':
+      return rotated(LOCO_KITS.sidestep, 13, id);
+    case 'strafeRight':
+    case 'sidestepRight':
+      return rotated(LOCO_KITS.sidestep, 17, id);
+    default:
+      return [];
+  }
+}
+
+const DIRECTION_POOLS: Record<string, Record<string, string[]>> = {
+  lightAttack: {
+    neutral: ['BOXING', 'BOXING__1_', 'BODY_JAB_CROSS', 'BOXING__2_'],
+    forward: ['BODY_JAB_CROSS', 'BOXING__2_', 'COMBO_PUNCH', 'BOXING'],
+    back: ['BOXING__4_', 'ILLEGAL_ELBOW_PUNCH', 'BASH'],
+    crouch: ['BOXING__5_', 'BODY_JAB_CROSS', 'ILLEGAL_KNEE'],
+    air: ['CROSS_JUMPS', 'DROP_KICK', 'BIG_JUMP'],
+  },
+  heavyAttack: {
+    neutral: ['COMBO_PUNCH', 'BOXING__3_', 'BIG_BODY_BLOW', 'BASH'],
+    forward: ['BIG_BODY_BLOW', 'BASH', 'BASEBALL_HIT', 'COMBO_PUNCH'],
+    back: ['ILLEGAL_ELBOW_PUNCH', 'BASH', 'BOXING__4_'],
+    crouch: ['BASH', 'ILLEGAL_KNEE', 'BIG_BODY_BLOW'],
+    air: ['CROSS_JUMPS', 'BIG_JUMP', 'DROP_KICK'],
+  },
+  lightKick: {
+    neutral: ['ILLEGAL_KNEE', 'TIGER_FEINT_KICK', 'DROP_KICK'],
+    forward: ['TIGER_FEINT_KICK', 'ILLEGAL_KNEE', 'DROP_KICK'],
+    back: ['ILLEGAL_KNEE', 'ESQUIVA_4', 'TIGER_FEINT_KICK'],
+    crouch: ['ILLEGAL_KNEE', 'DROP_KICK', 'TIGER_FEINT_KICK'],
+    air: ['DROP_KICK', 'TIGER_FEINT_KICK', 'CROSS_JUMPS'],
+  },
+  heavyKick: {
+    // Neutral 4 is a fast kick. Forward+4 is the hurricane and plays long.
+    neutral: ['AU', 'TIGER_FEINT_KICK', 'CAPOEIRA'],
+    forward: ['HURRICANE_KICK'],
+    back: ['AU', 'CAPOEIRA'],
+    crouch: ['DROP_KICK', 'ILLEGAL_KNEE'],
+    air: ['HURRICANE_KICK'],
+  },
+  CommandThrow: {
+    neutral: ['SUPLEX', 'GERMANSUPLEX', 'CHOKESLAM', 'DDT'],
+    forward: ['CHOKESLAM', 'SUPLEX', 'GERMANSUPLEX'],
+    back: ['DDT', 'GERMANSUPLEX', 'SUPLEX'],
+    crouch: ['DOUBLE_LEG_TAKEDOWN___VICTIM', 'SUPLEX', 'DDT'],
+    air: ['HURRICANE_KICK', 'CHOKESLAM', 'SUPLEX'],
+  },
+};
+
+/**
+ * Claude's attackClip split: the combat state stays lightAttack/heavyKick
+ * (lock, hitbox, timeScale) and the clip is chosen from direction + fighter.
+ * Same button is not the same swing for every character.
+ */
+export function directionalAttackClip(
+  fighterId: string,
+  motion: string,
+  input: { forward: number; crouch: boolean; airborne?: boolean },
+  variant = 0,
+): string | null {
+  const family = DIRECTION_POOLS[motion];
+  if (!family) return null;
+  const dir = input.airborne
+    ? 'air'
+    : input.crouch
+      ? 'crouch'
+      : input.forward > 0.2
+        ? 'forward'
+        : input.forward < -0.2
+          ? 'back'
+          : 'neutral';
+  const pool = family[dir] ?? family.neutral;
+  if (!pool.length) return null;
+  const i = Math.abs((hashId(fighterId || 'fighter') + variant) % pool.length);
+  return pool[i];
+}
+
+export function bankClipForMoveId(moveId: string | undefined): string | null {
+  if (!moveId) return null;
+  return MOVE_ID_TO_BANK_CLIPS[moveId]?.[0] ?? null;
+}

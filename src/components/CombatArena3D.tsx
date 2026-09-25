@@ -471,6 +471,9 @@ export interface CombatArena3DProps {
   p2State: string;
   p1Animation: string;
   p2Animation: string;
+  /** Bank clip for the committed attack. Null while walking or idle. */
+  p1AttackClip?: string | null;
+  p2AttackClip?: string | null;
   p1Color: string;
   p2Color: string;
   hitStopActive: boolean;
@@ -528,6 +531,8 @@ export default function CombatArena3D({
   p2State,
   p1Animation,
   p2Animation,
+  p1AttackClip = null,
+  p2AttackClip = null,
   p1Color,
   p2Color,
   hitStopActive,
@@ -770,10 +775,19 @@ export default function CombatArena3D({
   const p1FinalZ = Math.max(-Z_RANGE, Math.min(Z_RANGE, p1Z));
   const p2FinalZ = Math.max(-Z_RANGE, Math.min(Z_RANGE, p2Z));
 
-  // Schwarzerblitz / Tekken: X fighting lane. P1 +90° faces P2, P2 −90° faces P1.
-  // Camera at +Z is the 3/4. Select yaw is not used. No rest-align to camera.
-  const p1RotationY = COMBAT_P1_YAW;
-  const p2RotationY = COMBAT_P2_YAW;
+  // Lined up on Z keeps the locked yaw (0 / π). A sidestep turns just enough
+  // to keep the chest aimed at the other fighter.
+  const trackYaw = (base: number, x: number, z: number, ox: number, oz: number) => {
+    const dx = ox - x;
+    const dz = oz - z;
+    if (Math.abs(dz) < 0.18 || Math.hypot(dx, dz) < 0.45) return base;
+    let delta = Math.atan2(dz, dx) - base;
+    while (delta > Math.PI) delta -= Math.PI * 2;
+    while (delta < -Math.PI) delta += Math.PI * 2;
+    return base + Math.max(-0.5, Math.min(0.5, delta));
+  };
+  const p1RotationY = trackYaw(COMBAT_P1_YAW, p1FinalX, p1FinalZ, p2FinalX, p2FinalZ);
+  const p2RotationY = trackYaw(COMBAT_P2_YAW, p2FinalX, p2FinalZ, p1FinalX, p1FinalZ);
 
   // ── Stage-specific fog / clear color (training + urban_night stay locked) ─
   const stageCfg = resolveStageConfig(stageId);
@@ -821,11 +835,15 @@ export default function CombatArena3D({
         <FighterMesh
           state={p1State}
           animation={p1Animation}
+          attackClip={p1AttackClip}
+          characterId={p1Fighter.id}
           modelUrl={getFighterGlbUrl(p1Fighter.id, p1Fighter.model) ?? p1Fighter.portraitUrl}
           position={[p1FinalX, COMBAT_FIGHTER_Y + p1YProp, p1FinalZ]}
           facing={1}
           rotationY={p1RotationY}
           tint={p1SkinTint ?? p1Color}
+          paint={p1Fighter.paint}
+          addon={p1Fighter.addon}
           animationTrigger={p1AnimTrigger}
           locomotionVelocity={p1LocomotionVelocity}
           hitStopActive={hitStopActive}
@@ -844,11 +862,15 @@ export default function CombatArena3D({
         <FighterMesh
           state={p2State}
           animation={p2Animation}
+          attackClip={p2AttackClip}
+          characterId={p2Fighter.id}
           modelUrl={getFighterGlbUrl(p2Fighter.id, p2Fighter.model) ?? p2Fighter.portraitUrl}
           position={[p2FinalX, COMBAT_FIGHTER_Y + p2YProp, p2FinalZ]}
           facing={-1}
           rotationY={p2RotationY}
           tint={p2SkinTint ?? p2Color}
+          paint={p2Fighter.paint}
+          addon={p2Fighter.addon}
           animationTrigger={p2AnimTrigger}
           locomotionVelocity={p2LocomotionVelocity}
           hitStopActive={hitStopActive}

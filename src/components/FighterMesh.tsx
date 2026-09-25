@@ -20,6 +20,8 @@ import {
 } from '../engine/combat/AnimationIntegrityGate';
 import { COMBAT_STATE_TO_SEMANTIC, SEMANTIC_STATE_ALIASES, inferSemanticStateFromClipName } from '../engine/retarget/SemanticStateAliases';
 import { AnimationBridge } from '../../animation_bridge/retarget';
+import { locomotionPreferences } from '../engine/retarget/FighterMotionBank';
+import { evaluateLoadedRig } from '../engine/retarget/evaluateLoadedRig';
 import {
   computeVisualPlaybackLock,
   computeOneshotTimeScale,
@@ -29,6 +31,8 @@ import {
   isOneshotFinished,
   type OneshotHold,
 } from '../engine/combat/ClipPlaybackGate';
+import { applyFighterLook } from '../engine/render/applyPartPaint';
+import type { GearAddon, PartPaint } from '../engine/render/paintMath';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props
@@ -51,7 +55,10 @@ export interface FighterMeshProps {
    * FighterMesh itself is COMPLETELY DUMB about rotation — it just applies what it receives.
    */
   rotationY?: number;
+  /** Faction color from the arena. Not applied — a single atlas would dye skin. */
   tint?: string;
+  paint?: PartPaint;
+  addon?: GearAddon;
   showHitbox?: boolean;
   hitboxGeometry?: { offsetX: number; offsetZ: number; width: number; depth: number } | null;
   /**
@@ -59,6 +66,13 @@ export interface FighterMeshProps {
    * string hasn't changed (e.g. two consecutive lightAttacks).
    */
   animationTrigger?: number;
+  /**
+   * Bank clip for the committed attack. The combat state stays lightAttack /
+   * heavyKick (lock + hitbox). This is the swing that actually plays.
+   */
+  attackClip?: string | null;
+  /** Roster id — picks this fighter's walk, stance, and sidestep clip. */
+  characterId?: string;
   /**
    * Current locomotion velocity from FighterStateMachine.getWalkVelocity().
    * Used for velocity-weighted blend gating to prevent jitter on micro-inputs.
@@ -113,10 +127,10 @@ const ANIMATION_ALIASES: Record<string, string[]> = {
   // ── Walk Backward ───────────────────────────────────────────────────────────
   walkBackward:      ['walkBack', 'WalkBack', 'walkBackward', 'WalkBackward', 'walk', 'Walk', 'backward', 'Backward', 'retreat', 'Retreat', 'walk_back', 'walk_bwd', 'SBW_walk_back', 'T_walk_back', 'bf_walk_back', 'movingBackward'],
   // ── Strafe ──────────────────────────────────────────────────────────────────
-  strafeLeft:        ['strafeLeft', 'StrafeLeft', 'sidestepLeft', 'SidestepLeft', 'walk', 'Walk', 'moveLeft', 'MoveLeft', 'stepLeft', 'StepLeft', 'SBW_strafe_left', 'T_sidestep_left'],
-  strafeRight:       ['strafeRight', 'StrafeRight', 'sidestepRight', 'SidestepRight', 'walk', 'Walk', 'moveRight', 'MoveRight', 'stepRight', 'StepRight', 'SBW_strafe_right', 'T_sidestep_right'],
-  sidestepLeft:      ['sidestepLeft', 'SidestepLeft', 'strafeLeft', 'StrafeLeft', 'T_sidestep_left', 'T_ssl'],
-  sidestepRight:     ['sidestepRight', 'SidestepRight', 'strafeRight', 'StrafeRight', 'T_sidestep_right', 'T_ssr'],
+  strafeLeft:        ['GINGA_SIDEWAYS_2', 'ESQUIVA_4', 'CORKSCREW_EVADE', 'CROUCH_TORCH_WALK_RIGHT', 'strafeLeft', 'StrafeLeft', 'sidestepLeft', 'SidestepLeft', 'SBW_strafe_left', 'T_sidestep_left'],
+  strafeRight:       ['GINGA_SIDEWAYS_2', 'ESQUIVA_4', 'CORKSCREW_EVADE', 'CROUCH_TORCH_WALK_RIGHT', 'strafeRight', 'StrafeRight', 'sidestepRight', 'SidestepRight', 'SBW_strafe_right', 'T_sidestep_right'],
+  sidestepLeft:      ['GINGA_SIDEWAYS_2', 'ESQUIVA_4', 'CORKSCREW_EVADE', 'sidestepLeft', 'SidestepLeft', 'strafeLeft', 'StrafeLeft', 'T_sidestep_left', 'T_ssl'],
+  sidestepRight:     ['GINGA_SIDEWAYS_2', 'ESQUIVA_4', 'CROUCH_TORCH_WALK_RIGHT', 'sidestepRight', 'SidestepRight', 'strafeRight', 'StrafeRight', 'T_sidestep_right', 'T_ssr'],
   // ── Backdash ────────────────────────────────────────────────────────────────
   Backdashing:       ['backdash', 'Backdash', 'backDash', 'BackDash', 'walkBack', 'WalkBack', 'walkBackward', 'WalkBackward', 'walk', 'Walk', 'backstep', 'Backstep', 'quickRetreat', 'QuickRetreat', 'SBW_backdash', 'T_backdash'],
   // ── Crouch ──────────────────────────────────────────────────────────────────
@@ -202,26 +216,26 @@ const FADE_DURATIONS: Record<string, number> = {
   jumpBack:          0.040,
   Jumping:           0.040,
   crouch:            0.070,
-  lightKick:         0.030,
-  heavyKick:         0.040,
+  light:             0.02,
+  lightAttack:       0.02,
+  Startup:           0.02,
+  Active:            0.02,
+  heavy:             0.03,
+  heavyAttack:       0.03,
+  lightKick:         0.02,
+  heavyKick:         0.03,
+  CommandThrow:      0.04,
+  hit:               0.02,
+  hitLow:            0.02,
+  hitHigh:           0.02,
   // Backdash — slightly faster snap (4 frames)
   Backdashing:       0.067,
   // Wakeup
-  WakeupTechRoll:    0.083,
-  WakeupBackrise:    0.083,
-  WakeupQuickStand:  0.067,
-  // Attacks — fast snaps
-  light:             0.050,
-  lightAttack:       0.050,
-  Startup:           0.050,
-  Active:            0.033,
-  heavy:             0.067,
-  heavyAttack:       0.067,
-  CommandThrow:      0.067,
-  // Hit reactions — very fast
-  hit:               0.033,
-  Hitstun:           0.033,
-  HitStun:           0.033,
+  WakeupTechRoll:    0.05,
+  WakeupBackrise:    0.05,
+  WakeupQuickStand:  0.04,
+  Hitstun:           0.02,
+  HitStun:           0.02,
   Stunned:           0.033,
   // Knockdown
   knockdown:         0.067,
@@ -296,7 +310,23 @@ function buildClipsByState(actions: Record<string, THREE.AnimationAction>): Map<
   return clipsByState;
 }
 
-function resolveClipName(key: string, actions: Record<string, THREE.AnimationAction>): string | null {
+function findActionName(actions: Record<string, THREE.AnimationAction>, name: string): string | null {
+  if (actions[name]) return name;
+  const lower = name.toLowerCase();
+  const hit = Object.keys(actions).find((k) => k.toLowerCase() === lower);
+  return hit ?? null;
+}
+
+function resolveClipName(
+  key: string,
+  actions: Record<string, THREE.AnimationAction>,
+  preferred: string[] = [],
+): string | null {
+  for (const name of preferred) {
+    const hit = findActionName(actions, name);
+    if (hit) return hit;
+  }
+
   const availableClips = Object.keys(actions);
   const clipsByState = buildClipsByState(actions);
 
@@ -407,10 +437,13 @@ function FighterMeshInner({
   position,
   facing,
   rotationY = 0,
-  tint,
   showHitbox = false,
   hitboxGeometry = null,
   animationTrigger = 0,
+  attackClip = null,
+  paint,
+  addon,
+  characterId,
   locomotionVelocity,
   hitStopActive = false,
   onRigDiagnostic,
@@ -428,6 +461,10 @@ function FighterMeshInner({
   showHitbox?: boolean;
   hitboxGeometry?: FighterMeshProps['hitboxGeometry'];
   animationTrigger?: number;
+  attackClip?: string | null;
+  paint?: PartPaint;
+  addon?: GearAddon;
+  characterId?: string;
   locomotionVelocity?: { forward: number; strafe: number };
   hitStopActive?: boolean;
   onRigDiagnostic?: (report: RigDiagnosticReport) => void;
@@ -437,6 +474,12 @@ function FighterMeshInner({
 }) {
   const groupRef = useRef<THREE.Group>(null);
   const [normalized, setNormalized] = useState<NormalizedResult | null>(null);
+  const paintKey = JSON.stringify(paint ?? {});
+
+  useEffect(() => {
+    if (!normalized) return;
+    applyFighterLook(normalized.scene, paint, addon);
+  }, [normalized, paintKey, addon]);
 
   // ── Jitter-prevention refs ────────────────────────────────────────────────
   /** The clip name that is currently playing (or crossfading to) */
@@ -449,6 +492,8 @@ function FighterMeshInner({
   /** Tekken/SB oneshot hold — idle/walk cannot cut a punch still playing. */
   const oneshotHoldRef = useRef<OneshotHold | null>(null);
   const pendingLoopRef = useRef<string | null>(null);
+  const [deferTick, setDeferTick] = useState(0);
+  const deferTimerRef = useRef<number | null>(null);
 
   // ── Bone hitbox system ────────────────────────────────────────────────────
   const boneHitboxRef = useRef<BoneHitboxSystem>(new BoneHitboxSystem());
@@ -479,6 +524,7 @@ function FighterMeshInner({
 
     // Run rig diagnostic on the original scene
     const report = AutoRigDetector.analyze(scene, animations);
+    evaluateLoadedRig(scene, gltfUrl);
     onRigDiagnostic?.(report);
 
     // Normalize and create mixer bound to the cloned visible scene
@@ -525,9 +571,11 @@ function FighterMeshInner({
     }
 
     const inputKey = animation ?? state;
-    let clipName = resolveClipName(inputKey, actions) as string | null;
-
     const isAttack = ATTACK_STATES.has(inputKey) || isOneshotCombatState(inputKey);
+    const preferred = isAttack && attackClip
+      ? [attackClip]
+      : locomotionPreferences(characterId ?? '', inputKey);
+    let clipName = resolveClipName(inputKey, actions, preferred) as string | null;
     const now = performance.now() / 1000;
 
     // ── Tekken/SB gate: do not hard-cut a committed oneshot to idle/walk ──
@@ -686,13 +734,21 @@ function FighterMeshInner({
     } else if (!isUrgent && isSameClip) {
       return;
     } else if (!isUrgent && nowPlay - lastCrossfadeTimeRef.current < MIN_CROSSFADE_HOLD_S) {
+      // Don't drop the transition — Claude's deferUntil. An effect does not
+      // re-run just because time passed.
+      const wait = MIN_CROSSFADE_HOLD_S - (nowPlay - lastCrossfadeTimeRef.current);
+      if (deferTimerRef.current) window.clearTimeout(deferTimerRef.current);
+      deferTimerRef.current = window.setTimeout(() => {
+        deferTimerRef.current = null;
+        setDeferTick((n) => n + 1);
+      }, Math.max(16, wait * 1000));
       return;
     }
     if (isAttack) lastPlayedTriggerRef.current = animationTrigger;
 
     const clipDuration = Math.max(0.08, nextAction.getClip().duration);
     const lockDuration = isAttack
-      ? computeVisualPlaybackLock(inputKey)
+      ? computeVisualPlaybackLock(inputKey, clipName, clipDuration)
       : clipDuration;
     const timeScale = isAttack
       ? computeOneshotTimeScale(clipDuration, lockDuration)
@@ -742,7 +798,7 @@ function FighterMeshInner({
     activeClipRef.current = clipName;
     committedClipRef.current = clipName;
     lastCrossfadeTimeRef.current = nowPlay;
-  }, [state, animation, animationTrigger, normalized, gltfUrl]);
+  }, [state, animation, animationTrigger, attackClip, characterId, normalized, gltfUrl, deferTick]);
 
   // Idle kickstart is handled by the bind effect when `normalized` first lands.
   // A second auto-play effect was overwriting punches with breathing idle.
@@ -912,9 +968,13 @@ export function FighterMesh({
   state,
   animation,
   tint,
+  paint,
+  addon,
   showHitbox = false,
   hitboxGeometry = null,
   animationTrigger = 0,
+  attackClip = null,
+  characterId,
   locomotionVelocity,
   hitStopActive = false,
   onRigDiagnostic,
@@ -937,6 +997,10 @@ export function FighterMesh({
         showHitbox={showHitbox}
         hitboxGeometry={hitboxGeometry}
         animationTrigger={animationTrigger}
+        attackClip={attackClip}
+        paint={paint}
+        addon={addon}
+        characterId={characterId}
         locomotionVelocity={locomotionVelocity}
         hitStopActive={hitStopActive}
         onRigDiagnostic={onRigDiagnostic}

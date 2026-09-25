@@ -9,6 +9,14 @@ import { cardArtUrlFor, getCardArtStyle, setCardArtStyle, CARD_ART_LABELS, type 
 import { getGraphicsQuality, setGraphicsQuality, GRAPHICS_QUALITY_LABELS, type GraphicsQuality } from '../lib/graphicsSettings';
 import { warmupImages, warmupGLTF } from '../engine/pipeline/glbCache';
 import CharacterPortrait3D from './CharacterPortrait3D';
+import {
+  PAINT_SWATCHES,
+  SLOT_LABEL,
+  paintSlotsForFighter,
+  type GearAddon,
+  type PaintSlot,
+  type PartPaint,
+} from '../engine/render/paintMath';
 import dynamic from 'next/dynamic';
 
 const MoveSetCustomizer = dynamic(() => import('./MoveSetCustomizer'), { ssr: false });
@@ -47,13 +55,14 @@ function getUniqueCharacters(fighters: readonly BannonFighterProfile[]): BannonF
 }
 
 /** Get all attires for a character from the GLB roster */
-function getCharacterAttires(characterId: string): Array<{ attire: string; model: string; portraitUrl: string }> {
+function getCharacterAttires(characterId: string): Array<{ attire: string; model: string; portraitUrl: string; joints: number }> {
   const entries = getPlayableAttires(characterId);
   if (entries.length === 0) return [];
   return entries.map(e => ({
     attire: e.attire ?? 'Default',
     model: e.model,
     portraitUrl: resolveGlbUrl(e.model, e.overrideUrl),
+    joints: e.measuredJoints ?? 0,
   }));
 }
 
@@ -63,11 +72,15 @@ function FighterPortrait({
   attirePortraitUrl,
   slot,
   active,
+  paint,
+  addon,
 }: {
   fighter: BannonFighterProfile | null;
   attirePortraitUrl?: string;
   slot: 'P1' | 'P2';
   active: boolean;
+  paint?: PartPaint;
+  addon?: GearAddon;
 }) {
   const isP1 = slot === 'P1';
 
@@ -152,6 +165,8 @@ function FighterPortrait({
           factionColor={factionColor}
           mode="bust"
           side={isP1 ? 1 : -1}
+          paint={paint}
+          addon={addon}
         />
       </div>
       <div className="relative z-20 w-full flex justify-center pb-2 pointer-events-none">
@@ -243,25 +258,129 @@ function AttireSelector({
   slot: 'P1' | 'P2';
 }) {
   const attires = useMemo(() => getCharacterAttires(characterId), [characterId]);
-  if (attires.length <= 1) return null;
   const isP1 = slot === 'P1';
+  if (attires.length === 0) {
+    return (
+      <div className={`px-2 py-1 text-[9px] text-amber-300 ${isP1 ? 'text-left' : 'text-right'}`}>
+        NO SKINNED MESH
+      </div>
+    );
+  }
 
   return (
-    <div className={`flex gap-1 px-2 py-1 ${isP1 ? 'justify-start' : 'justify-end'}`}>
+    <div className={`flex flex-wrap items-center gap-1 px-2 py-1 ${isP1 ? 'justify-start' : 'justify-end'}`}>
+      <span className="text-[8px] text-zinc-500 tracking-[0.16em]">ATTIRE</span>
       {attires.map((a) => (
         <button
           key={a.model}
           onClick={() => onSelectAttire(a.attire, a.portraitUrl)}
-          className={`text-[8px] font-mono px-2 py-0.5 border transition-all truncate max-w-[80px] ${
+          className={`text-[9px] font-mono px-2 py-1 min-h-8 border whitespace-nowrap ${
             selectedAttire === a.attire
               ? isP1
-                ? 'border-blue-500 text-blue-300 bg-blue-950/60' :'border-red-500 text-red-300 bg-red-950/60' :'border-zinc-700 text-zinc-500 hover:border-zinc-500 hover:text-zinc-300'
+                ? 'border-blue-500 text-blue-300 bg-blue-950/60' :'border-red-500 text-red-300 bg-red-950/60' :'border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200'
           }`}
-          title={a.attire}
+          title={`${a.attire} · ${a.model} · ${a.joints} joints`}
         >
-          {a.attire.toUpperCase()}
+          {a.attire.toUpperCase()}{a.joints > 0 ? ` · ${a.joints}` : ''}
         </button>
       ))}
+    </div>
+  );
+}
+
+const ADDON_CHOICES: { id: GearAddon; label: string }[] = [
+  { id: 'none', label: 'OFF' },
+  { id: 'visor', label: 'VISOR' },
+  { id: 'mouthplate', label: 'PLATE' },
+  { id: 'wristtape', label: 'TAPE' },
+];
+
+function GearPaintBar({
+  characterId,
+  slot,
+  paint,
+  paintSlot,
+  addon,
+  onPaintSlot,
+  onPaint,
+  onAddon,
+}: {
+  characterId: string;
+  slot: 'P1' | 'P2';
+  paint: PartPaint;
+  paintSlot: PaintSlot;
+  addon: GearAddon;
+  onPaintSlot: (next: PaintSlot) => void;
+  onPaint: (next: PaintSlot, hex: string | null) => void;
+  onAddon: (next: GearAddon) => void;
+}) {
+  const isP1 = slot === 'P1';
+  const slots = paintSlotsForFighter(characterId);
+  const active = slots.includes(paintSlot) ? paintSlot : slots[0];
+  const split = characterId === 'maime';
+  const align = isP1 ? 'justify-start' : 'justify-end';
+  const on = isP1
+    ? 'border-blue-500 text-blue-300 bg-blue-950/60'
+    : 'border-red-500 text-red-300 bg-red-950/60';
+
+  return (
+    <div className={`flex flex-col gap-1 px-2 py-1 ${isP1 ? 'items-start' : 'items-end'}`}>
+      <div className={`flex flex-wrap items-center gap-1 ${align}`}>
+        <span className="text-[8px] text-zinc-500 tracking-[0.16em]">PAINT</span>
+        {slots.map((s) => (
+          <button
+            key={s}
+            type="button"
+            onClick={() => onPaintSlot(s)}
+            className={`text-[8px] font-mono px-1.5 py-1 min-h-8 border ${
+              active === s ? on : 'border-zinc-800 text-zinc-500'
+            }`}
+          >
+            {SLOT_LABEL[s]}
+          </button>
+        ))}
+      </div>
+      <div className={`flex flex-wrap items-center gap-1 ${align}`}>
+        <button
+          type="button"
+          onClick={() => onPaint(active, null)}
+          className="text-[8px] font-mono px-1.5 py-1 min-h-8 border border-zinc-700 text-zinc-400"
+        >
+          CLEAR
+        </button>
+        {PAINT_SWATCHES.map((hex) => (
+          <button
+            key={hex}
+            type="button"
+            aria-label={hex}
+            onClick={() => onPaint(active, hex)}
+            className={`min-h-8 min-w-8 border ${
+              paint[active] === hex ? 'border-white' : 'border-zinc-700'
+            }`}
+            style={{ background: hex }}
+          />
+        ))}
+      </div>
+      <div className={`flex flex-wrap items-center gap-1 ${align}`}>
+        <span className="text-[8px] text-zinc-500 tracking-[0.16em]">ADD-ON</span>
+        {ADDON_CHOICES.map((choice) => (
+          <button
+            key={choice.id}
+            type="button"
+            onClick={() => onAddon(choice.id)}
+            className={`text-[8px] font-mono px-1.5 py-1 min-h-8 border ${
+              addon === choice.id ? on : 'border-zinc-800 text-zinc-500'
+            }`}
+          >
+            {choice.label}
+          </button>
+        ))}
+      </div>
+      <p className={`text-[8px] text-zinc-600 max-w-[280px] leading-snug ${isP1 ? 'text-left' : 'text-right'}`}>
+        {split
+          ? 'Named parts. Each chunk tints on its own. Visor, plate, and tape sit on the bones — not a new costume.'
+          : 'One texture. Cloth tints dark color. Metal tints gray mask and chains. It does not sew new clothes.'}
+      </p>
     </div>
   );
 }
@@ -382,6 +501,12 @@ export default function CharacterSelect({ onSelectP1, onSelectP2, onStartMatch }
   const [p2Attire, setP2Attire] = useState<string>('Default');
   const [p1PortraitUrl, setP1PortraitUrl] = useState<string | undefined>(undefined);
   const [p2PortraitUrl, setP2PortraitUrl] = useState<string | undefined>(undefined);
+  const [p1Paint, setP1Paint] = useState<PartPaint>({});
+  const [p2Paint, setP2Paint] = useState<PartPaint>({});
+  const [p1PaintSlot, setP1PaintSlot] = useState<PaintSlot>('cloth');
+  const [p2PaintSlot, setP2PaintSlot] = useState<PaintSlot>('cloth');
+  const [p1Addon, setP1Addon] = useState<GearAddon>('none');
+  const [p2Addon, setP2Addon] = useState<GearAddon>('none');
 
   const [activeSlot, setActiveSlot] = useState<'p1' | 'p2'>('p1');
   const [cursorIndex, setCursorIndex] = useState(0);
@@ -465,6 +590,9 @@ export default function CharacterSelect({ onSelectP1, onSelectP2, onStartMatch }
       setP1Id(fighter.id);
       setP1Attire(defaultAttire);
       setP1PortraitUrl(defaultPortrait);
+      setP1Paint({});
+      setP1Addon('none');
+      setP1PaintSlot(paintSlotsForFighter(fighter.id)[0]);
       if (onSelectP1) onSelectP1(fighter);
       setActiveSlot('p2');
       warmupGLTF(defaultPortrait);
@@ -484,6 +612,9 @@ export default function CharacterSelect({ onSelectP1, onSelectP2, onStartMatch }
       setP2Id(fighter.id);
       setP2Attire(defaultAttire);
       setP2PortraitUrl(defaultPortrait);
+      setP2Paint({});
+      setP2Addon('none');
+      setP2PaintSlot(paintSlotsForFighter(fighter.id)[0]);
       if (onSelectP2) onSelectP2(fighter);
       warmupGLTF(defaultPortrait);
     }
@@ -496,8 +627,8 @@ export default function CharacterSelect({ onSelectP1, onSelectP2, onStartMatch }
       const a1 = getCharacterAttires(f1.id).find(a => a.attire === p1Attire);
       const a2 = getCharacterAttires(f2.id).find(a => a.attire === p2Attire);
       onStartMatch(
-        { ...f1, attire: p1Attire, model: a1?.model ?? f1.model, portraitUrl: p1PortraitUrl || f1.portraitUrl },
-        { ...f2, attire: p2Attire, model: a2?.model ?? f2.model, portraitUrl: p2PortraitUrl || f2.portraitUrl },
+        { ...f1, attire: p1Attire, model: a1?.model ?? f1.model, portraitUrl: p1PortraitUrl || f1.portraitUrl, paint: p1Paint, addon: p1Addon },
+        { ...f2, attire: p2Attire, model: a2?.model ?? f2.model, portraitUrl: p2PortraitUrl || f2.portraitUrl, paint: p2Paint, addon: p2Addon },
       );
     }
   };
@@ -515,6 +646,10 @@ export default function CharacterSelect({ onSelectP1, onSelectP2, onStartMatch }
     <div className="fixed inset-0 overflow-hidden select-none font-mono flex flex-col"
       style={{
         background: 'linear-gradient(180deg, #0a0a0a 0%, #111113 40%, #0d0d0f 100%)',
+        paddingTop: 'env(safe-area-inset-top)',
+        paddingBottom: 'env(safe-area-inset-bottom)',
+        paddingLeft: 'env(safe-area-inset-left)',
+        paddingRight: 'env(safe-area-inset-right)',
       }}
     >
       {/* ── Industrial metallic background texture ── */}
@@ -543,7 +678,7 @@ export default function CharacterSelect({ onSelectP1, onSelectP2, onStartMatch }
         {/* P1 Portrait + attire strip */}
         <div className="flex flex-col flex-1 border-r border-zinc-800/60 min-w-0">
           <div className="flex-1 min-h-0">
-            <FighterPortrait fighter={p1Fighter} attirePortraitUrl={p1PortraitUrl} slot="P1" active={activeSlot === 'p1'} />
+            <FighterPortrait fighter={p1Fighter} attirePortraitUrl={p1PortraitUrl} slot="P1" active={activeSlot === 'p1'} paint={p1Paint} addon={p1Addon} />
           </div>
           {p1Fighter && (
             <>
@@ -552,6 +687,23 @@ export default function CharacterSelect({ onSelectP1, onSelectP2, onStartMatch }
                 selectedAttire={p1Attire}
                 onSelectAttire={(attire, url) => { setP1Attire(attire); setP1PortraitUrl(url); }}
                 slot="P1"
+              />
+              <GearPaintBar
+                characterId={p1Fighter.id}
+                slot="P1"
+                paint={p1Paint}
+                paintSlot={p1PaintSlot}
+                addon={p1Addon}
+                onPaintSlot={setP1PaintSlot}
+                onPaint={(next, hex) => {
+                  setP1Paint((prev) => {
+                    const copy = { ...prev };
+                    if (!hex) delete copy[next];
+                    else copy[next] = hex;
+                    return copy;
+                  });
+                }}
+                onAddon={setP1Addon}
               />
               <CardArtPicker characterId={p1Fighter.id} />
             </>
@@ -586,7 +738,7 @@ export default function CharacterSelect({ onSelectP1, onSelectP2, onStartMatch }
         {/* P2 Portrait + attire strip */}
         <div className="flex flex-col flex-1 border-l border-zinc-800/60 min-w-0">
           <div className="flex-1 min-h-0">
-            <FighterPortrait fighter={p2Fighter} attirePortraitUrl={p2PortraitUrl} slot="P2" active={activeSlot === 'p2'} />
+            <FighterPortrait fighter={p2Fighter} attirePortraitUrl={p2PortraitUrl} slot="P2" active={activeSlot === 'p2'} paint={p2Paint} addon={p2Addon} />
           </div>
           {p2Fighter && (
             <>
@@ -595,6 +747,23 @@ export default function CharacterSelect({ onSelectP1, onSelectP2, onStartMatch }
                 selectedAttire={p2Attire}
                 onSelectAttire={(attire, url) => { setP2Attire(attire); setP2PortraitUrl(url); }}
                 slot="P2"
+              />
+              <GearPaintBar
+                characterId={p2Fighter.id}
+                slot="P2"
+                paint={p2Paint}
+                paintSlot={p2PaintSlot}
+                addon={p2Addon}
+                onPaintSlot={setP2PaintSlot}
+                onPaint={(next, hex) => {
+                  setP2Paint((prev) => {
+                    const copy = { ...prev };
+                    if (!hex) delete copy[next];
+                    else copy[next] = hex;
+                    return copy;
+                  });
+                }}
+                onAddon={setP2Addon}
               />
               <CardArtPicker characterId={p2Fighter.id} />
             </>
@@ -612,16 +781,16 @@ export default function CharacterSelect({ onSelectP1, onSelectP2, onStartMatch }
           >
             {p1Fighter?.name ?? '───'}
           </span>
-          {p1Fighter && p1Attire !== 'Default' && (
-            <span className="ml-2 text-[9px] text-zinc-500 tracking-widest truncate">{p1Attire.toUpperCase()}</span>
+          {p1Fighter && (
+            <span className="ml-2 text-[9px] text-zinc-400 tracking-widest truncate">{p1Attire.toUpperCase()}</span>
           )}
         </div>
         <div className="w-14 md:w-18 flex items-center justify-center shrink-0">
           <div className="w-px h-full bg-zinc-700" />
         </div>
         <div className="flex-1 flex items-center justify-end px-4">
-          {p2Fighter && p2Attire !== 'Default' && (
-            <span className="mr-2 text-[9px] text-zinc-500 tracking-widest truncate">{p2Attire.toUpperCase()}</span>
+          {p2Fighter && (
+            <span className="mr-2 text-[9px] text-zinc-400 tracking-widest truncate">{p2Attire.toUpperCase()}</span>
           )}
           <span className="text-white font-black text-sm tracking-[0.2em] uppercase truncate text-right"
             style={{ textShadow: p2Fighter ? `0 0 8px ${FACTION_COLOR[p2Fighter.factionAlignment]}` : undefined }}

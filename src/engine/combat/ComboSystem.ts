@@ -18,6 +18,8 @@ export interface ComboState {
   totalDamage: number;
   /** Player this combo belongs to */
   player: 'p1' | 'p2';
+  /** Route or read, e.g. "1,2,4" / "COUNTER" / "JUGGLE". */
+  tag?: string;
 }
 
 export interface ComboSystemState {

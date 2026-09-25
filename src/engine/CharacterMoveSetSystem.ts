@@ -16,7 +16,7 @@ import { getBannonFighter, getAllBannonFighters } from '../data/bannonRoster';
 import { getMoveById, getMovesByCategory, type MoveCategory, type BrutalFistMove } from './BrutalFistMoveCatalog';
 import type { FighterMotionState } from './retarget/AnimationController';
 import type { SpecialMoveDefinition, MoveWindow } from './combat/FighterStateMachine';
-import { MOVE_ID_TO_BANK_CLIPS } from './retarget/FighterMotionBank';
+import { MOVE_ID_TO_BANK_CLIPS, bankClipForMoveId } from './retarget/FighterMotionBank';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -278,6 +278,7 @@ function catalogToMoveWindow(move: BrutalFistMove): MoveWindow {
     isSpecial: true,
     specialName: move.displayName,
     isThrow: !!move.throw,
+    clip: bankClipForMoveId(move.id) ?? undefined,
   };
 }
 
@@ -322,6 +323,7 @@ export function buildSpecialMovesForFighter(characterId: string): SpecialMoveDef
           damage: 260,
           isSpecial: true,
           specialName: display,
+          clip: bankClipForMoveId(spec.moveId) ?? undefined,
         };
     if (!move && !MOVE_ID_TO_BANK_CLIPS[spec.moveId]) continue;
     seen.add(spec.moveId);

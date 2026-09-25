@@ -1,5 +1,16 @@
 import type { FighterMotionState } from '../retarget/AnimationController';
 import { computeAttackLockDuration } from './ClipPlaybackGate';
+import { directionalAttackClip } from '../retarget/FighterMotionBank';
+import {
+  HEAT_DASH_HIT,
+  RUN_ATTACK,
+  RUN_KICK,
+  genericLink,
+  hitToWindow,
+  matchString,
+  type BuiltAttack,
+  type Limb,
+} from './StringRoutes';
 
 // ── Action States ─────────────────────────────────────────────────────────────
 export type ActionState =
@@ -72,6 +83,24 @@ export interface MoveWindow {
   grabRange?: number;
   /** Combo route to execute after successful throw */
   throwComboRoute?: Array<'light' | 'heavy'>;
+  /** High misses crouch. Low hits standing guard. Mid hits a crouching guard. */
+  attackLevel?: 'high' | 'mid' | 'low';
+  launchPower?: number;
+  hitstun?: number;
+  blockstun?: number;
+  /** Seconds from swing start when a dialed follow-up may cancel in. */
+  cancelAt?: number;
+  stepIn?: number;
+  reach?: number;
+  width?: number;
+  depth?: number;
+  pushback?: number;
+  /**
+   * Bank clip to play while `animation` stays the combat state.
+   * Claude's attackClip split: lock/hitbox stay on the state, the
+   * visible swing is this clip. Absent → directionalAttackClip.
+   */
+  clip?: string;
 }
 
 // ── Special Move Definitions ──────────────────────────────────────────────────
@@ -418,7 +447,21 @@ export class FighterStateMachine {
 
   private jumpAirTimer = 0;
 
+  /** Limbs dialed in the current string. Cleared when the fighter returns to idle. */
+  private limbChain: Limb[] = [];
+  private queuedLimb: Limb | null = null;
+  private swingConnected = false;
+  private attackGenerationN = 0;
+  private pendingStep = 0;
+  private stringLabel = '';
+  private genericLinks = 0;
+  private heatDashQueued = false;
+  private heatDashSpent = false;
+  private readonly MAX_GENERIC_LINKS = 3;
+
   private specialMoves: SpecialMoveDefinition[] = [...DEFAULT_SPECIAL_MOVES];
+  /** Roster id — seeds directional clips so fighters don't share one swing. */
+  private fighterId = '';
 
   private prevInput: FighterInput = {
     forward: 0, strafe: 0, light: false, heavy: false,
@@ -432,6 +475,36 @@ export class FighterStateMachine {
 
   // ── Public getters ──────────────────────────────────────────────────────────
   get current(): FighterMotionState { return this.motionState; }
+  /** Bumps every time a new swing starts, including 1 into another 1. */
+  get attackGeneration(): number { return this.attackGenerationN; }
+  /** "1,2" or "HEAT DASH" for the combo counter. Empty when not in a route. */
+  get comboTag(): string { return this.stringLabel; }
+  get limbDepth(): number { return this.limbChain.length; }
+  /** World units to step toward the opponent. Cleared on read. */
+  consumeStep(): number {
+    const step = this.pendingStep;
+    this.pendingStep = 0;
+    return step;
+  }
+  /** The previous swing touched them (hit or block). Whiff stays false. */
+  notifyContact(connected: boolean) {
+    if (connected) this.swingConnected = true;
+  }
+  get isCrouching(): boolean {
+    return this.motionState === 'crouch' || (this.actionState === 'Guard' && !!this.prevInput.crouch);
+  }
+  /** Still inside startup — a hit here is a counter. */
+  get inAttackStartup(): boolean {
+    return this.actionState === 'Attacking' && !!this.currentMove && this.moveElapsed < this.currentMove.startup - 0.008;
+  }
+  /** Clip the mesh should play for the committed attack. Null when not attacking. */
+  get activeAttackClip(): string | null {
+    if (this.actionState !== 'Attacking' && this.actionState !== 'CommandThrow') return null;
+    return this.currentMove?.clip ?? null;
+  }
+  bindFighter(id: string) {
+    this.fighterId = id;
+  }
   get action(): ActionState { return this.actionState; }
   get isRecovering(): boolean {
     if (!this.currentMove) return false;
@@ -518,14 +591,19 @@ export class FighterStateMachine {
    * move that landed, clamped between HITSTUN_MIN and HITSTUN_MAX.
    * This replaces the old applyStun for normal hits.
    */
-  applyHitStun(sourceMove: MoveWindow | null, fallbackDuration = 0.3) {
+  applyHitStun(
+    sourceMove: MoveWindow | null,
+    fallbackDuration = 0.3,
+    reaction: FighterMotionState = 'hit',
+  ) {
     const duration = sourceMove
       ? this.computeHitStunDuration(sourceMove)
       : Math.max(HITSTUN_MIN, Math.min(HITSTUN_MAX, fallbackDuration));
 
-    this.beginCrossfade(this.motionState, 'hit', CROSSFADE_HIT_FRAMES / this.FPS);
+    const pose: FighterMotionState = reaction === 'hitLow' || reaction === 'hitHigh' ? reaction : 'hit';
+    this.beginCrossfade(this.motionState, pose, CROSSFADE_HIT_FRAMES / this.FPS);
     this.actionState = 'HitStun';
-    this.motionState = 'hit';
+    this.motionState = pose;
     this.hitStunTimer = duration;
     this.hitStunSourceMove = sourceMove;
     this.currentMove = null;
@@ -535,11 +613,15 @@ export class FighterStateMachine {
     this.walkVelocity = { forward: 0, strafe: 0 };
     this.isBackdashing = false;
     this.jumpAirTimer = 0;
+    this.limbChain = [];
+    this.queuedLimb = null;
+    this.stringLabel = '';
+    this.swingConnected = false;
     console.log(`[FSM] 💥 HitStun applied — duration=${duration.toFixed(3)}s (active=${sourceMove?.active?.toFixed(3) ?? 'N/A'}s)`);
   }
 
   // ── Legacy applyStun (kept for compatibility, routes to HitStun or Crumple) ─
-  applyStun(duration: number, isCrumple = false) {
+  applyStun(duration: number, isCrumple = false, reaction: FighterMotionState = 'hit') {
     if (isCrumple) {
       this.actionState = 'Crumple';
       this.motionState = 'knockdown';
@@ -552,7 +634,7 @@ export class FighterStateMachine {
       this.isBackdashing = false;
     } else {
       // Route to HitStun with provided duration
-      this.applyHitStun(null, duration);
+      this.applyHitStun(null, duration, reaction);
     }
   }
 
@@ -762,18 +844,25 @@ export class FighterStateMachine {
     // ── HitStun tick (precise recovery-frame exit) ────────────────────────
     if (this.actionState === 'HitStun') {
       this.hitStunTimer = Math.max(0, this.hitStunTimer - dt);
-      // Buffer inputs during last 20% of hitstun (recovery frames)
-      const progress = this.getHitStunProgress();
-      if (progress >= 0.8) {
-        if (risingLight && !this.queuedAction) this.queuedAction = { type: 'light' };
-        if (risingHeavy && !this.queuedAction) this.queuedAction = { type: 'heavy' };
-        if (risingGuard && !this.queuedAction) this.queuedAction = { type: 'guard' };
-      }
+      // Whole stun, not just the last few frames — a late press used to vanish.
+      if (risingLp) this.queuedLimb = 'lp';
+      if (risingRp) this.queuedLimb = 'rp';
+      if (risingLk) this.queuedLimb = 'lk';
+      if (risingRk) this.queuedLimb = 'rk';
+      if (risingLight && !this.queuedLimb && !this.queuedAction) this.queuedAction = { type: 'light' };
+      if (risingHeavy && !this.queuedLimb && !this.queuedAction) this.queuedAction = { type: 'heavy' };
+      if (risingGuard && !this.queuedAction) this.queuedAction = { type: 'guard' };
       if (this.hitStunTimer <= 0) {
         this.hitStunSourceMove = null;
         this.actionState = 'Idle';
         this.motionState = 'idle';
         console.log('[FSM] ✅ HitStun expired → Idle');
+        if (this.queuedLimb) {
+          const limb = this.queuedLimb;
+          this.queuedLimb = null;
+          this.queuedAction = null;
+          return this.openLimb(limb);
+        }
         if (this.queuedAction) {
           const queued = this.queuedAction;
           this.queuedAction = null;
@@ -831,6 +920,21 @@ export class FighterStateMachine {
       this.moveTimer = Math.max(0, this.moveTimer - dt);
       this.moveElapsed += dt;
 
+      if (risingLp) this.queuedLimb = 'lp';
+      if (risingRp) this.queuedLimb = 'rp';
+      if (risingLk) this.queuedLimb = 'lk';
+      if (risingRk) this.queuedLimb = 'rk';
+      if (this.inHeatState && this.swingConnected && (resolvedInput.dashing || resolvedInput.running) && !this.heatDashSpent) {
+        this.heatDashQueued = true;
+      }
+
+      const cancelAt = this.currentMove.cancelAt
+        ?? (this.currentMove.startup + this.currentMove.active + this.currentMove.recovery * 0.72);
+      if (this.moveElapsed >= cancelAt) {
+        const canceled = this.tryStringCancel(!!resolvedInput.crouch);
+        if (canceled) return canceled;
+      }
+
       if (this.isRecovering) {
         if (risingLight && !this.queuedAction) this.queuedAction = { type: 'light' };
         if (risingHeavy && !this.queuedAction) this.queuedAction = { type: 'heavy' };
@@ -839,9 +943,18 @@ export class FighterStateMachine {
       }
 
       if (this.moveTimer <= 0) {
+        const late = this.swingConnected ? this.tryStringCancel(!!resolvedInput.crouch) : null;
+        if (late) return late;
+
         this.currentMove = null;
         this.actionState = 'Idle';
         this.moveElapsed = 0;
+        this.limbChain = [];
+        this.stringLabel = '';
+        this.genericLinks = 0;
+        this.heatDashSpent = false;
+        this.heatDashQueued = false;
+        this.queuedLimb = null;
 
         if (this.queuedAction) {
           const queued = this.queuedAction;
@@ -913,26 +1026,14 @@ export class FighterStateMachine {
       return this.beginAttack(special.move.animation, special.move);
     }
 
-    if (risingLk && !risingLp) {
-      this.walkVelocity = { forward: 0, strafe: 0 };
-      return this.beginAttack('lightKick', DEFAULT_MOVE_WINDOWS.lightKick);
-    }
-    if (risingRk && !risingRp) {
-      this.walkVelocity = { forward: 0, strafe: 0 };
-      return this.beginAttack('heavyKick', DEFAULT_MOVE_WINDOWS.heavyKick);
-    }
-    if (risingLp || (risingLight && !risingLk && !risingRk)) {
-      this.walkVelocity = { forward: 0, strafe: 0 };
-      return this.beginAttack('lightAttack', DEFAULT_MOVE_WINDOWS.lightAttack);
-    }
-    if (risingRp || (risingHeavy && !risingLk && !risingRk)) {
-      this.walkVelocity = { forward: 0, strafe: 0 };
-      return this.beginAttack('heavyAttack', DEFAULT_MOVE_WINDOWS.heavyAttack);
-    }
+    if (risingLk && !risingLp) return this.openLimb('lk');
+    if (risingRk && !risingRp) return this.openLimb('rk');
+    if (risingLp || (risingLight && !risingLk && !risingRk)) return this.openLimb('lp');
+    if (risingRp || (risingHeavy && !risingLk && !risingRk)) return this.openLimb('rp');
 
     if (resolvedInput.guard) {
       this.actionState = 'Guard';
-      this.motionState = 'guard';
+      this.motionState = resolvedInput.crouch ? 'crouch' : 'guard';
       this.walkVelocity = { forward: 0, strafe: 0 };
       return this.motionState;
     }
@@ -1072,9 +1173,13 @@ export class FighterStateMachine {
 
   // ── Begin command throw with a specific move ──────────────────────────────
   private beginCommandThrowWithMove(move: MoveWindow): FighterMotionState {
+    const clip = move.clip ?? directionalAttackClip(this.fighterId, 'CommandThrow', {
+      forward: this.prevInput.forward,
+      crouch: !!this.prevInput.crouch,
+    }) ?? undefined;
     this.actionState = 'CommandThrow';
     this.motionState = 'heavyAttack';
-    this.currentMove = move;
+    this.currentMove = { ...move, clip };
     const frameTotal = move.startup + move.active + move.recovery;
     this.moveTimer = computeAttackLockDuration('CommandThrow', frameTotal);
     this.moveElapsed = 0;
@@ -1089,9 +1194,13 @@ export class FighterStateMachine {
 
   // ── Begin command throw ────────────────────────────────────────────────────
   private beginCommandThrow(): FighterMotionState {
+    const clip = directionalAttackClip(this.fighterId, 'CommandThrow', {
+      forward: this.prevInput.forward,
+      crouch: !!this.prevInput.crouch,
+    }) ?? undefined;
     this.actionState = 'CommandThrow';
     this.motionState = 'heavyAttack';
-    this.currentMove = COMMAND_THROW_MOVE;
+    this.currentMove = { ...COMMAND_THROW_MOVE, clip };
     const frameTotal = COMMAND_THROW_MOVE.startup + COMMAND_THROW_MOVE.active + COMMAND_THROW_MOVE.recovery;
     this.moveTimer = computeAttackLockDuration('CommandThrow', frameTotal);
     this.moveElapsed = 0;
@@ -1257,14 +1366,112 @@ export class FighterStateMachine {
     return this.motionState;
   }
 
+  private openLimb(limb: Limb): FighterMotionState {
+    this.walkVelocity = { forward: 0, strafe: 0 };
+    this.genericLinks = 0;
+    this.heatDashSpent = false;
+    this.heatDashQueued = false;
+    this.queuedLimb = null;
+    const crouching = !!this.prevInput.crouch;
+    const rushing = !!(this.prevInput.running || this.prevInput.dashing);
+    if (rushing && !crouching) {
+      this.limbChain = [limb];
+      const kick = limb === 'rk' || limb === 'lk';
+      this.stringLabel = kick ? 'RUN KICK' : 'RUN';
+      const hit = kick ? RUN_KICK : RUN_ATTACK;
+      this.pendingStep = hit.stepIn;
+      return this.beginBuilt(hitToWindow(hit, this.stringLabel));
+    }
+    const matched = matchString([limb], crouching);
+    if (matched) {
+      this.limbChain = [limb];
+      this.stringLabel = '';
+      const hit = matched.route.hits[0];
+      this.pendingStep = hit.stepIn;
+      return this.beginBuilt(hitToWindow(hit));
+    }
+    this.limbChain = [];
+    this.stringLabel = '';
+    if (limb === 'rk') return this.beginAttack('heavyKick', DEFAULT_MOVE_WINDOWS.heavyKick);
+    if (limb === 'rp') return this.beginAttack('heavyAttack', DEFAULT_MOVE_WINDOWS.heavyAttack);
+    if (limb === 'lk') return this.beginAttack('lightKick', DEFAULT_MOVE_WINDOWS.lightKick);
+    return this.beginAttack('lightAttack', DEFAULT_MOVE_WINDOWS.lightAttack);
+  }
+
+  /**
+   * Charted routes cancel on time even if the last swing whiffed.
+   * A button that is not the next hit of the route only comes out early
+   * when the swing connected. Heat dash needs Heat plus a connect.
+   */
+  private tryStringCancel(crouching: boolean): FighterMotionState | null {
+    if (this.heatDashQueued && this.swingConnected && !this.heatDashSpent) {
+      this.heatDashQueued = false;
+      this.heatDashSpent = true;
+      this.queuedLimb = null;
+      this.stringLabel = 'HEAT DASH';
+      this.pendingStep = HEAT_DASH_HIT.stepIn;
+      return this.beginBuilt(hitToWindow(HEAT_DASH_HIT, 'HEAT DASH'));
+    }
+    const limb = this.queuedLimb;
+    if (!limb) return null;
+    const chain = [...this.limbChain, limb];
+    const matched = matchString(chain, crouching);
+    const extending = this.limbChain.length > 0 && !!matched;
+    if (matched && (extending || this.swingConnected)) {
+      this.queuedLimb = null;
+      this.limbChain = chain;
+      const hit = matched.route.hits[matched.index];
+      this.stringLabel = chain.length > 1 ? matched.route.name : '';
+      this.pendingStep = hit.stepIn;
+      return this.beginBuilt(hitToWindow(hit, chain.length > 1 ? matched.route.name : undefined));
+    }
+    if (this.swingConnected && this.genericLinks < this.MAX_GENERIC_LINKS) {
+      this.queuedLimb = null;
+      this.genericLinks += 1;
+      const digits: Record<Limb, string> = { lp: '1', rp: '2', lk: '3', rk: '4' };
+      this.limbChain = chain.slice(-4);
+      this.stringLabel = this.limbChain.map((part) => digits[part]).join(',');
+      const hit = genericLink(limb);
+      this.pendingStep = hit.stepIn;
+      return this.beginBuilt(hitToWindow(hit));
+    }
+    return null;
+  }
+
+  private keepChain = false;
+
+  private beginBuilt(built: BuiltAttack): FighterMotionState {
+    this.keepChain = true;
+    this.inputBuffer = [];
+    return this.beginAttack(built.animation, built);
+  }
+
   private beginAttack(motion: FighterMotionState, move: MoveWindow): FighterMotionState {
     const prevState = this.motionState;
+    const airborne = this.actionState === 'Jumping' || this.jumpAirTimer > 0;
+    const variant = Math.max(0, this.limbChain.length - 1);
+    const picked = move.clip ?? directionalAttackClip(this.fighterId, motion, {
+      forward: this.prevInput.forward,
+      crouch: !!this.prevInput.crouch,
+      airborne,
+    }, variant) ?? undefined;
+    const stamped: MoveWindow = { ...move, clip: picked };
+    const keep = this.keepChain;
+    this.keepChain = false;
+    if (!keep) {
+      this.limbChain = [];
+      this.stringLabel = '';
+      this.genericLinks = 0;
+    }
+    this.swingConnected = false;
+    this.queuedLimb = null;
+    this.attackGenerationN += 1;
     this.beginCrossfade(this.motionState, motion, CROSSFADE_ATTACK_FRAMES / this.FPS);
     this.actionState = 'Attacking';
     this.motionState = motion;
-    this.currentMove = move;
+    this.currentMove = stamped;
     const frameTotal = move.startup + move.active + move.recovery;
-    this.moveTimer = computeAttackLockDuration(motion, frameTotal);
+    this.moveTimer = computeAttackLockDuration(motion, frameTotal, stamped.clip);
     this.moveElapsed = 0;
     this.queuedAction = null;
     console.log(

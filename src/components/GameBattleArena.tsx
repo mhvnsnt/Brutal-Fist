@@ -37,7 +37,7 @@ import { useAuth } from '../contexts/AuthContext';
 // ── Locomotion + bone hitbox systems ─────────────────────────────────────────
 import { LocomotionSystem, ATTACK_ROOT_MOTION_PROFILES } from '../engine/locomotion/LocomotionSystem';
 import { createTekkenStick } from '../engine/combat/TekkenInput';
-import { BoneHitboxSystem, HIT_STOP_DURATIONS, HIT_STOP_DEFAULT_MS } from '../engine/locomotion/BoneHitboxSystem';
+import { BoneHitboxSystem } from '../engine/locomotion/BoneHitboxSystem';
 // ── Announcer system ──────────────────────────────────────────────────────────
 import { getAnnouncerSystem } from '../engine/announcer/AnnouncerSystem';
 // ── Ki Charge system ──────────────────────────────────────────────────────────
@@ -269,6 +269,10 @@ export default function GameBattleArena({
   // ── Animation trigger counters — increment on each new attack to force re-trigger ──
   const [p1AnimTrigger, setP1AnimTrigger] = useState(0);
   const [p2AnimTrigger, setP2AnimTrigger] = useState(0);
+  const [p1AttackClip, setP1AttackClip] = useState<string | null>(null);
+  const [p2AttackClip, setP2AttackClip] = useState<string | null>(null);
+  const p1AttackClipRef = useRef<string | null>(null);
+  const p2AttackClipRef = useRef<string | null>(null);
   const p1AnimTriggerRef = useRef(0);
   const p2AnimTriggerRef = useRef(0);
   const prevP1AnimRef = useRef<string>('idle');
@@ -312,6 +316,7 @@ export default function GameBattleArena({
   // ── Position state (X and Z axes) ────────────────────────────────────────
   const [p1X, setP1X] = useState(-1.8);
   const [p1Y, setP1Y] = useState(0);
+  const [p2Y, setP2Y] = useState(0);
   const [p2X, setP2X] = useState(1.8);
   const [p1Z, setP1Z] = useState(0);
   const [p2Z, setP2Z] = useState(0);
@@ -319,6 +324,12 @@ export default function GameBattleArena({
   const p2XRef = useRef(1.8);
   const p1ZRef = useRef(0);
   const p2ZRef = useRef(0);
+  const p1JuggleRef = useRef(0);
+  const p2JuggleRef = useRef(0);
+  const p1ScrewRef = useRef(false);
+  const p2ScrewRef = useRef(false);
+  const p1GenRef = useRef(0);
+  const p2GenRef = useRef(0);
 
   useEffect(() => {
     const held = new Set<string>();
@@ -935,6 +946,7 @@ export default function GameBattleArena({
       const p1SM = p1SMRef.current;
       const p1Hb = p1HitboxRef.current;
       const prevP1Action = p1SM.action;
+      p1SM.bindFighter(p1Fighter.id);
 
       const p1NextMotion = p1SM.update(smInput, dt);
       const p1HbWindow = p1SM.getHitboxWindow();
@@ -1069,9 +1081,16 @@ export default function GameBattleArena({
         p2XRef.current, p2ZRef.current,
         p2IsBlocking,
         p1HbWindow.currentFrame,
+        {
+          crouching: p2SM.isCrouching,
+          guarding: p2IsBlocking,
+          airborne: p2LocoRef.current.airborneY > 0.12,
+          inStartup: p2SM.inAttackStartup,
+          juggleHits: p2JuggleRef.current,
+        },
       );
 
-      if (p1Hit) {
+      if (p1Hit?.hit) {
         // ── Ki Charge: apply counter-hit bonus and consume charge ─────────
         const p1KiActive = p1KiChargeRef.current.active;
         const isKiCounter = p1KiActive;
@@ -1083,41 +1102,43 @@ export default function GameBattleArena({
 
         // ── Guard system: check if P2 blocks, apply chip damage or full damage ──
         const p1HitMove = p1HbWindow.move;
-        const guardResult = p1HitMove
-          ? p2SMRef.current.processIncomingHit(p1HitMove)
-          : { blocked: false, chipDamage: 0, guardBroken: false, finalDamage: p1Hit.damage };
+        const unblockable = !!(p1HitMove?.isUnblockable || p1HitMove?.isThrow);
+        const blocked = p1Hit.contact === 'block' && !unblockable;
+        p1SM.notifyContact(true);
 
-        // Ki Charge chip damage on block
-        let effectiveDamage = guardResult.blocked
-          ? (p1KiActive
-              ? Math.round(p1Hit.damage * p1KiChargeRef.current.chipDamageMultiplier)
-              : guardResult.finalDamage)
+        let effectiveDamage = unblockable && p1Hit.contact === 'block'
+          ? (p1HitMove?.damage ?? p1Hit.damage)
           : p1Hit.damage;
 
         // Ki Charge counter-hit bonus
-        if (p1KiActive && !guardResult.blocked) {
+        if (p1KiActive && !blocked) {
           effectiveDamage = applyKiChargeCounterHit(effectiveDamage);
         }
 
+        const routeTag = [
+          p1Hit.contact === 'counter' ? 'COUNTER' : '',
+          p1Hit.contact === 'juggle' ? 'JUGGLE' : '',
+          p1SM.comboTag,
+        ].filter(Boolean).join(' ');
+
         // ── Combo system: register hit and apply damage scaling ──────────
-        const { scaledDamage: p1ScaledDmg, newState: newP1Combo } = registerHit(
-          p1ComboRef.current, effectiveDamage, now,
-        );
-        p1ComboRef.current = newP1Combo;
-        setP1Combo({ ...newP1Combo });
-        if (!guardResult.blocked) {
+        const { scaledDamage: p1ScaledDmg, newState: newP1Combo } = blocked
+          ? { scaledDamage: effectiveDamage, newState: p1ComboRef.current }
+          : registerHit(p1ComboRef.current, effectiveDamage, now);
+        if (!blocked) {
+          p1ComboRef.current = { ...newP1Combo, tag: routeTag || newP1Combo.tag };
+          setP1Combo({ ...p1ComboRef.current });
           engine.applyIncomingHit('p2', p1ScaledDmg, false, p1Hit.hitstun || 0.3);
         }
 
-        // Apply stun/knockdown to P2 state machine
-        const isCrumple = !guardResult.blocked && p1Hit.launch > 0.3;
-        if (isCrumple) {
+        // Launch pops them up. Knockdown only when the juggle is over.
+        if (!blocked && p1Hit.drop) {
+          p2JuggleRef.current = 0;
+          p2ScrewRef.current = false;
           p2SMRef.current.applyKnockdown();
           p2LocoRef.current.halt();
-          // Trigger dust VFX on knockdown
           setKnockdownEvent({ count: ++knockdownEventCountRef.current, player: 'p2' });
 
-          // ── Floor-break: slam sends P2 crashing through to next level ──
           const slamDmg = p1Hit.damage ?? 0;
           const prevArenaSnap = arenaCombatStateRef.current;
           const afterSlam = tickArenaState(prevArenaSnap, p1XRef.current, p2XRef.current, 0, slamDmg, false, true);
@@ -1127,37 +1148,34 @@ export default function GameBattleArena({
             setFloorBreakNotice({ player: 'p2', level: lvl?.label ?? 'LOWER LEVEL', count: ++floorBreakNoticeCountRef.current });
             arenaCombatStateRef.current = { ...afterSlam, p2FloorBreakPending: false };
             audioManagerRef.current.playSFX('floor_slam');
-            // ── Trigger StageManager floor break transition ──────────────
             const fbState = triggerFloorBreak('p2', afterSlam.p2LevelIndex, slamDmg);
             stageManagerRef.current = { ...stageManagerRef.current, floorBreak: fbState };
             setFloorBreakPhase('floor_break_debris');
           }
-        } else if (!guardResult.blocked) {
-          p2SMRef.current.applyStun(p1Hit.hitstun || 0.3, false);
-          // Apply pushback from hit
+        } else if (!blocked && p1Hit.launch >= 0.45) {
+          p2LocoRef.current.launchJuggle(Math.min(1, p1Hit.launch));
+          p2JuggleRef.current += 1;
+          if (p1Hit.screw) p2ScrewRef.current = true;
+          p2SMRef.current.applyStun(p1Hit.hitstun || 0.28, false, p1Hit.launch >= 0.45 || p1HitMove?.attackLevel === 'high' ? 'hitHigh' : p1HitMove?.attackLevel === 'low' ? 'hitLow' : 'hit');
+        } else if (!blocked) {
+          p2SMRef.current.applyStun(p1Hit.hitstun || 0.22, false, p1HitMove?.attackLevel === 'low' ? 'hitLow' : p1HitMove?.attackLevel === 'high' ? 'hitHigh' : 'hit');
           p2LocoRef.current.applyPushback(p1Hit.pushback ?? 0.3);
-        }
-        if (guardResult.guardBroken) {
-          p2SMRef.current.applyStun(p1Hit.hitstun || 0.3, false);
+        } else {
+          p2LocoRef.current.applyPushback((p1Hit.pushback ?? 0.2) * 0.5);
         }
         p2HitboxRef.current.reset();
 
-        // ── Hit Stop: freeze both fighters' animations ────────────────────
-        // Duration scales with attack weight (heavy = longer freeze)
-        if (!guardResult.blocked) {
-          const attackKey = p1HbWindow.move?.animation ?? 'lightAttack';
-          const isHeavy = p1Hit.damage > 120 || p1HbWindow.move?.isSpecial;
-          const stopMs = isHeavy
-            ? (HIT_STOP_DURATIONS[attackKey] ?? HIT_STOP_DEFAULT_MS)
-            : HIT_STOP_DURATIONS.lightAttack;
+        // Follow-ups in a string get a short freeze so the next swing is visible.
+        if (!blocked) {
+          const followUp = p1SM.limbDepth > 1;
+          const stopMs = p1Hit.launch >= 0.5 ? 48 : followUp ? 20 : p1Hit.contact === 'counter' ? 36 : 28;
           hitStopTimerRef.current = stopMs / 1000;
           hitStopActiveRef.current = true;
           setHitStopActive(true);
-          console.log(`[Arena] ❄️ Hit stop triggered: ${stopMs}ms for "${attackKey}"`);
         }
 
-        const isBlocked = guardResult.blocked;
-        const isCounter = prevP2State === FighterState.Startup || prevP2State === FighterState.Active;
+        const isBlocked = blocked;
+        const isCounter = p1Hit.contact === 'counter' || prevP2State === FighterState.Startup || prevP2State === FighterState.Active;
         if (settings.soundEnabled) {
           if (isBlocked) sfx.playBlock();
           else if (isCounter) sfx.playCounter();
@@ -1227,6 +1245,7 @@ export default function GameBattleArena({
         p2XRef.current,
         p1XRef.current,
       );
+      p2SM.bindFighter(p2Fighter.id);
       const p2NextMotion = p2SM.update(p2AIInput, dt);
       const p2HbWindow = p2SM.getHitboxWindow();
       p2Hb.update(p2HbWindow);
@@ -1238,35 +1257,46 @@ export default function GameBattleArena({
         p1XRef.current, p1ZRef.current,
         p1IsBlocking,
         p2HbWindow.currentFrame,
+        {
+          crouching: p1SM.isCrouching,
+          guarding: p1IsBlocking,
+          airborne: p1LocoRef.current.airborneY > 0.12,
+          inStartup: p1SM.inAttackStartup,
+          juggleHits: p1JuggleRef.current,
+        },
       );
 
-      if (p2Hit) {
-        // ── Guard system: check if P1 blocks, apply chip damage or full damage ──
+      if (p2Hit?.hit) {
         const p2HitMove = p2HbWindow.move;
-        const p1GuardResult = p2HitMove
-          ? p1SMRef.current.processIncomingHit(p2HitMove)
-          : { blocked: false, chipDamage: 0, guardBroken: false, finalDamage: p2Hit.damage };
+        const p1Unblockable = !!(p2HitMove?.isUnblockable || p2HitMove?.isThrow);
+        const p1Blocked = p2Hit.contact === 'block' && !p1Unblockable;
+        p2SM.notifyContact(true);
+        const p1EffectiveDamage = p1Unblockable && p2Hit.contact === 'block'
+          ? (p2HitMove?.damage ?? p2Hit.damage)
+          : p2Hit.damage;
 
-        const p1EffectiveDamage = p1GuardResult.blocked ? p1GuardResult.finalDamage : p2Hit.damage;
+        const p2Route = [
+          p2Hit.contact === 'counter' ? 'COUNTER' : '',
+          p2Hit.contact === 'juggle' ? 'JUGGLE' : '',
+          p2SM.comboTag,
+        ].filter(Boolean).join(' ');
 
-        // ── Combo system: register hit and apply damage scaling ──────────
-        const { scaledDamage: p2ScaledDmg, newState: newP2Combo } = registerHit(
-          p2ComboRef.current, p1EffectiveDamage, now,
-        );
-        p2ComboRef.current = newP2Combo;
-        setP2Combo({ ...newP2Combo });
-        if (!p1GuardResult.blocked) {
+        const { scaledDamage: p2ScaledDmg, newState: newP2Combo } = p1Blocked
+          ? { scaledDamage: p1EffectiveDamage, newState: p2ComboRef.current }
+          : registerHit(p2ComboRef.current, p1EffectiveDamage, now);
+        if (!p1Blocked) {
+          p2ComboRef.current = { ...newP2Combo, tag: p2Route || newP2Combo.tag };
+          setP2Combo({ ...p2ComboRef.current });
           engine.applyIncomingHit('p1', p2ScaledDmg, false, p2Hit.hitstun || 0.3);
         }
 
-        const isCrumple = !p1GuardResult.blocked && p2Hit.launch > 0.3;
-        if (isCrumple) {
+        if (!p1Blocked && p2Hit.drop) {
+          p1JuggleRef.current = 0;
+          p1ScrewRef.current = false;
           p1SMRef.current.applyKnockdown();
           p1LocoRef.current.halt();
-          // Trigger dust VFX on knockdown
           setKnockdownEvent({ count: ++knockdownEventCountRef.current, player: 'p1' });
 
-          // ── Floor-break: slam sends P1 crashing through to next level ──
           const slamDmg = p2Hit.damage ?? 0;
           const prevArenaSnap = arenaCombatStateRef.current;
           const afterSlam = tickArenaState(prevArenaSnap, p1XRef.current, p2XRef.current, slamDmg, 0, true, false);
@@ -1276,34 +1306,33 @@ export default function GameBattleArena({
             setFloorBreakNotice({ player: 'p1', level: lvl?.label ?? 'LOWER LEVEL', count: ++floorBreakNoticeCountRef.current });
             arenaCombatStateRef.current = { ...afterSlam, p1FloorBreakPending: false };
             audioManagerRef.current.playSFX('floor_slam');
-            // ── Trigger StageManager floor break transition ──────────────
             const fbState = triggerFloorBreak('p1', afterSlam.p1LevelIndex, slamDmg);
             stageManagerRef.current = { ...stageManagerRef.current, floorBreak: fbState };
             setFloorBreakPhase('floor_break_debris');
           }
-        } else if (!p1GuardResult.blocked) {
-          p1SMRef.current.applyStun(p2Hit.hitstun || 0.3, false);
+        } else if (!p1Blocked && p2Hit.launch >= 0.45) {
+          p1LocoRef.current.launchJuggle(Math.min(1, p2Hit.launch));
+          p1JuggleRef.current += 1;
+          if (p2Hit.screw) p1ScrewRef.current = true;
+          p1SMRef.current.applyStun(p2Hit.hitstun || 0.28, false, p2Hit.launch >= 0.45 || p2HitMove?.attackLevel === 'high' ? 'hitHigh' : p2HitMove?.attackLevel === 'low' ? 'hitLow' : 'hit');
+        } else if (!p1Blocked) {
+          p1SMRef.current.applyStun(p2Hit.hitstun || 0.22, false, p2HitMove?.attackLevel === 'low' ? 'hitLow' : p2HitMove?.attackLevel === 'high' ? 'hitHigh' : 'hit');
           p1LocoRef.current.applyPushback(p2Hit.pushback ?? 0.3);
-        }
-        if (p1GuardResult.guardBroken) {
-          p1SMRef.current.applyStun(p2Hit.hitstun || 0.3, false);
+        } else {
+          p1LocoRef.current.applyPushback((p2Hit.pushback ?? 0.2) * 0.5);
         }
         p1HitboxRef.current.reset();
 
-        // ── Hit Stop for P2 attacks ───────────────────────────────────────
-        if (!p1GuardResult.blocked) {
-          const attackKey = p2HbWindow.move?.animation ?? 'lightAttack';
-          const isHeavy = p2Hit.damage > 120 || p2HbWindow.move?.isSpecial;
-          const stopMs = isHeavy
-            ? (HIT_STOP_DURATIONS[attackKey] ?? HIT_STOP_DEFAULT_MS)
-            : HIT_STOP_DURATIONS.lightAttack;
+        if (!p1Blocked) {
+          const followUp = p2SM.limbDepth > 1;
+          const stopMs = p2Hit.launch >= 0.5 ? 48 : followUp ? 20 : p2Hit.contact === 'counter' ? 36 : 28;
           hitStopTimerRef.current = stopMs / 1000;
           hitStopActiveRef.current = true;
           setHitStopActive(true);
         }
 
-        const isBlocked = p1GuardResult.blocked;
-        const isCounter = prevP1State === FighterState.Startup || prevP1State === FighterState.Active;
+        const isBlocked = p1Blocked;
+        const isCounter = p2Hit.contact === 'counter' || prevP1State === FighterState.Startup || prevP1State === FighterState.Active;
         if (settings.soundEnabled) {
           if (isBlocked) sfx.playBlock();
           else if (isCounter) sfx.playCounter();
@@ -1516,6 +1545,43 @@ export default function GameBattleArena({
       prevP1AnimRef.current = p1NextMotion;
       prevP2AnimRef.current = p2NextMotion;
 
+      if (p1SM.attackGeneration !== p1GenRef.current || p2SM.attackGeneration !== p2GenRef.current) {
+        if (hitStopActiveRef.current) {
+          hitStopActiveRef.current = false;
+          hitStopTimerRef.current = 0;
+          setHitStopActive(false);
+        }
+      }
+      if (p1SM.attackGeneration !== p1GenRef.current) {
+        p1GenRef.current = p1SM.attackGeneration;
+        p1AnimTriggerRef.current += 1;
+        setP1AnimTrigger(p1AnimTriggerRef.current);
+      }
+      if (p2SM.attackGeneration !== p2GenRef.current) {
+        p2GenRef.current = p2SM.attackGeneration;
+        p2AnimTriggerRef.current += 1;
+        setP2AnimTrigger(p2AnimTriggerRef.current);
+      }
+
+      const p1Clip = p1SM.activeAttackClip;
+      const p2Clip = p2SM.activeAttackClip;
+      if (p1Clip !== p1AttackClipRef.current) {
+        if (p1Clip && p1Clip !== p1AttackClipRef.current) {
+          p1AnimTriggerRef.current += 1;
+          setP1AnimTrigger(p1AnimTriggerRef.current);
+        }
+        p1AttackClipRef.current = p1Clip;
+        setP1AttackClip(p1Clip);
+      }
+      if (p2Clip !== p2AttackClipRef.current) {
+        if (p2Clip && p2Clip !== p2AttackClipRef.current) {
+          p2AnimTriggerRef.current += 1;
+          setP2AnimTrigger(p2AnimTriggerRef.current);
+        }
+        p2AttackClipRef.current = p2Clip;
+        setP2AttackClip(p2Clip);
+      }
+
       // ── Hit-stop countdown ────────────────────────────────────────────
       if (hitStopActiveRef.current) {
         hitStopTimerRef.current -= dt;
@@ -1529,6 +1595,11 @@ export default function GameBattleArena({
       // ── Locomotion system update ──────────────────────────────────────
       // Only update locomotion when not in hit-stop
       if (!hitStopActiveRef.current) {
+        const p1Step = p1SM.consumeStep();
+        const p2Step = p2SM.consumeStep();
+        if (p1Step > 0) p1LocoRef.current.nudgeToward(p2XRef.current, p1Step);
+        if (p2Step > 0) p2LocoRef.current.nudgeToward(p1XRef.current, p2Step);
+
         const p1Vel = p1SMRef.current.getWalkVelocity();
         const p2Vel = p2SMRef.current.getWalkVelocity();
         const p1IsDashing = cmd.dashing || cmd.running;
@@ -1549,8 +1620,14 @@ export default function GameBattleArena({
 
         if (cmd.jump) p1LocoRef.current.beginJump();
         else p1LocoRef.current.armJump();
-        p1LocoRef.current.update(p1Vel.forward, p1Vel.strafe, dt, p1IsDashing, p1IsBackdashing);
-        p2LocoRef.current.update(p2Vel.forward, p2Vel.strafe, dt, false, p2IsBackdashing);
+        p1LocoRef.current.update(p1Vel.forward, p1Vel.strafe, dt, p1IsDashing, p1IsBackdashing, {
+          x: p2XRef.current,
+          z: p2ZRef.current,
+        });
+        p2LocoRef.current.update(p2Vel.forward, p2Vel.strafe, dt, false, p2IsBackdashing, {
+          x: p1XRef.current,
+          z: p1ZRef.current,
+        });
 
         // ── Feed locomotion positions back to visual state ────────────────
         // Enforce minimum separation so fighters can't overlap
@@ -1573,10 +1650,33 @@ export default function GameBattleArena({
           setP1X(newP1X);
         }
         const jy = p1LocoRef.current.airborneY;
-        if (Math.abs(jy - p1YRef.current) > 0.005) {
+        if (Math.abs(jy - p1YRef.current) > 0.005 || (jy === 0 && p1YRef.current !== 0)) {
           p1YRef.current = jy;
           p1JumpYRef.current = jy;
           setP1Y(jy);
+        }
+        const p2Air = p2LocoRef.current.airborneY;
+        if (Math.abs(p2Air - p2YRef.current) > 0.005 || (p2Air === 0 && p2YRef.current !== 0)) {
+          p2YRef.current = p2Air;
+          setP2Y(p2Air);
+        }
+        if (p1LocoRef.current.justLanded) {
+          if (p1ScrewRef.current) {
+            p1SMRef.current.applyKnockdown();
+            p1LocoRef.current.halt();
+            setKnockdownEvent({ count: ++knockdownEventCountRef.current, player: 'p1' });
+          }
+          p1ScrewRef.current = false;
+          p1JuggleRef.current = 0;
+        }
+        if (p2LocoRef.current.justLanded) {
+          if (p2ScrewRef.current) {
+            p2SMRef.current.applyKnockdown();
+            p2LocoRef.current.halt();
+            setKnockdownEvent({ count: ++knockdownEventCountRef.current, player: 'p2' });
+          }
+          p2ScrewRef.current = false;
+          p2JuggleRef.current = 0;
         }
         if (Math.abs(newP2X - p2XRef.current) > 0.01) {
           p2XRef.current = newP2X;
@@ -1894,6 +1994,8 @@ export default function GameBattleArena({
           p2State={p2State}
           p1Animation={p1Animation}
           p2Animation={p2Animation}
+          p1AttackClip={p1AttackClip}
+          p2AttackClip={p2AttackClip}
           p1Color={p1Color}
           p2Color={p2Color}
           hitStopActive={hitStopActive}
@@ -1915,6 +2017,7 @@ export default function GameBattleArena({
           p1X={p1X}
           p2X={p2X}
           p1Y={p1Y}
+          p2Y={p2Y}
           onP1BoneHitboxReady={(sys: BoneHitboxSystem) => { p1BoneHitboxRef.current = sys; }}
           onP2BoneHitboxReady={(sys: BoneHitboxSystem) => { p2BoneHitboxRef.current = sys; }}
           wallSplatEvent={wallSplatEvent}
@@ -1928,7 +2031,10 @@ export default function GameBattleArena({
       {cinematicPhase === 'fight' && (
         <>
           {/* Health bars + timer — semi-transparent background only on bar rows */}
-          <div className="absolute top-0 left-0 right-0 z-30 px-3 pt-2 pb-1 pointer-events-none">
+          <div
+            className="absolute top-0 left-0 right-0 z-30 px-3 pb-1 pointer-events-none"
+            style={{ paddingTop: 'max(8px, env(safe-area-inset-top))' }}
+          >
             <div className="flex items-center gap-2">
               <img
                 src={p1Fighter.pixelPortrait ?? `/portraits/pixel/${p1Fighter.id}.png`}
@@ -2374,7 +2480,8 @@ export default function GameBattleArena({
           {/* Controls legend */}
           <div className="absolute bottom-2 left-3 z-30 text-[7px] text-zinc-500 space-y-0.5 pointer-events-none">
             <div>ARROWS: MOVE · Z/U: 1(LP) · X/I: 2(RP) · J: 3(LK) · K: 4(RK) · C: GUARD · V: GRAPPLE · Q/E: SIDESTEP</div>
-            <div className="text-zinc-600">COMBOS: U+J=THROW · I+K=THROW · I+J=HEAT BURST · →+C=CMD THROW · SPECIAL: L+L+H or H+H+L</div>
+            <div className="text-zinc-600">STRINGS: 1,1,2 · 1,2,4 · 1,3,2 · 2,2,1 · 3,3,4 · DOWN+1,2 · DOWN+3,2 · DOUBLE-TAP FORWARD+BUTTON = RUN · FORWARD+4 = HURRICANE · HEAT THEN FORWARD-FORWARD = HEAT DASH</div>
+            <div className="text-zinc-600">HIGHS MISS CROUCH · LOWS HIT STANDING GUARD · MIDS HIT CROUCH GUARD · HIT THEIR STARTUP = COUNTER</div>
             <div className="text-purple-500/60">KI CHARGE: U+X+J+K (1+2+3+4) — NEXT HIT = COUNTER · NO BLOCK</div>
           </div>
 
@@ -2633,14 +2740,22 @@ function buildP2AIInput(
   }
 
   if (dist <= CLOSE_RANGE) {
-    // In attack range — vary attacks
+    const t = now % 680;
+    const on = (start: number) => t >= start && t < start + 70;
+    if (cycle === 0 || cycle === 1) {
+      const lp = on(0) || on(190);
+      const rp = on(380);
+      return { forward: 0, strafe: 0, light: lp, heavy: rp, guard: false, crouch: false, lp, rp, lk: false, rk: false };
+    }
+    if (cycle === 3) {
+      const lk = on(0) || on(190);
+      const rk = on(390);
+      return { forward: 0, strafe: 0, light: lk, heavy: rk, guard: false, crouch: false, lp: false, rp: false, lk, rk };
+    }
     switch (cycle) {
-      case 0:
-      case 1: return { forward: 0, strafe: 0, light: true, heavy: false, guard: false, crouch: false };
-      case 2: return { forward: 0, strafe: 0, light: false, heavy: isAggressive, guard: !isAggressive, crouch: false };
-      case 3: return { forward: -1, strafe: 0, light: true, heavy: false, guard: false, crouch: false };
-      case 4: return { forward: 0, strafe: 0, light: false, heavy: true, guard: false, crouch: false };
-      case 5: return { forward: 1, strafe: 0, light: false, heavy: false, guard: true, crouch: false }; // backdash
+      case 2: return { forward: 0, strafe: 0, light: false, heavy: isAggressive, guard: !isAggressive, crouch: false, lp: false, rp: isAggressive, lk: false, rk: false };
+      case 4: return { forward: 0, strafe: 0, light: false, heavy: false, guard: false, crouch: true, lk: on(40), lp: false, rp: on(240), rk: false };
+      case 5: return { forward: 1, strafe: 0, light: false, heavy: false, guard: true, crouch: false };
       default: return { forward: 0, strafe: 0, light: false, heavy: false, guard: false, crouch: false };
     }
   }

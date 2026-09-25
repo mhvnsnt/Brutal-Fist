@@ -117,8 +117,16 @@ export default function App() {
   // ── Main Menu ──
   if (screen === AppScreen?.MainMenu) {
     return (
-      <div className="fixed inset-0 bg-[#10131a] text-white flex items-center justify-center font-mono">
-        <div className="w-[min(86vw,420px)]">
+      <div
+        className="fixed inset-0 bg-[#10131a] text-white font-mono overflow-y-auto"
+        style={{
+          paddingTop: 'max(16px, env(safe-area-inset-top))',
+          paddingBottom: 'max(20px, env(safe-area-inset-bottom))',
+          paddingLeft: 'max(12px, env(safe-area-inset-left))',
+          paddingRight: 'max(12px, env(safe-area-inset-right))',
+        }}
+      >
+        <div className="mx-auto w-[min(86vw,420px)] py-4">
           <div className="mb-2 text-xs tracking-[0.45em] text-slate-500">3D FIGHTING GAME</div>
           {user && (
             <div className="mb-6 flex items-center justify-between">

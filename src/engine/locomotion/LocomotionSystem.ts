@@ -68,12 +68,12 @@ export const ATTACK_ROOT_MOTION_PROFILES: Record<string, { forwardDisplacement: 
 };
 
 // ── Movement constants ────────────────────────────────────────────────────────
-const WALK_SPEED = 2.2;          // world units/sec
-const DASH_SPEED = 4.5;          // world units/sec
-const BACKDASH_SPEED = 3.8;      // world units/sec
-const SIDESTEP_SPEED = 1.8;      // world units/sec (Z axis)
-const WALK_ACCEL = 12.0;         // acceleration rate
-const WALK_DECEL = 18.0;         // deceleration rate
+const WALK_SPEED = 3.1;
+const DASH_SPEED = 6.2;
+const BACKDASH_SPEED = 5.4;
+const SIDESTEP_SPEED = 2.6;
+const WALK_ACCEL = 28.0;
+const WALK_DECEL = 36.0;
 const ROOT_MOTION_THRESHOLD = 0.005; // minimum displacement to count as root motion
 
 // ── Stage boundary ────────────────────────────────────────────────────────────
@@ -103,6 +103,8 @@ export class LocomotionSystem {
   private jumpY = 0;
   private jumpV = 0;
   private jumpArmed = true;
+  private wasAirborne = false;
+  private landedFlag = false;
 
   constructor(initialX: number, initialZ: number, facing: 1 | -1) {
     this.state = {
@@ -121,6 +123,30 @@ export class LocomotionSystem {
 
   get airborneY(): number {
     return this.jumpY;
+  }
+
+  /** True for the frame a juggle or jump meets the floor. */
+  get justLanded(): boolean {
+    return this.landedFlag;
+  }
+
+  /**
+   * Pop from a launcher or a juggle hit. Strength is 0–1.
+   * Does not touch walk velocity — the hitstun state already stops the run.
+   */
+  launchJuggle(strength: number) {
+    const pop = 3.1 + Math.max(0, Math.min(1, strength)) * 4.2;
+    this.jumpV = Math.max(this.jumpV, pop);
+    if (this.jumpY < 0.04) this.jumpY = 0.04;
+    this.jumpArmed = false;
+  }
+
+  /** Step toward a world X. Separation clamp in the arena stops the overlap. */
+  nudgeToward(targetX: number, amount: number) {
+    if (amount <= 0) return;
+    const dir = Math.sign(targetX - this.state.rootX) || this.state.facing;
+    const next = this.state.rootX + dir * amount;
+    this.state.rootX = Math.max(STAGE_X_MIN, Math.min(STAGE_X_MAX, next));
   }
 
   beginJump() {
@@ -197,14 +223,17 @@ export class LocomotionSystem {
     dt: number,
     isDashing: boolean,
     isBackdashing: boolean,
+    opponent?: { x: number; z: number },
   ): void {
+    this.landedFlag = false;
     if (this.state.mode === 'rootMotion') {
       this.updateRootMotion(dt);
+      this.tickAirTime(dt);
       return;
     }
 
     // Programmatic locomotion
-    this.updateProgrammatic(forwardInput, strafeInput, dt, isDashing, isBackdashing);
+    this.updateProgrammatic(forwardInput, strafeInput, dt, isDashing, isBackdashing, opponent);
   }
 
   private updateProgrammatic(
@@ -213,17 +242,33 @@ export class LocomotionSystem {
     dt: number,
     isDashing: boolean,
     isBackdashing: boolean,
+    opponent?: { x: number; z: number },
   ): void {
     const maxSpeed = isDashing ? DASH_SPEED : isBackdashing ? BACKDASH_SPEED : WALK_SPEED;
     const strafeMax = SIDESTEP_SPEED;
 
     // Target velocities from input
-    const targetVX = Math.abs(forwardInput) > 0.1
+    let targetVX = Math.abs(forwardInput) > 0.1
       ? Math.sign(forwardInput) * maxSpeed * this.state.facing
       : 0;
-    const targetVZ = Math.abs(strafeInput) > 0.1
+    let targetVZ = Math.abs(strafeInput) > 0.1
       ? Math.sign(strafeInput) * strafeMax
       : 0;
+
+    // Radial sidestep — Tekken steps on a circle around the opponent, not a
+    // straight rail in Z. Tangent keeps the step sideways to the line between
+    // them; a small inward radial keeps them targeting instead of sliding off.
+    if (Math.abs(strafeInput) > 0.1 && opponent && Math.abs(forwardInput) < 0.35) {
+      const dx = opponent.x - this.state.rootX;
+      const dz = opponent.z - this.state.rootZ;
+      const dist = Math.hypot(dx, dz) || 1;
+      const sign = Math.sign(strafeInput) || 1;
+      const tx = (-dz / dist) * sign;
+      const tz = (dx / dist) * sign;
+      const inward = 0.28;
+      targetVX = (tx * 0.15 + (dx / dist) * inward) * strafeMax;
+      targetVZ = (tz * 0.92 + (dz / dist) * inward) * strafeMax;
+    }
 
     // Smooth velocity with acceleration/deceleration
     this.state.velocityX = this.smoothVel(this.state.velocityX, targetVX, dt);
@@ -238,13 +283,25 @@ export class LocomotionSystem {
     ));
 
     if (this.jumpY > 0 || this.jumpV > 0) {
-      this.jumpV -= 22 * dt;
-      this.jumpY += this.jumpV * dt;
-      if (this.jumpY <= 0) {
-        this.jumpY = 0;
-        this.jumpV = 0;
-      }
+      this.tickAirTime(dt);
+    } else {
+      this.wasAirborne = false;
     }
+  }
+
+  private tickAirTime(dt: number) {
+    if (this.jumpY <= 0 && this.jumpV <= 0) {
+      this.wasAirborne = false;
+      return;
+    }
+    this.jumpV -= 22 * dt;
+    this.jumpY += this.jumpV * dt;
+    if (this.jumpY <= 0) {
+      this.jumpY = 0;
+      this.jumpV = 0;
+      if (this.wasAirborne) this.landedFlag = true;
+    }
+    this.wasAirborne = this.jumpY > 0.02;
   }
 
   private updateRootMotion(dt: number): void {

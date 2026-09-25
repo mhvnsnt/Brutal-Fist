@@ -28,7 +28,7 @@ export const BANNON_GLB_MODELS: readonly BannonGlbRosterEntry[] = [
   {id:"bannon",name:"Bannon",model:"BANNON_rigged.glb",attire:"Default",rigStatus:"skinned",playableGate:"PASS",source:"CANON_MODELS",measuredJoints:58,measuredJoints0:1},
   {id:"bannon",name:"Bannon",model:"BANNON_muscular_skinned.glb",attire:"Muscular alt",rigStatus:"skinned",playableGate:"PASS",source:"CANON_MODELS",measuredJoints:58,measuredJoints0:1},
 
-  {id:"maime",name:"Maime",model:"MAIME_skinned.glb",attire:"Default",rigStatus:"skinned",playableGate:"PASS",source:"OFFLINE_NAMEDPART_SKIN",overrideUrl:"/models/MAIME_skinned.glb",measuredJoints:22,measuredJoints0:15},
+  {id:"maime",name:"Maime",model:"MAIME_skinned.glb",attire:"Jeans",rigStatus:"skinned",playableGate:"PASS",source:"OFFLINE_NAMEDPART_SKIN",overrideUrl:"/models/MAIME_skinned.glb",measuredJoints:22,measuredJoints0:15},
   {id:"maime",name:"Maime",model:"MAIME_tattered_skinned.glb",attire:"Tattered",rigStatus:"skinned",playableGate:"PASS",source:"OFFLINE_NAMEDPART_SKIN",overrideUrl:"/models/MAIME_tattered_skinned.glb",measuredJoints:22,measuredJoints0:14},
 
   {id:"onyx",name:"Onyx",model:"ONYX_street.glb",attire:"Street",rigStatus:"skinned",playableGate:"PASS",source:"CANON_MODELS",measuredJoints:58,measuredJoints0:1},

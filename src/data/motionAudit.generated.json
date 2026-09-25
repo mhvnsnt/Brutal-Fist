@@ -1,0 +1,654 @@
+{
+  "generatedBy": "scripts/audit-motion.mjs",
+  "spinRadians": 0.85,
+  "clips": [
+    {
+      "file": "ACTION_IDLE_TO_STANDING_IDLE",
+      "dur": 0.9333,
+      "keys": 24,
+      "bones": 52,
+      "hipYawRange": 0.667,
+      "returnsToFirstPose": false,
+      "spin": false
+    },
+    {
+      "file": "AU",
+      "dur": 2.9,
+      "keys": 24,
+      "bones": 52,
+      "hipYawRange": 1.369,
+      "returnsToFirstPose": false,
+      "spin": true
+    },
+    {
+      "file": "BASEBALL_HIT",
+      "dur": 1.9667,
+      "keys": 24,
+      "bones": 52,
+      "hipYawRange": 2.115,
+      "returnsToFirstPose": false,
+      "spin": true
+    },
+    {
+      "file": "BASH",
+      "dur": 4,
+      "keys": 24,
+      "bones": 52,
+      "hipYawRange": 1.063,
+      "returnsToFirstPose": true,
+      "spin": true
+    },
+    {
+      "file": "BIG_BODY_BLOW",
+      "dur": 2.5667,
+      "keys": 24,
+      "bones": 52,
+      "hipYawRange": 2.669,
+      "returnsToFirstPose": false,
+      "spin": true
+    },
+    {
+      "file": "BIG_JUMP",
+      "dur": 2.3667,
+      "keys": 24,
+      "bones": 52,
+      "hipYawRange": 2.975,
+      "returnsToFirstPose": false,
+      "spin": true
+    },
+    {
+      "file": "BIG_RIB_HIT",
+      "dur": 1.6,
+      "keys": 24,
+      "bones": 52,
+      "hipYawRange": 0.602,
+      "returnsToFirstPose": true,
+      "spin": false
+    },
+    {
+      "file": "BODY_JAB_CROSS",
+      "dur": 2.1,
+      "keys": 24,
+      "bones": 52,
+      "hipYawRange": 1.051,
+      "returnsToFirstPose": true,
+      "spin": true
+    },
+    {
+      "file": "BOXING",
+      "dur": 1.7333,
+      "keys": 24,
+      "bones": 52,
+      "hipYawRange": 0.623,
+      "returnsToFirstPose": true,
+      "spin": false
+    },
+    {
+      "file": "BOXING__1_",
+      "dur": 2.2,
+      "keys": 24,
+      "bones": 52,
+      "hipYawRange": 0.284,
+      "returnsToFirstPose": true,
+      "spin": false
+    },
+    {
+      "file": "BOXING__2_",
+      "dur": 4.2333,
+      "keys": 24,
+      "bones": 52,
+      "hipYawRange": 1.059,
+      "returnsToFirstPose": true,
+      "spin": true
+    },
+    {
+      "file": "BOXING__3_",
+      "dur": 2.2,
+      "keys": 24,
+      "bones": 52,
+      "hipYawRange": 1.141,
+      "returnsToFirstPose": true,
+      "spin": true
+    },
+    {
+      "file": "BOXING__4_",
+      "dur": 2.1,
+      "keys": 24,
+      "bones": 52,
+      "hipYawRange": 1.054,
+      "returnsToFirstPose": true,
+      "spin": true
+    },
+    {
+      "file": "BOXING__5_",
+      "dur": 2.1667,
+      "keys": 24,
+      "bones": 52,
+      "hipYawRange": 1.369,
+      "returnsToFirstPose": true,
+      "spin": true
+    },
+    {
+      "file": "BOX_IDLE",
+      "dur": 6.3,
+      "keys": 24,
+      "bones": 52,
+      "hipYawRange": 0.062,
+      "returnsToFirstPose": true,
+      "spin": false
+    },
+    {
+      "file": "BREAKDANCE_READY",
+      "dur": 1.4333,
+      "keys": 24,
+      "bones": 52,
+      "hipYawRange": 0.324,
+      "returnsToFirstPose": false,
+      "spin": false
+    },
+    {
+      "file": "CAPOEIRA",
+      "dur": 3.4333,
+      "keys": 24,
+      "bones": 52,
+      "hipYawRange": 1.029,
+      "returnsToFirstPose": true,
+      "spin": true
+    },
+    {
+      "file": "CENTER_BLOCK",
+      "dur": 1.7667,
+      "keys": 24,
+      "bones": 52,
+      "hipYawRange": 0.342,
+      "returnsToFirstPose": true,
+      "spin": false
+    },
+    {
+      "file": "CHOKESLAM",
+      "dur": 5.6667,
+      "keys": 24,
+      "bones": 519,
+      "hipYawRange": 0,
+      "returnsToFirstPose": false,
+      "spin": false
+    },
+    {
+      "file": "COMBO_PUNCH",
+      "dur": 2.9667,
+      "keys": 24,
+      "bones": 52,
+      "hipYawRange": 0.705,
+      "returnsToFirstPose": true,
+      "spin": false
+    },
+    {
+      "file": "CORKSCREW_EVADE",
+      "dur": 2.5,
+      "keys": 24,
+      "bones": 52,
+      "hipYawRange": 6.632,
+      "returnsToFirstPose": false,
+      "spin": true
+    },
+    {
+      "file": "CORKSCREW_KIP_UP",
+      "dur": 2.7667,
+      "keys": 24,
+      "bones": 52,
+      "hipYawRange": 5.73,
+      "returnsToFirstPose": false,
+      "spin": true
+    },
+    {
+      "file": "CROSS_JUMPS",
+      "dur": 2.0333,
+      "keys": 24,
+      "bones": 52,
+      "hipYawRange": 0.2,
+      "returnsToFirstPose": true,
+      "spin": false
+    },
+    {
+      "file": "CROUCH_IDLE_02_LOOKING_AROUND",
+      "dur": 5.8333,
+      "keys": 24,
+      "bones": 52,
+      "hipYawRange": 0.458,
+      "returnsToFirstPose": true,
+      "spin": false
+    },
+    {
+      "file": "CROUCH_TORCH_WALK_RIGHT",
+      "dur": 1.1,
+      "keys": 24,
+      "bones": 52,
+      "hipYawRange": 0.2,
+      "returnsToFirstPose": true,
+      "spin": false
+    },
+    {
+      "file": "CROUCH_WALK_FORWARD",
+      "dur": 1.1333,
+      "keys": 24,
+      "bones": 52,
+      "hipYawRange": 0.271,
+      "returnsToFirstPose": true,
+      "spin": false
+    },
+    {
+      "file": "DDT",
+      "dur": 5.7333,
+      "keys": 24,
+      "bones": 712,
+      "hipYawRange": 0,
+      "returnsToFirstPose": false,
+      "spin": false
+    },
+    {
+      "file": "DEFEAT",
+      "dur": 4.7667,
+      "keys": 24,
+      "bones": 52,
+      "hipYawRange": 0.089,
+      "returnsToFirstPose": true,
+      "spin": false
+    },
+    {
+      "file": "DEFENDER",
+      "dur": 3.6,
+      "keys": 24,
+      "bones": 52,
+      "hipYawRange": 2.402,
+      "returnsToFirstPose": false,
+      "spin": true
+    },
+    {
+      "file": "DOUBLE_LEG_TAKEDOWN___VICTIM",
+      "dur": 7.2333,
+      "keys": 24,
+      "bones": 52,
+      "hipYawRange": 3.558,
+      "returnsToFirstPose": false,
+      "spin": true
+    },
+    {
+      "file": "DROP_KICK",
+      "dur": 2.9,
+      "keys": 24,
+      "bones": 52,
+      "hipYawRange": 4.87,
+      "returnsToFirstPose": false,
+      "spin": true
+    },
+    {
+      "file": "DRUNK_IDLE_VARIATION",
+      "dur": 3.9667,
+      "keys": 24,
+      "bones": 52,
+      "hipYawRange": 0.168,
+      "returnsToFirstPose": true,
+      "spin": false
+    },
+    {
+      "file": "DRUNK_RUN_FORWARD",
+      "dur": 1.8333,
+      "keys": 24,
+      "bones": 52,
+      "hipYawRange": 0.332,
+      "returnsToFirstPose": true,
+      "spin": false
+    },
+    {
+      "file": "DRUNK_WALK",
+      "dur": 3,
+      "keys": 24,
+      "bones": 52,
+      "hipYawRange": 1.41,
+      "returnsToFirstPose": true,
+      "spin": true
+    },
+    {
+      "file": "DWARF_WALK",
+      "dur": 1.1,
+      "keys": 24,
+      "bones": 52,
+      "hipYawRange": 0.251,
+      "returnsToFirstPose": true,
+      "spin": false
+    },
+    {
+      "file": "DYING_BACKWARDS",
+      "dur": 4.6,
+      "keys": 24,
+      "bones": 52,
+      "hipYawRange": 2.663,
+      "returnsToFirstPose": false,
+      "spin": true
+    },
+    {
+      "file": "ESQUIVA_4",
+      "dur": 2.8,
+      "keys": 24,
+      "bones": 52,
+      "hipYawRange": 0.395,
+      "returnsToFirstPose": true,
+      "spin": false
+    },
+    {
+      "file": "FALLING_FLAT_IMPACT",
+      "dur": 1.5667,
+      "keys": 24,
+      "bones": 52,
+      "hipYawRange": 2.912,
+      "returnsToFirstPose": false,
+      "spin": true
+    },
+    {
+      "file": "FALLING_FORWARD_DEATH",
+      "dur": 2.5667,
+      "keys": 24,
+      "bones": 52,
+      "hipYawRange": 1.218,
+      "returnsToFirstPose": false,
+      "spin": true
+    },
+    {
+      "file": "GERMANSUPLEX",
+      "dur": 7.8333,
+      "keys": 24,
+      "bones": 498,
+      "hipYawRange": 0,
+      "returnsToFirstPose": false,
+      "spin": false
+    },
+    {
+      "file": "GINGA_BACKWARD",
+      "dur": 1.1333,
+      "keys": 24,
+      "bones": 52,
+      "hipYawRange": 0.688,
+      "returnsToFirstPose": false,
+      "spin": false
+    },
+    {
+      "file": "GINGA_FORWARD",
+      "dur": 1.2333,
+      "keys": 24,
+      "bones": 52,
+      "hipYawRange": 0.872,
+      "returnsToFirstPose": false,
+      "spin": true
+    },
+    {
+      "file": "GINGA_SIDEWAYS_2",
+      "dur": 2.2667,
+      "keys": 24,
+      "bones": 52,
+      "hipYawRange": 3.232,
+      "returnsToFirstPose": false,
+      "spin": true
+    },
+    {
+      "file": "GUARD_HIGH",
+      "dur": 2.2,
+      "keys": 28,
+      "bones": 17,
+      "hipYawRange": 0.01,
+      "returnsToFirstPose": false,
+      "spin": false
+    },
+    {
+      "file": "GUARD_LOW",
+      "dur": 2.8,
+      "keys": 28,
+      "bones": 17,
+      "hipYawRange": 0.016,
+      "returnsToFirstPose": false,
+      "spin": false
+    },
+    {
+      "file": "HIT_ON_SIDE_OF_HEAD",
+      "dur": 3.3,
+      "keys": 24,
+      "bones": 52,
+      "hipYawRange": 1.26,
+      "returnsToFirstPose": false,
+      "spin": true
+    },
+    {
+      "file": "HIT_ON_THE_BACK",
+      "dur": 2.5,
+      "keys": 24,
+      "bones": 52,
+      "hipYawRange": 0.657,
+      "returnsToFirstPose": false,
+      "spin": false
+    },
+    {
+      "file": "HIT_REACTION",
+      "dur": 2.4333,
+      "keys": 24,
+      "bones": 52,
+      "hipYawRange": 0.492,
+      "returnsToFirstPose": true,
+      "spin": false
+    },
+    {
+      "file": "HIT_TO_BODY",
+      "dur": 1.2,
+      "keys": 24,
+      "bones": 52,
+      "hipYawRange": 0.334,
+      "returnsToFirstPose": true,
+      "spin": false
+    },
+    {
+      "file": "HIT_TO_HEAD",
+      "dur": 2.5333,
+      "keys": 24,
+      "bones": 52,
+      "hipYawRange": 6.456,
+      "returnsToFirstPose": false,
+      "spin": true
+    },
+    {
+      "file": "HURRICANE_KICK",
+      "dur": 1.8333,
+      "keys": 24,
+      "bones": 52,
+      "hipYawRange": 25.133,
+      "returnsToFirstPose": true,
+      "spin": true
+    },
+    {
+      "file": "IDLE",
+      "dur": 4,
+      "keys": 24,
+      "bones": 52,
+      "hipYawRange": 1.622,
+      "returnsToFirstPose": true,
+      "spin": true
+    },
+    {
+      "file": "ILLEGAL_ELBOW_PUNCH",
+      "dur": 2.2667,
+      "keys": 24,
+      "bones": 52,
+      "hipYawRange": 1.205,
+      "returnsToFirstPose": true,
+      "spin": true
+    },
+    {
+      "file": "ILLEGAL_ELBOW_PUNCH__1_",
+      "dur": 2.0333,
+      "keys": 24,
+      "bones": 52,
+      "hipYawRange": 1.234,
+      "returnsToFirstPose": true,
+      "spin": true
+    },
+    {
+      "file": "ILLEGAL_KNEE",
+      "dur": 2.2667,
+      "keys": 24,
+      "bones": 52,
+      "hipYawRange": 1.51,
+      "returnsToFirstPose": true,
+      "spin": true
+    },
+    {
+      "file": "INJURED_RUN_BACKWARDS_RIGHT_TURN",
+      "dur": 0.5333,
+      "keys": 24,
+      "bones": 52,
+      "hipYawRange": 0.522,
+      "returnsToFirstPose": false,
+      "spin": false
+    },
+    {
+      "file": "INJURED_TURN_RIGHT",
+      "dur": 0.7,
+      "keys": 24,
+      "bones": 52,
+      "hipYawRange": 1.565,
+      "returnsToFirstPose": false,
+      "spin": true
+    },
+    {
+      "file": "KIP_UP",
+      "dur": 2.0333,
+      "keys": 24,
+      "bones": 52,
+      "hipYawRange": 3.534,
+      "returnsToFirstPose": false,
+      "spin": true
+    },
+    {
+      "file": "LOCO_LIGHT",
+      "dur": 2.2,
+      "keys": 28,
+      "bones": 17,
+      "hipYawRange": 0.114,
+      "returnsToFirstPose": false,
+      "spin": false
+    },
+    {
+      "file": "LOCO_LUMBER",
+      "dur": 2.7,
+      "keys": 28,
+      "bones": 17,
+      "hipYawRange": 0.023,
+      "returnsToFirstPose": false,
+      "spin": false
+    },
+    {
+      "file": "LOCO_PROWL",
+      "dur": 2.55,
+      "keys": 28,
+      "bones": 17,
+      "hipYawRange": 0.135,
+      "returnsToFirstPose": false,
+      "spin": false
+    },
+    {
+      "file": "LOCO_STALK",
+      "dur": 2.35,
+      "keys": 28,
+      "bones": 17,
+      "hipYawRange": 0.002,
+      "returnsToFirstPose": false,
+      "spin": false
+    },
+    {
+      "file": "LOCO_STRUT",
+      "dur": 2.9,
+      "keys": 28,
+      "bones": 17,
+      "hipYawRange": 0.011,
+      "returnsToFirstPose": false,
+      "spin": false
+    },
+    {
+      "file": "STANCE_BLADED",
+      "dur": 2.8,
+      "keys": 28,
+      "bones": 17,
+      "hipYawRange": 0.005,
+      "returnsToFirstPose": false,
+      "spin": false
+    },
+    {
+      "file": "STANCE_CROUCH",
+      "dur": 2.15,
+      "keys": 28,
+      "bones": 17,
+      "hipYawRange": 0.066,
+      "returnsToFirstPose": false,
+      "spin": false
+    },
+    {
+      "file": "STANCE_WIDE",
+      "dur": 2.8,
+      "keys": 28,
+      "bones": 17,
+      "hipYawRange": 0.002,
+      "returnsToFirstPose": false,
+      "spin": false
+    },
+    {
+      "file": "SUPLEX",
+      "dur": 6,
+      "keys": 24,
+      "bones": 607,
+      "hipYawRange": 0,
+      "returnsToFirstPose": false,
+      "spin": false
+    },
+    {
+      "file": "TAUNT_ARMS_WIDE",
+      "dur": 3.6,
+      "keys": 28,
+      "bones": 17,
+      "hipYawRange": 0.004,
+      "returnsToFirstPose": false,
+      "spin": false
+    },
+    {
+      "file": "TAUNT_CALLOUT",
+      "dur": 3.25,
+      "keys": 28,
+      "bones": 17,
+      "hipYawRange": 0.013,
+      "returnsToFirstPose": false,
+      "spin": false
+    },
+    {
+      "file": "TAUNT_FLEX",
+      "dur": 3.6,
+      "keys": 28,
+      "bones": 17,
+      "hipYawRange": 0.007,
+      "returnsToFirstPose": false,
+      "spin": false
+    },
+    {
+      "file": "TAUNT_POINT",
+      "dur": 3.1,
+      "keys": 28,
+      "bones": 17,
+      "hipYawRange": 0.009,
+      "returnsToFirstPose": false,
+      "spin": false
+    },
+    {
+      "file": "TIGER_FEINT_KICK",
+      "dur": 4.2167,
+      "keys": 28,
+      "bones": 14,
+      "hipYawRange": 1.095,
+      "returnsToFirstPose": false,
+      "spin": true
+    }
+  ]
+}

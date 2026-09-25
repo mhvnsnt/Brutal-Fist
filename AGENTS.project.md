@@ -19,7 +19,7 @@ Torn / hovering / "hit by a truck" = **skeletal animation pipeline** (bind pose 
 - `SkeletonUtils.clone` only. Mixer on the clone. `frustumCulled = false`.
 - Never absolute Euler banks (`MixamoFightingMotionBank`). They replace Mixamo rest and twist spines.
 - Never Mixamo `pose.pelvis` as hip position (hover). Never toe-bone floor snap (lifts the mesh).
-- `sanitizeMotionClip`: drop hip translation, zero hip yaw. Instance owns facing.
+- `sanitizeMotionClip`: hip height is a delta from the first key (never absolute Mixamo pelvis). Constant hip yaw is zeroed so the instance owns facing. A clip that actually spins (hurricane kick, hip yaw travel) keeps that yaw as a delta from frame 0 — t=0 still faces the opponent, the turn plays. Never toe-bone floor snap.
 - Mixamo bank only on single-skin ≥40-joint rigs. Plugin skins (Maime: 15 primitives) get **bind-relative** clips (`q_bind * q_delta`), not Mixamo.
 
 Cipher **feral only** (`CIPHER_feral.glb`) is hunched — height scale **0.75**. Default `CIPHER.glb` and `CIPHER_minion.glb` use normal roster height.

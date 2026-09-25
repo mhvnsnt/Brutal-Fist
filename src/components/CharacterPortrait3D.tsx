@@ -10,6 +10,8 @@ import { FOOT_PLANT_SINK, selectYaw } from '../engine/V7OrientationContract';
 import { sanitizeMotionClip } from '../engine/retarget/neutralizeRootMotion';
 import { loadGLTF } from '../engine/pipeline/glbCache';
 import { rosterHeightScale } from '../engine/pipeline/rosterHeightScale';
+import { applyFighterLook } from '../engine/render/applyPartPaint';
+import type { GearAddon, PartPaint } from '../engine/render/paintMath';
 
 interface CharacterPortrait3DProps {
   modelUrl: string;
@@ -19,6 +21,8 @@ interface CharacterPortrait3DProps {
   flip?: boolean;
   rotationY?: number;
   side?: 1 | -1;
+  paint?: PartPaint;
+  addon?: GearAddon;
 }
 
 function selectIdleClip(clips: THREE.AnimationClip[]): THREE.AnimationClip {
@@ -68,9 +72,12 @@ function PortraitModel({
   flip = false,
   rotationY,
   side,
+  paint,
+  addon,
 }: CharacterPortrait3DProps) {
   const mixerRef = useRef<THREE.AnimationMixer | null>(null);
   const [model, setModel] = useState<{ scene: THREE.Group; pluginBindPose: boolean } | null>(null);
+  const paintKey = JSON.stringify(paint ?? {});
 
   useEffect(() => {
     let active = true;
@@ -167,6 +174,11 @@ function PortraitModel({
     };
   }, [modelUrl, factionColor]);
 
+  useEffect(() => {
+    if (!model) return;
+    applyFighterLook(model.scene, paint, addon);
+  }, [model, paintKey, addon, paint]);
+
   useFrame((_, delta) => {
     mixerRef.current?.update(delta);
   });
@@ -195,6 +207,8 @@ function PortraitScene({
   flip = false,
   rotationY,
   side,
+  paint,
+  addon,
 }: CharacterPortrait3DProps) {
   return (
     <>
@@ -209,6 +223,8 @@ function PortraitScene({
           flip={flip}
           rotationY={rotationY}
           side={side}
+          paint={paint}
+          addon={addon}
         />
       </Suspense>
     </>
@@ -223,6 +239,8 @@ export default function CharacterPortrait3D({
   flip = false,
   rotationY,
   side,
+  paint,
+  addon,
 }: CharacterPortrait3DProps) {
   return (
     <div className="relative w-full h-full">
@@ -253,6 +271,8 @@ export default function CharacterPortrait3D({
           flip={flip}
           rotationY={rotationY}
           side={side}
+          paint={paint}
+          addon={addon}
         />
       </Canvas>
     </div>

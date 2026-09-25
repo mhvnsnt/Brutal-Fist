@@ -357,19 +357,20 @@ export default function AnimationTestArena({ onBack }: AnimationTestArenaProps) 
               <div className="text-[9px] text-zinc-600 truncate">{fighter.fightingStyle.split('/')[0]}</div>
             </button>
           ))}
-          {selectedFighter && getPlayableAttires(selectedFighter.id).length > 1 && (
+          {selectedFighter && (
             <div className="px-3 py-2 border-t border-zinc-800">
               <div className="text-[9px] tracking-widest text-zinc-500 mb-1">ATTIRE</div>
               {getPlayableAttires(selectedFighter.id).map(entry => (
                 <button
                   key={entry.model}
                   onClick={() => handleSelectAttire(selectedFighter, entry.model)}
-                  className={`w-full text-left px-2 py-1 text-[10px] truncate mb-0.5 border ${
+                  className={`w-full text-left px-2 py-1 text-[10px] mb-0.5 border ${
                     selectedFighter.model === entry.model
                       ? 'border-yellow-400 text-yellow-300 bg-yellow-400/10' :'border-zinc-800 text-zinc-500 hover:text-zinc-300'
                   }`}
                 >
                   {(entry.attire ?? 'Default').toUpperCase()}
+                  {entry.measuredJoints ? ` · ${entry.measuredJoints}` : ''}
                 </button>
               ))}
             </div>

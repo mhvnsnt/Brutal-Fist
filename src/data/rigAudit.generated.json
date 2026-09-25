@@ -1,0 +1,1188 @@
+{
+  "generatedBy": "scripts/audit-rigs.mjs",
+  "reports": [
+    {
+      "file": "AARON_RUBEN.glb",
+      "skins": 1,
+      "joints": 58,
+      "joints0": 1,
+      "ibmShort": 0,
+      "weightSamples": 11724,
+      "weightOff": 0,
+      "animations": 0,
+      "extensions": [
+        "EXT_meshopt_compression",
+        "EXT_texture_webp"
+      ]
+    },
+    {
+      "file": "BANNON.glb",
+      "skins": 0,
+      "joints": 0,
+      "joints0": 0,
+      "ibmShort": 0,
+      "weightSamples": 0,
+      "weightOff": 0,
+      "animations": 0,
+      "extensions": [
+        "EXT_texture_webp"
+      ]
+    },
+    {
+      "file": "BANNON_muscular.glb",
+      "skins": 0,
+      "joints": 0,
+      "joints0": 0,
+      "ibmShort": 0,
+      "weightSamples": 0,
+      "weightOff": 0,
+      "animations": 0,
+      "extensions": [
+        "EXT_texture_webp"
+      ]
+    },
+    {
+      "file": "BANNON_muscular_rig28.glb",
+      "skins": 1,
+      "joints": 58,
+      "joints0": 1,
+      "ibmShort": 0,
+      "weightSamples": 14769,
+      "weightOff": 0,
+      "animations": 0,
+      "extensions": [
+        "EXT_meshopt_compression",
+        "EXT_texture_webp"
+      ]
+    },
+    {
+      "file": "BANNON_muscular_rigready.glb",
+      "skins": 0,
+      "joints": 0,
+      "joints0": 0,
+      "ibmShort": 0,
+      "weightSamples": 0,
+      "weightOff": 0,
+      "animations": 0,
+      "extensions": [
+        "EXT_texture_webp"
+      ]
+    },
+    {
+      "file": "BANNON_muscular_skinned.glb",
+      "skins": 1,
+      "joints": 58,
+      "joints0": 1,
+      "ibmShort": 0,
+      "weightSamples": 12519,
+      "weightOff": 0,
+      "animations": 0,
+      "extensions": [
+        "EXT_meshopt_compression",
+        "EXT_texture_webp"
+      ]
+    },
+    {
+      "file": "BANNON_rigged.glb",
+      "skins": 1,
+      "joints": 58,
+      "joints0": 1,
+      "ibmShort": 0,
+      "weightSamples": 14050,
+      "weightOff": 0,
+      "animations": 0,
+      "extensions": [
+        "EXT_meshopt_compression",
+        "EXT_texture_webp"
+      ]
+    },
+    {
+      "file": "BRUTUS.glb",
+      "skins": 1,
+      "joints": 58,
+      "joints0": 1,
+      "ibmShort": 0,
+      "weightSamples": 13508,
+      "weightOff": 0,
+      "animations": 0,
+      "extensions": [
+        "EXT_meshopt_compression",
+        "EXT_texture_webp"
+      ]
+    },
+    {
+      "file": "CAIN_ELIAS_gear.glb",
+      "skins": 1,
+      "joints": 58,
+      "joints0": 1,
+      "ibmShort": 0,
+      "weightSamples": 11457,
+      "weightOff": 0,
+      "animations": 0,
+      "extensions": [
+        "EXT_meshopt_compression",
+        "EXT_texture_webp"
+      ]
+    },
+    {
+      "file": "CAIN_ELIAS_godwithin.glb",
+      "skins": 1,
+      "joints": 58,
+      "joints0": 1,
+      "ibmShort": 0,
+      "weightSamples": 11997,
+      "weightOff": 0,
+      "animations": 0,
+      "extensions": [
+        "EXT_meshopt_compression",
+        "EXT_texture_webp"
+      ]
+    },
+    {
+      "file": "CAIN_ELIAS_ring.glb",
+      "skins": 1,
+      "joints": 58,
+      "joints0": 1,
+      "ibmShort": 0,
+      "weightSamples": 13031,
+      "weightOff": 0,
+      "animations": 0,
+      "extensions": [
+        "EXT_meshopt_compression",
+        "EXT_texture_webp"
+      ]
+    },
+    {
+      "file": "CAIN_ELIAS_snakeskin.glb",
+      "skins": 1,
+      "joints": 58,
+      "joints0": 1,
+      "ibmShort": 0,
+      "weightSamples": 11480,
+      "weightOff": 0,
+      "animations": 0,
+      "extensions": [
+        "EXT_meshopt_compression",
+        "EXT_texture_webp"
+      ]
+    },
+    {
+      "file": "CIPHER.glb",
+      "skins": 1,
+      "joints": 58,
+      "joints0": 1,
+      "ibmShort": 0,
+      "weightSamples": 11703,
+      "weightOff": 0,
+      "animations": 0,
+      "extensions": [
+        "EXT_meshopt_compression",
+        "EXT_texture_webp"
+      ]
+    },
+    {
+      "file": "CIPHER_feral.glb",
+      "skins": 1,
+      "joints": 58,
+      "joints0": 1,
+      "ibmShort": 0,
+      "weightSamples": 11761,
+      "weightOff": 0,
+      "animations": 0,
+      "extensions": [
+        "EXT_meshopt_compression",
+        "EXT_texture_webp"
+      ]
+    },
+    {
+      "file": "CIPHER_minion.glb",
+      "skins": 1,
+      "joints": 58,
+      "joints0": 1,
+      "ibmShort": 0,
+      "weightSamples": 11563,
+      "weightOff": 0,
+      "animations": 0,
+      "extensions": [
+        "EXT_meshopt_compression",
+        "EXT_texture_webp"
+      ]
+    },
+    {
+      "file": "CIPHER_rigged.glb",
+      "skins": 1,
+      "joints": 52,
+      "joints0": 1,
+      "ibmShort": 0,
+      "weightSamples": 11749,
+      "weightOff": 0,
+      "animations": 0,
+      "extensions": [
+        "EXT_meshopt_compression",
+        "EXT_texture_webp"
+      ]
+    },
+    {
+      "file": "CIPHER_rigged_rig28.glb",
+      "skins": 1,
+      "joints": 58,
+      "joints0": 1,
+      "ibmShort": 0,
+      "weightSamples": 11749,
+      "weightOff": 0,
+      "animations": 0,
+      "extensions": [
+        "EXT_meshopt_compression",
+        "EXT_texture_webp"
+      ]
+    },
+    {
+      "file": "CODY_gear.glb",
+      "skins": 0,
+      "joints": 0,
+      "joints0": 0,
+      "ibmShort": 0,
+      "weightSamples": 0,
+      "weightOff": 0,
+      "animations": 0,
+      "extensions": [
+        "EXT_texture_webp"
+      ]
+    },
+    {
+      "file": "CODY_gear_rig28.glb",
+      "skins": 1,
+      "joints": 58,
+      "joints0": 1,
+      "ibmShort": 0,
+      "weightSamples": 11329,
+      "weightOff": 0,
+      "animations": 0,
+      "extensions": [
+        "EXT_meshopt_compression",
+        "EXT_texture_webp"
+      ]
+    },
+    {
+      "file": "CODY_gear_rigready.glb",
+      "skins": 0,
+      "joints": 0,
+      "joints0": 0,
+      "ibmShort": 0,
+      "weightSamples": 0,
+      "weightOff": 0,
+      "animations": 0,
+      "extensions": [
+        "EXT_texture_webp"
+      ]
+    },
+    {
+      "file": "CODY_gear_skinned.glb",
+      "skins": 1,
+      "joints": 58,
+      "joints0": 1,
+      "ibmShort": 0,
+      "weightSamples": 11345,
+      "weightOff": 0,
+      "animations": 0,
+      "extensions": [
+        "EXT_meshopt_compression",
+        "EXT_texture_webp"
+      ]
+    },
+    {
+      "file": "CODY_sober.glb",
+      "skins": 1,
+      "joints": 58,
+      "joints0": 1,
+      "ibmShort": 0,
+      "weightSamples": 12054,
+      "weightOff": 0,
+      "animations": 0,
+      "extensions": [
+        "EXT_meshopt_compression",
+        "EXT_texture_webp"
+      ]
+    },
+    {
+      "file": "CODY_stressed.glb",
+      "skins": 1,
+      "joints": 58,
+      "joints0": 1,
+      "ibmShort": 0,
+      "weightSamples": 12516,
+      "weightOff": 0,
+      "animations": 0,
+      "extensions": [
+        "EXT_meshopt_compression",
+        "EXT_texture_webp"
+      ]
+    },
+    {
+      "file": "ECHO.glb",
+      "skins": 1,
+      "joints": 58,
+      "joints0": 1,
+      "ibmShort": 0,
+      "weightSamples": 12819,
+      "weightOff": 0,
+      "animations": 0,
+      "extensions": [
+        "EXT_meshopt_compression",
+        "EXT_texture_webp"
+      ]
+    },
+    {
+      "file": "EDWIN_KENNEDY.glb",
+      "skins": 1,
+      "joints": 58,
+      "joints0": 1,
+      "ibmShort": 0,
+      "weightSamples": 11551,
+      "weightOff": 0,
+      "animations": 0,
+      "extensions": [
+        "EXT_meshopt_compression",
+        "EXT_texture_webp"
+      ]
+    },
+    {
+      "file": "EDWIN_KENNEDY_unchained.glb",
+      "skins": 1,
+      "joints": 46,
+      "joints0": 1,
+      "ibmShort": 0,
+      "weightSamples": 12893,
+      "weightOff": 0,
+      "animations": 0,
+      "extensions": [
+        "EXT_meshopt_compression",
+        "EXT_texture_webp"
+      ]
+    },
+    {
+      "file": "EDWIN_KENNEDY_unchained_rig28.glb",
+      "skins": 1,
+      "joints": 58,
+      "joints0": 1,
+      "ibmShort": 0,
+      "weightSamples": 12893,
+      "weightOff": 0,
+      "animations": 0,
+      "extensions": [
+        "EXT_meshopt_compression",
+        "EXT_texture_webp"
+      ]
+    },
+    {
+      "file": "EL_TORO_DE_ORO.glb",
+      "skins": 1,
+      "joints": 58,
+      "joints0": 1,
+      "ibmShort": 0,
+      "weightSamples": 11600,
+      "weightOff": 0,
+      "animations": 0,
+      "extensions": [
+        "EXT_meshopt_compression",
+        "EXT_texture_webp"
+      ]
+    },
+    {
+      "file": "HALL_NIGHTER.glb",
+      "skins": 1,
+      "joints": 58,
+      "joints0": 1,
+      "ibmShort": 0,
+      "weightSamples": 12168,
+      "weightOff": 0,
+      "animations": 0,
+      "extensions": [
+        "EXT_meshopt_compression",
+        "EXT_texture_webp"
+      ]
+    },
+    {
+      "file": "HOLLOW.glb",
+      "skins": 1,
+      "joints": 58,
+      "joints0": 1,
+      "ibmShort": 0,
+      "weightSamples": 12580,
+      "weightOff": 0,
+      "animations": 0,
+      "extensions": [
+        "EXT_meshopt_compression",
+        "EXT_texture_webp"
+      ]
+    },
+    {
+      "file": "JAGER.glb",
+      "skins": 1,
+      "joints": 58,
+      "joints0": 1,
+      "ibmShort": 0,
+      "weightSamples": 33917,
+      "weightOff": 0,
+      "animations": 0,
+      "extensions": []
+    },
+    {
+      "file": "JAGER_beard.glb",
+      "skins": 1,
+      "joints": 58,
+      "joints0": 1,
+      "ibmShort": 0,
+      "weightSamples": 37780,
+      "weightOff": 0,
+      "animations": 0,
+      "extensions": []
+    },
+    {
+      "file": "KOBRA.glb",
+      "skins": 1,
+      "joints": 58,
+      "joints0": 1,
+      "ibmShort": 0,
+      "weightSamples": 11816,
+      "weightOff": 0,
+      "animations": 0,
+      "extensions": [
+        "EXT_meshopt_compression",
+        "EXT_texture_webp"
+      ]
+    },
+    {
+      "file": "MAIME.glb",
+      "skins": 0,
+      "joints": 0,
+      "joints0": 0,
+      "ibmShort": 0,
+      "weightSamples": 0,
+      "weightOff": 0,
+      "animations": 0,
+      "extensions": [
+        "EXT_texture_webp"
+      ]
+    },
+    {
+      "file": "MAIME_skinned.glb",
+      "skins": 1,
+      "joints": 22,
+      "joints0": 15,
+      "ibmShort": 0,
+      "weightSamples": 13679,
+      "weightOff": 0,
+      "animations": 0,
+      "extensions": []
+    },
+    {
+      "file": "MAIME_tattered.glb",
+      "skins": 0,
+      "joints": 0,
+      "joints0": 0,
+      "ibmShort": 0,
+      "weightSamples": 0,
+      "weightOff": 0,
+      "animations": 0,
+      "extensions": [
+        "EXT_texture_webp"
+      ]
+    },
+    {
+      "file": "MAIME_tattered_skinned.glb",
+      "skins": 1,
+      "joints": 22,
+      "joints0": 14,
+      "ibmShort": 0,
+      "weightSamples": 5071,
+      "weightOff": 0,
+      "animations": 0,
+      "extensions": []
+    },
+    {
+      "file": "MASTER_SENSEI.glb",
+      "skins": 1,
+      "joints": 58,
+      "joints0": 1,
+      "ibmShort": 0,
+      "weightSamples": 12744,
+      "weightOff": 0,
+      "animations": 0,
+      "extensions": [
+        "EXT_meshopt_compression",
+        "EXT_texture_webp"
+      ]
+    },
+    {
+      "file": "MASTER_SENSEI_rose.glb",
+      "skins": 1,
+      "joints": 58,
+      "joints0": 1,
+      "ibmShort": 0,
+      "weightSamples": 12445,
+      "weightOff": 0,
+      "animations": 0,
+      "extensions": [
+        "EXT_meshopt_compression",
+        "EXT_texture_webp"
+      ]
+    },
+    {
+      "file": "NPC_FINXSSE.glb",
+      "skins": 1,
+      "joints": 58,
+      "joints0": 1,
+      "ibmShort": 0,
+      "weightSamples": 12453,
+      "weightOff": 0,
+      "animations": 0,
+      "extensions": [
+        "EXT_meshopt_compression",
+        "EXT_texture_webp"
+      ]
+    },
+    {
+      "file": "ONYX.glb",
+      "skins": 0,
+      "joints": 0,
+      "joints0": 0,
+      "ibmShort": 0,
+      "weightSamples": 0,
+      "weightOff": 0,
+      "animations": 0,
+      "extensions": [
+        "EXT_texture_webp"
+      ]
+    },
+    {
+      "file": "ONYX_corset.glb",
+      "skins": 0,
+      "joints": 0,
+      "joints0": 0,
+      "ibmShort": 0,
+      "weightSamples": 0,
+      "weightOff": 0,
+      "animations": 0,
+      "extensions": [
+        "EXT_texture_webp"
+      ]
+    },
+    {
+      "file": "ONYX_corset_rig28.glb",
+      "skins": 1,
+      "joints": 58,
+      "joints0": 1,
+      "ibmShort": 0,
+      "weightSamples": 13802,
+      "weightOff": 0,
+      "animations": 0,
+      "extensions": [
+        "EXT_meshopt_compression",
+        "EXT_texture_webp"
+      ]
+    },
+    {
+      "file": "ONYX_corset_rigready.glb",
+      "skins": 0,
+      "joints": 0,
+      "joints0": 0,
+      "ibmShort": 0,
+      "weightSamples": 0,
+      "weightOff": 0,
+      "animations": 0,
+      "extensions": [
+        "EXT_texture_webp"
+      ]
+    },
+    {
+      "file": "ONYX_corset_skinned.glb",
+      "skins": 1,
+      "joints": 58,
+      "joints0": 1,
+      "ibmShort": 0,
+      "weightSamples": 13804,
+      "weightOff": 0,
+      "animations": 0,
+      "extensions": [
+        "EXT_meshopt_compression",
+        "EXT_texture_webp"
+      ]
+    },
+    {
+      "file": "ONYX_rig28.glb",
+      "skins": 1,
+      "joints": 58,
+      "joints0": 1,
+      "ibmShort": 0,
+      "weightSamples": 13639,
+      "weightOff": 0,
+      "animations": 0,
+      "extensions": [
+        "EXT_meshopt_compression",
+        "EXT_texture_webp"
+      ]
+    },
+    {
+      "file": "ONYX_rigready.glb",
+      "skins": 0,
+      "joints": 0,
+      "joints0": 0,
+      "ibmShort": 0,
+      "weightSamples": 0,
+      "weightOff": 0,
+      "animations": 0,
+      "extensions": [
+        "EXT_texture_webp"
+      ]
+    },
+    {
+      "file": "ONYX_skinned.glb",
+      "skins": 1,
+      "joints": 58,
+      "joints0": 1,
+      "ibmShort": 0,
+      "weightSamples": 13650,
+      "weightOff": 0,
+      "animations": 0,
+      "extensions": [
+        "EXT_meshopt_compression",
+        "EXT_texture_webp"
+      ]
+    },
+    {
+      "file": "ONYX_straightjacket.glb",
+      "skins": 1,
+      "joints": 58,
+      "joints0": 1,
+      "ibmShort": 0,
+      "weightSamples": 12644,
+      "weightOff": 0,
+      "animations": 0,
+      "extensions": [
+        "EXT_meshopt_compression",
+        "EXT_texture_webp"
+      ]
+    },
+    {
+      "file": "ONYX_street.glb",
+      "skins": 1,
+      "joints": 58,
+      "joints0": 1,
+      "ibmShort": 0,
+      "weightSamples": 12567,
+      "weightOff": 0,
+      "animations": 0,
+      "extensions": [
+        "EXT_meshopt_compression",
+        "EXT_texture_webp"
+      ]
+    },
+    {
+      "file": "PABLO.glb",
+      "skins": 1,
+      "joints": 58,
+      "joints0": 1,
+      "ibmShort": 0,
+      "weightSamples": 11975,
+      "weightOff": 0,
+      "animations": 0,
+      "extensions": [
+        "EXT_meshopt_compression",
+        "EXT_texture_webp"
+      ]
+    },
+    {
+      "file": "PABLO_blackreign.glb",
+      "skins": 1,
+      "joints": 58,
+      "joints0": 1,
+      "ibmShort": 0,
+      "weightSamples": 11974,
+      "weightOff": 0,
+      "animations": 0,
+      "extensions": [
+        "EXT_meshopt_compression",
+        "EXT_texture_webp"
+      ]
+    },
+    {
+      "file": "PABLO_goldenbull.glb",
+      "skins": 1,
+      "joints": 58,
+      "joints0": 1,
+      "ibmShort": 0,
+      "weightSamples": 11940,
+      "weightOff": 0,
+      "animations": 0,
+      "extensions": [
+        "EXT_meshopt_compression",
+        "EXT_texture_webp"
+      ]
+    },
+    {
+      "file": "STAN_COMBS_gear.glb",
+      "skins": 1,
+      "joints": 58,
+      "joints0": 1,
+      "ibmShort": 0,
+      "weightSamples": 11810,
+      "weightOff": 0,
+      "animations": 0,
+      "extensions": [
+        "EXT_meshopt_compression",
+        "EXT_texture_webp"
+      ]
+    },
+    {
+      "file": "STATIC.glb",
+      "skins": 1,
+      "joints": 58,
+      "joints0": 1,
+      "ibmShort": 0,
+      "weightSamples": 12235,
+      "weightOff": 0,
+      "animations": 0,
+      "extensions": [
+        "EXT_meshopt_compression",
+        "EXT_texture_webp"
+      ]
+    },
+    {
+      "file": "STATIC_alt.glb",
+      "skins": 1,
+      "joints": 58,
+      "joints0": 1,
+      "ibmShort": 0,
+      "weightSamples": 12744,
+      "weightOff": 0,
+      "animations": 0,
+      "extensions": [
+        "EXT_meshopt_compression",
+        "EXT_texture_webp"
+      ]
+    },
+    {
+      "file": "STICKUP.glb",
+      "skins": 1,
+      "joints": 58,
+      "joints0": 1,
+      "ibmShort": 0,
+      "weightSamples": 12633,
+      "weightOff": 0,
+      "animations": 0,
+      "extensions": [
+        "EXT_meshopt_compression",
+        "EXT_texture_webp"
+      ]
+    },
+    {
+      "file": "TARZANIAN_DEVIL_dec.glb",
+      "skins": 0,
+      "joints": 0,
+      "joints0": 0,
+      "ibmShort": 0,
+      "weightSamples": 0,
+      "weightOff": 0,
+      "animations": 0,
+      "extensions": [
+        "EXT_texture_webp"
+      ]
+    },
+    {
+      "file": "TARZANIAN_DEVIL_dec_rig28.glb",
+      "skins": 1,
+      "joints": 58,
+      "joints0": 1,
+      "ibmShort": 0,
+      "weightSamples": 12363,
+      "weightOff": 0,
+      "animations": 0,
+      "extensions": [
+        "EXT_meshopt_compression",
+        "EXT_texture_webp"
+      ]
+    },
+    {
+      "file": "TARZANIAN_DEVIL_skinned.glb",
+      "skins": 1,
+      "joints": 58,
+      "joints0": 1,
+      "ibmShort": 0,
+      "weightSamples": 12383,
+      "weightOff": 0,
+      "animations": 0,
+      "extensions": [
+        "EXT_meshopt_compression",
+        "EXT_texture_webp"
+      ]
+    },
+    {
+      "file": "TITAN.glb",
+      "skins": 1,
+      "joints": 58,
+      "joints0": 1,
+      "ibmShort": 0,
+      "weightSamples": 11469,
+      "weightOff": 0,
+      "animations": 0,
+      "extensions": [
+        "EXT_meshopt_compression",
+        "EXT_texture_webp"
+      ]
+    },
+    {
+      "file": "TITAN_unmasked.glb",
+      "skins": 1,
+      "joints": 58,
+      "joints0": 1,
+      "ibmShort": 0,
+      "weightSamples": 11704,
+      "weightOff": 0,
+      "animations": 0,
+      "extensions": [
+        "EXT_meshopt_compression",
+        "EXT_texture_webp"
+      ]
+    },
+    {
+      "file": "TITAN_white.glb",
+      "skins": 1,
+      "joints": 58,
+      "joints0": 1,
+      "ibmShort": 0,
+      "weightSamples": 11905,
+      "weightOff": 0,
+      "animations": 0,
+      "extensions": [
+        "EXT_meshopt_compression",
+        "EXT_texture_webp"
+      ]
+    },
+    {
+      "file": "TRIPLE_XXX.glb",
+      "skins": 1,
+      "joints": 58,
+      "joints0": 1,
+      "ibmShort": 0,
+      "weightSamples": 11620,
+      "weightOff": 0,
+      "animations": 0,
+      "extensions": [
+        "EXT_meshopt_compression",
+        "EXT_texture_webp"
+      ]
+    },
+    {
+      "file": "TRIPLE_XXX_suit.glb",
+      "skins": 1,
+      "joints": 58,
+      "joints0": 1,
+      "ibmShort": 0,
+      "weightSamples": 12390,
+      "weightOff": 0,
+      "animations": 0,
+      "extensions": [
+        "EXT_meshopt_compression",
+        "EXT_texture_webp"
+      ]
+    },
+    {
+      "file": "TRIPLE_XXX_tights.glb",
+      "skins": 1,
+      "joints": 58,
+      "joints0": 1,
+      "ibmShort": 0,
+      "weightSamples": 11480,
+      "weightOff": 0,
+      "animations": 0,
+      "extensions": [
+        "EXT_meshopt_compression",
+        "EXT_texture_webp"
+      ]
+    },
+    {
+      "file": "TRIPLE_XXX_trunks.glb",
+      "skins": 1,
+      "joints": 58,
+      "joints0": 1,
+      "ibmShort": 0,
+      "weightSamples": 11626,
+      "weightOff": 0,
+      "animations": 0,
+      "extensions": [
+        "EXT_meshopt_compression",
+        "EXT_texture_webp"
+      ]
+    },
+    {
+      "file": "TYNESHIA.glb",
+      "skins": 1,
+      "joints": 58,
+      "joints0": 1,
+      "ibmShort": 0,
+      "weightSamples": 14470,
+      "weightOff": 0,
+      "animations": 0,
+      "extensions": [
+        "EXT_meshopt_compression",
+        "EXT_texture_webp"
+      ]
+    },
+    {
+      "file": "TYNESHIA_street.glb",
+      "skins": 1,
+      "joints": 58,
+      "joints0": 1,
+      "ibmShort": 0,
+      "weightSamples": 13575,
+      "weightOff": 0,
+      "animations": 0,
+      "extensions": [
+        "EXT_meshopt_compression",
+        "EXT_texture_webp"
+      ]
+    },
+    {
+      "file": "VIPER.glb",
+      "skins": 1,
+      "joints": 58,
+      "joints0": 1,
+      "ibmShort": 0,
+      "weightSamples": 12037,
+      "weightOff": 0,
+      "animations": 0,
+      "extensions": [
+        "EXT_meshopt_compression",
+        "EXT_texture_webp"
+      ]
+    },
+    {
+      "file": "WRECK_PATTERSON.glb",
+      "skins": 1,
+      "joints": 58,
+      "joints0": 1,
+      "ibmShort": 0,
+      "weightSamples": 12035,
+      "weightOff": 0,
+      "animations": 0,
+      "extensions": [
+        "EXT_meshopt_compression",
+        "EXT_texture_webp"
+      ]
+    },
+    {
+      "file": "WRECK_PATTERSON_attire2.glb",
+      "skins": 1,
+      "joints": 58,
+      "joints0": 1,
+      "ibmShort": 0,
+      "weightSamples": 11755,
+      "weightOff": 0,
+      "animations": 0,
+      "extensions": [
+        "EXT_meshopt_compression",
+        "EXT_texture_webp"
+      ]
+    },
+    {
+      "file": "WRECK_PATTERSON_attire3.glb",
+      "skins": 1,
+      "joints": 58,
+      "joints0": 1,
+      "ibmShort": 0,
+      "weightSamples": 11767,
+      "weightOff": 0,
+      "animations": 0,
+      "extensions": [
+        "EXT_meshopt_compression",
+        "EXT_texture_webp"
+      ]
+    },
+    {
+      "file": "WRECK_PATTERSON_godwithin.glb",
+      "skins": 1,
+      "joints": 58,
+      "joints0": 1,
+      "ibmShort": 0,
+      "weightSamples": 12637,
+      "weightOff": 0,
+      "animations": 0,
+      "extensions": [
+        "EXT_meshopt_compression",
+        "EXT_texture_webp"
+      ]
+    },
+    {
+      "file": "wrestler_base.glb",
+      "skins": 1,
+      "joints": 49,
+      "joints0": 1,
+      "ibmShort": 0,
+      "weightSamples": 1248,
+      "weightOff": 0,
+      "animations": 0,
+      "extensions": []
+    },
+    {
+      "file": "wrestler_base_rig28.glb",
+      "skins": 1,
+      "joints": 58,
+      "joints0": 1,
+      "ibmShort": 0,
+      "weightSamples": 1248,
+      "weightOff": 0,
+      "animations": 0,
+      "extensions": [
+        "EXT_meshopt_compression"
+      ]
+    },
+    {
+      "file": "xbot.glb",
+      "skins": 2,
+      "joints": 65,
+      "joints0": 2,
+      "ibmShort": 0,
+      "weightSamples": 11387,
+      "weightOff": 0,
+      "animations": 1,
+      "extensions": [
+        "EXT_meshopt_compression"
+      ]
+    }
+  ],
+  "unlisted": [
+    {
+      "file": "BANNON.glb",
+      "skins": 0,
+      "joints": 0,
+      "playable": false
+    },
+    {
+      "file": "BANNON_muscular.glb",
+      "skins": 0,
+      "joints": 0,
+      "playable": false
+    },
+    {
+      "file": "BANNON_muscular_rig28.glb",
+      "skins": 1,
+      "joints": 58,
+      "playable": true
+    },
+    {
+      "file": "BANNON_muscular_rigready.glb",
+      "skins": 0,
+      "joints": 0,
+      "playable": false
+    },
+    {
+      "file": "CIPHER_rigged.glb",
+      "skins": 1,
+      "joints": 52,
+      "playable": true
+    },
+    {
+      "file": "CIPHER_rigged_rig28.glb",
+      "skins": 1,
+      "joints": 58,
+      "playable": true
+    },
+    {
+      "file": "CODY_gear.glb",
+      "skins": 0,
+      "joints": 0,
+      "playable": false
+    },
+    {
+      "file": "CODY_gear_rig28.glb",
+      "skins": 1,
+      "joints": 58,
+      "playable": true
+    },
+    {
+      "file": "CODY_gear_rigready.glb",
+      "skins": 0,
+      "joints": 0,
+      "playable": false
+    },
+    {
+      "file": "EDWIN_KENNEDY_unchained.glb",
+      "skins": 1,
+      "joints": 46,
+      "playable": true
+    },
+    {
+      "file": "MAIME.glb",
+      "skins": 0,
+      "joints": 0,
+      "playable": false
+    },
+    {
+      "file": "MAIME_tattered.glb",
+      "skins": 0,
+      "joints": 0,
+      "playable": false
+    },
+    {
+      "file": "ONYX.glb",
+      "skins": 0,
+      "joints": 0,
+      "playable": false
+    },
+    {
+      "file": "ONYX_corset.glb",
+      "skins": 0,
+      "joints": 0,
+      "playable": false
+    },
+    {
+      "file": "ONYX_corset_rig28.glb",
+      "skins": 1,
+      "joints": 58,
+      "playable": true
+    },
+    {
+      "file": "ONYX_corset_rigready.glb",
+      "skins": 0,
+      "joints": 0,
+      "playable": false
+    },
+    {
+      "file": "ONYX_rig28.glb",
+      "skins": 1,
+      "joints": 58,
+      "playable": true
+    },
+    {
+      "file": "ONYX_rigready.glb",
+      "skins": 0,
+      "joints": 0,
+      "playable": false
+    },
+    {
+      "file": "TARZANIAN_DEVIL_dec.glb",
+      "skins": 0,
+      "joints": 0,
+      "playable": false
+    },
+    {
+      "file": "wrestler_base.glb",
+      "skins": 1,
+      "joints": 49,
+      "playable": true
+    },
+    {
+      "file": "wrestler_base_rig28.glb",
+      "skins": 1,
+      "joints": 58,
+      "playable": true
+    },
+    {
+      "file": "xbot.glb",
+      "skins": 2,
+      "joints": 65,
+      "playable": true
+    }
+  ]
+}

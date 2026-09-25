@@ -66,6 +66,11 @@ function ComboDisplay({ combo, color, side }: ComboDisplayProps) {
         >
           HIT COMBO
         </div>
+        {combo.tag && (
+          <div className="text-[8px] font-black tracking-widest text-white">
+            {combo.tag}
+          </div>
+        )}
 
         {/* Damage scaling indicator */}
         {scalingLabel && (

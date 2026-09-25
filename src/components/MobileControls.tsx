@@ -220,8 +220,13 @@ export function MobileControls({ inputRef }: MobileControlsProps) {
 
   return (
     <div
-      className="absolute bottom-4 left-0 w-full px-4 flex justify-between items-end z-50"
-      style={{ pointerEvents: 'none' }}
+      className="absolute left-0 w-full px-4 flex justify-between items-end z-50"
+      style={{
+        pointerEvents: 'none',
+        bottom: 'max(12px, env(safe-area-inset-bottom))',
+        paddingLeft: 'max(16px, env(safe-area-inset-left))',
+        paddingRight: 'max(16px, env(safe-area-inset-right))',
+      }}
     >
       {/* ── D-Pad ── */}
       <div

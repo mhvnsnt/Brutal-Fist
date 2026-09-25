@@ -1,6 +1,7 @@
 import type { MoveWindow, HitboxWindow } from './FighterStateMachine';
 import type { HurtboxRegion } from '../debug/DebugOverlay';
 import { DEFAULT_HURTBOX_REGIONS } from '../debug/DebugOverlay';
+import { judgeContact, type ContactKind, type DefenderRead } from './HitJudge';
 
 // ── Hitbox geometry ───────────────────────────────────────────────────────────
 export interface HitboxGeometry {
@@ -68,6 +69,11 @@ export interface CollisionResult {
   hitRegion: HurtboxRegion['region'] | null;
   /** Damage multiplier applied from the hit region */
   regionMultiplier: number;
+  /** How the read resolved. Absent on older callers means a raw overlap. */
+  contact?: ContactKind;
+  screw?: boolean;
+  /** Juggle limit — this hit knocks down now. */
+  drop?: boolean;
 }
 
 // ── Frame-data hitbox defaults per move type ──────────────────────────────────
@@ -117,7 +123,7 @@ const SPECIAL_HITBOX: Partial<HitboxGeometry> = {
 export function buildHitboxFromMove(move: MoveWindow): HitboxGeometry {
   const base = HITBOX_DEFAULTS[move.animation] ?? HITBOX_DEFAULTS.lightAttack;
   const special = move.isSpecial ? SPECIAL_HITBOX : {};
-  return {
+  const built: HitboxGeometry = {
     offsetX: 0.6,
     offsetZ: 0.0,
     width: 0.8,
@@ -132,6 +138,17 @@ export function buildHitboxFromMove(move: MoveWindow): HitboxGeometry {
     ...special,
     damage: move.damage ?? (base as { damage?: number }).damage ?? 80,
   };
+  if (move.attackLevel) built.attackLevel = move.attackLevel;
+  if (move.hitstun != null) built.hitstun = move.hitstun;
+  if (move.blockstun != null) built.blockstun = move.blockstun;
+  if (move.launchPower != null) built.launch = move.launchPower;
+  if (move.pushback != null) built.pushback = move.pushback;
+  if (move.reach != null) {
+    built.offsetX = move.reach;
+    built.width = move.width ?? move.reach;
+    built.depth = move.depth ?? 0.5;
+  }
+  return built;
 }
 
 // ── Resolve which hurtbox region was hit ──────────────────────────────────────
@@ -254,6 +271,7 @@ export class FrameDataHitboxSystem {
     opponentZ: number,
     opponentIsBlocking: boolean,
     currentFrame: number,
+    defender?: DefenderRead,
   ): CollisionResult | null {
     if (!this.hitboxActive || !this.hitboxGeometry) return null;
     if (this.hitRegisteredThisSwing) return null;
@@ -271,37 +289,59 @@ export class FrameDataHitboxSystem {
 
     if (dx > halfW || dz > halfD) return null;
 
-    // Hit confirmed — resolve which body region was hit
+    const attackLevel = hb.attackLevel ?? 'mid';
+    const read = defender ?? {
+      crouching: false,
+      guarding: opponentIsBlocking,
+      airborne: false,
+      inStartup: false,
+      juggleHits: 0,
+    };
+    const judged = judgeContact(attackLevel, read, hb.launch);
+
+    // Swing resolved — a crushed high does not hit again later in the same active.
     this.hitRegisteredThisSwing = true;
 
-    const attackLevel = hb.attackLevel ?? 'mid';
-    const { region: hitRegion, multiplier: regionMultiplier } = resolveHitRegion(attackLevel);
+    if (judged.kind === 'whiff') {
+      return {
+        hit: false,
+        damage: 0,
+        hitstun: 0,
+        blockstun: 0,
+        pushback: 0,
+        launch: 0,
+        isSpecial: hb.isSpecial,
+        hitFrame: currentFrame,
+        hitRegion: null,
+        regionMultiplier: 1,
+        contact: 'whiff',
+        screw: false,
+        drop: false,
+      };
+    }
 
-    // Update hurtbox region state for debug overlay
+    const { region: hitRegion, multiplier: regionMultiplier } = resolveHitRegion(attackLevel);
     this.lastHitRegion = hitRegion;
     this.lastHitTimestamp = performance.now();
     this.hurtboxRegionState = buildHurtboxRegionState(hitRegion);
 
-    const baseDamage = opponentIsBlocking
-      ? Math.floor(hb.damage * 0.15) // chip damage on block
-      : hb.damage;
-
-    // Apply region multiplier (not applied when blocked — guard covers the body)
-    const damage = opponentIsBlocking
-      ? baseDamage
-      : Math.round(baseDamage * regionMultiplier);
+    const blocked = judged.kind === 'block';
+    const damage = Math.max(1, Math.round(hb.damage * regionMultiplier * judged.damageScale));
 
     return {
       hit: true,
       damage,
-      hitstun: opponentIsBlocking ? 0 : hb.hitstun,
-      blockstun: opponentIsBlocking ? hb.blockstun : 0,
-      pushback: hb.pushback,
-      launch: opponentIsBlocking ? 0 : hb.launch,
+      hitstun: blocked ? 0 : hb.hitstun * judged.hitstunScale,
+      blockstun: blocked ? hb.blockstun : 0,
+      pushback: blocked ? hb.pushback * 0.65 : hb.pushback,
+      launch: blocked ? 0 : judged.launch,
       isSpecial: hb.isSpecial,
       hitFrame: currentFrame,
       hitRegion,
-      regionMultiplier: opponentIsBlocking ? 1.0 : regionMultiplier,
+      regionMultiplier: blocked ? 1 : regionMultiplier,
+      contact: judged.kind,
+      screw: judged.screw,
+      drop: judged.drop,
     };
   }
 

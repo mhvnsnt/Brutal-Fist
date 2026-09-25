@@ -36,6 +36,9 @@ export const ONESHOT_COMBAT_STATES = new Set([
 /** States that are allowed to cut a oneshot immediately. */
 export const ONESHOT_INTERRUPT_STATES = new Set([
   'hit',
+  'hitLow',
+  'hitHigh',
+  'launch',
   'Hitstun',
   'HitStun',
   'Stunned',
@@ -49,27 +52,47 @@ export const ONESHOT_INTERRUPT_STATES = new Set([
   'block',
 ]);
 
-/** Minimum lock (seconds) so a jab is never a 4-frame flicker. */
+/** Minimum lock (seconds). Long enough to read the strike, short enough to link. */
 export const MIN_ATTACK_LOCK_S: Record<string, number> = {
-  lightAttack: 0.58,
-  light: 0.58,
-  Startup: 0.58,
-  Active: 0.58,
-  heavyAttack: 0.78,
-  heavy: 0.78,
-  lightKick: 0.66,
-  heavyKick: 0.84,
-  CommandThrow: 0.92,
-  heatBurst: 0.80,
-  rageArt: 1.05,
-  powerCrush: 0.85,
-  jumpAttack: 0.70,
-  runAttack: 0.72,
+  lightAttack: 0.24,
+  light: 0.24,
+  Startup: 0.22,
+  Active: 0.22,
+  heavyAttack: 0.32,
+  heavy: 0.32,
+  lightKick: 0.28,
+  heavyKick: 0.34,
+  CommandThrow: 0.72,
+  heatBurst: 0.46,
+  rageArt: 0.90,
+  powerCrush: 0.46,
+  jumpAttack: 0.32,
+  runAttack: 0.30,
 };
 
-const DEFAULT_MIN_LOCK_S = 0.58;
-/** Hard cap so a 2.2s Mixamo clip does not freeze the fighter for 2s. */
-export const MAX_ATTACK_LOCK_S = 1.15;
+const DEFAULT_MIN_LOCK_S = 0.24;
+/** Non-spin swings must not sit in recovery just because the Mixamo file is long. */
+const FAST_LOCK_CAP_S: Record<string, number> = {
+  lightAttack: 0.32,
+  light: 0.32,
+  Startup: 0.30,
+  Active: 0.30,
+  heavyAttack: 0.44,
+  heavy: 0.44,
+  lightKick: 0.38,
+  heavyKick: 0.48,
+  jumpAttack: 0.40,
+  runAttack: 0.38,
+};
+/** Hurricane plays near authored length. Everything else is a fighter-speed swing. */
+export const MAX_SPIN_LOCK_S = 1.85;
+
+/** Only the committed spin. Drop kicks and capoeira are normal swings. */
+const SPIN_CLIP = /HURRICANE/i;
+
+export function isSpinClip(name: string | null | undefined): boolean {
+  return !!name && SPIN_CLIP.test(name);
+}
 
 export interface OneshotHold {
   clipName: string;
@@ -82,10 +105,16 @@ export interface OneshotHold {
  * Lock window the FSM holds Attacking. Hitboxes still use the original
  * startup/active/recovery; extra lock time is recovery (cancelable).
  */
-export function computeAttackLockDuration(motion: string, frameTotalSeconds: number): number {
+export function computeAttackLockDuration(
+  motion: string,
+  frameTotalSeconds: number,
+  clipName?: string | null,
+): number {
+  if (isSpinClip(clipName)) return 1.62;
   const minLock = MIN_ATTACK_LOCK_S[motion] ?? DEFAULT_MIN_LOCK_S;
-  const lock = Math.max(frameTotalSeconds, minLock);
-  return Math.min(lock, Math.max(frameTotalSeconds, MAX_ATTACK_LOCK_S));
+  const cap = FAST_LOCK_CAP_S[motion];
+  if (cap == null) return Math.max(minLock, Math.min(Math.max(frameTotalSeconds, minLock), 1.2));
+  return Math.min(cap, Math.max(minLock, frameTotalSeconds));
 }
 
 /**
@@ -97,14 +126,24 @@ export function computeOneshotTimeScale(clipDuration: number, lockDuration: numb
   const dur = Math.max(0.08, clipDuration);
   const lock = Math.max(0.12, lockDuration);
   const scale = dur / lock;
-  return Math.max(0.7, Math.min(3.4, scale));
+  // A 1.7s Mixamo punch has to reach its strike inside ~0.10s or the
+  // combo cancel chops the windup and the swing never reads.
+  return Math.max(0.85, Math.min(7.5, scale));
 }
 
 /**
  * Visual playback window for the mixer. Independent of authored frame-data
  * so a 1.73s Mixamo clip still compresses into a fighter-speed jab.
  */
-export function computeVisualPlaybackLock(motion: string): number {
+export function computeVisualPlaybackLock(
+  motion: string,
+  clipName?: string,
+  clipDuration?: number,
+): number {
+  if (isSpinClip(clipName)) {
+    const dur = Math.max(0.4, clipDuration ?? 1.5);
+    return Math.min(MAX_SPIN_LOCK_S, Math.max(1.15, dur));
+  }
   return MIN_ATTACK_LOCK_S[motion] ?? DEFAULT_MIN_LOCK_S;
 }
 

@@ -189,8 +189,9 @@ export function buildAnimationController(
       nextAction.setLoop(THREE.LoopRepeat, Infinity);
     }
 
+    const clipDur = nextAction.getClip().duration;
     const lock = ONESHOT_STATES.has(next)
-      ? computeVisualPlaybackLock(next)
+      ? computeVisualPlaybackLock(next, nextAction.getClip().name, clipDur)
       : 1;
     const scale = ONESHOT_STATES.has(next)
       ? computeOneshotTimeScale(nextAction.getClip().duration, lock)

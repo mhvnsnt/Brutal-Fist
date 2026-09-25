@@ -14,6 +14,7 @@
 import { getGlbEntryForFighter } from './bannonGlbRoster';
 import { BANNON_MODELS_RAW, resolveGlbUrl } from './bannonGlbUrl';
 import { pronounsForFighter, type CanonPronouns } from './canonPronouns';
+import type { GearAddon, PartPaint } from '../engine/render/paintMath';
 
 export interface BannonFighterProfile {
   id: string;
@@ -50,6 +51,10 @@ export interface BannonFighterProfile {
   paintedUrl?: string;
   /** Crunched sprite used by in-fight HUD / art book. */
   pixelPortrait?: string;
+  /** Select-screen paint. Empty means the authored texture. */
+  paint?: PartPaint;
+  /** Extra geometry on the head or hands. Not a new GLB. */
+  addon?: GearAddon;
   // Per-character move set — IDs from BrutalFistMoveCatalog
   defaultMoveSet: CharacterMoveSet;
 }
