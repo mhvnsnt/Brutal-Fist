@@ -52,7 +52,12 @@ function bindAtlasShader(
       shader.uniforms.bfMetal = live.metal;
       shader.uniforms.bfClothOn = live.clothOn;
       shader.uniforms.bfMetalOn = live.metalOn;
-      shader.fragmentShader = shader.fragmentShader.replace(
+      // The injected code below references these uniforms — they must be
+      // declared at global scope or the shader fails to compile
+      // (VALIDATE_STATUS false → invisible fighter).
+      shader.fragmentShader = (
+        'uniform vec3 bfCloth;\nuniform vec3 bfMetal;\nuniform float bfClothOn;\nuniform float bfMetalOn;\n'
+        + shader.fragmentShader.replace(
         '#include <color_fragment>',
         `#include <color_fragment>
           float bfMx = max(diffuseColor.r, max(diffuseColor.g, diffuseColor.b));
@@ -66,6 +71,7 @@ function bindAtlasShader(
             diffuseColor.rgb = mix(diffuseColor.rgb, bfMetal * max(bfLuma, 0.35), 0.72);
           }
         `,
+        )
       );
     };
     mat.customProgramCacheKey = () => 'bf-cloth-metal-v1';
