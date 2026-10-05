@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#111827">
+<title>Texture Customizer</title>
+<link rel="manifest" href="manifest.json">
+<link rel="stylesheet" href="styles.css">
+<script src="https://unpkg.com/three@0.152.2/build/three.min.js"></script>
+<script src="https://unpkg.com/three@0.152.2/examples/js/loaders/GLTFLoader.js"></script>
+<script src="https://unpkg.com/three@0.152.2/examples/js/controls/OrbitControls.js"></script>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>Texture Customizer</h1>
+    <div class="header-btns">
+      <button id="btn-load" class="btn">Load Model</button>
+      <button id="btn-browse" class="btn">Browse Repo</button>
+      <button id="btn-export" class="btn primary" disabled>Export GLB</button>
+    </div>
+  </header>
+  <input type="file" id="file-model" accept=".glb" hidden>
+  <input type="file" id="file-image" accept="image/*" hidden>
+  <div id="modal-browse" class="modal" hidden>
+    <div class="modal-box">
+      <h2>Models in Repo</h2>
+      <input type="text" id="browse-url" placeholder="Model URL (https://.../model.glb)" style="width:100%;padding:10px;margin-bottom:10px;border-radius:8px;border:1px solid #374151;background:#0b1220;color:#fff">
+      <button id="btn-load-url" class="btn primary" style="width:100%;margin-bottom:10px">Load from URL</button>
+      <div id="browse-list"></div>
+      <button id="btn-browse-close" class="btn" style="width:100%;margin-top:10px">Close</button>
+    </div>
+  </div>
+
+  <div id="main">
+    <div id="preview-pane">
+      <canvas id="gl3d"></canvas>
+      <div id="preview-hint">Load a GLB to start</div>
+    </div>
+    <div id="editor-pane">
+      <div id="tex-list"></div>
+      <div id="canvas-wrap">
+        <canvas id="tex2d" width="1024" height="1024"></canvas>
+        <div id="editor-hint">Select a texture, then add an image.<br>Drag to move • Pinch to scale uniformly</div>
+      </div>
+      <div id="tools">
+        <button id="btn-addimg" class="btn" disabled>Add Image</button>
+        <button id="btn-flip-h" class="btn" disabled>Flip H</button>
+        <button id="btn-flip-v" class="btn" disabled>Flip V</button>
+        <button id="btn-delete" class="btn danger" disabled>Delete</button>
+        <button id="btn-apply" class="btn primary" disabled>Apply to Texture</button>
+      </div>
+      <div id="layer-list"></div>
+    </div>
+  </div>
+</div>
+<script src="app.js"></script>
+<script>
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').catch(()=>{});
+}
+</script>
+</body>
+</html>
