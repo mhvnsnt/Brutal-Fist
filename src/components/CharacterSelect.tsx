@@ -17,6 +17,9 @@ import {
   type PaintSlot,
   type PartPaint,
 } from '../engine/render/paintMath';
+import AppearancePanel from './AppearancePanel';
+import { defaultBuild, type CustomBuild, type ModelAnalysis } from '../engine/customization/types';
+import { loadBuild } from '../engine/customization/persistence';
 import dynamic from 'next/dynamic';
 
 const MoveSetCustomizer = dynamic(() => import('./MoveSetCustomizer'), { ssr: false });
@@ -72,15 +75,15 @@ function FighterPortrait({
   attirePortraitUrl,
   slot,
   active,
-  paint,
-  addon,
+  appearance,
+  onAnalyzed,
 }: {
   fighter: BannonFighterProfile | null;
   attirePortraitUrl?: string;
   slot: 'P1' | 'P2';
   active: boolean;
-  paint?: PartPaint;
-  addon?: GearAddon;
+  appearance?: CustomBuild;
+  onAnalyzed?: (a: ModelAnalysis) => void;
 }) {
   const isP1 = slot === 'P1';
 
@@ -165,8 +168,11 @@ function FighterPortrait({
           factionColor={factionColor}
           mode="bust"
           side={isP1 ? 1 : -1}
-          paint={paint}
-          addon={addon}
+          paint={appearance?.paint}
+          addon={appearance?.addon}
+          appearance={appearance}
+          fighterId={fighter.id}
+          onAnalyzed={onAnalyzed}
         />
       </div>
       <div className="relative z-20 w-full flex justify-center pb-2 pointer-events-none">
@@ -501,12 +507,14 @@ export default function CharacterSelect({ onSelectP1, onSelectP2, onStartMatch }
   const [p2Attire, setP2Attire] = useState<string>('Default');
   const [p1PortraitUrl, setP1PortraitUrl] = useState<string | undefined>(undefined);
   const [p2PortraitUrl, setP2PortraitUrl] = useState<string | undefined>(undefined);
-  const [p1Paint, setP1Paint] = useState<PartPaint>({});
-  const [p2Paint, setP2Paint] = useState<PartPaint>({});
   const [p1PaintSlot, setP1PaintSlot] = useState<PaintSlot>('cloth');
   const [p2PaintSlot, setP2PaintSlot] = useState<PaintSlot>('cloth');
-  const [p1Addon, setP1Addon] = useState<GearAddon>('none');
-  const [p2Addon, setP2Addon] = useState<GearAddon>('none');
+  // Appearance builds (customizer suite): carry the pre-existing paint/addon
+  // state plus eyes, morphs, accessories, face paint. One save per fighter.
+  const [p1Build, setP1Build] = useState<CustomBuild>(() => defaultBuild('', 'Default'));
+  const [p2Build, setP2Build] = useState<CustomBuild>(() => defaultBuild('', 'Default'));
+  const [p1Analysis, setP1Analysis] = useState<ModelAnalysis | null>(null);
+  const [p2Analysis, setP2Analysis] = useState<ModelAnalysis | null>(null);
 
   const [activeSlot, setActiveSlot] = useState<'p1' | 'p2'>('p1');
   const [cursorIndex, setCursorIndex] = useState(0);
@@ -590,8 +598,13 @@ export default function CharacterSelect({ onSelectP1, onSelectP2, onStartMatch }
       setP1Id(fighter.id);
       setP1Attire(defaultAttire);
       setP1PortraitUrl(defaultPortrait);
-      setP1Paint({});
-      setP1Addon('none');
+      // Load the saved appearance build (or the authored default); the
+      // portrait re-analyzes the new model and the panel re-gates.
+      setP1Analysis(null);
+      setP1Build(defaultBuild(fighter.id, defaultAttire));
+      void loadBuild(fighter.id).then((saved) => {
+        if (saved) setP1Build({ ...saved, fighterId: fighter.id, attireId: defaultAttire });
+      });
       setP1PaintSlot(paintSlotsForFighter(fighter.id)[0]);
       if (onSelectP1) onSelectP1(fighter);
       setActiveSlot('p2');
@@ -601,9 +614,15 @@ export default function CharacterSelect({ onSelectP1, onSelectP2, onStartMatch }
         if (cpu) {
           const cpuAttires = getCharacterAttires(cpu.id);
           const cpuMatch = cpuAttires.find((a) => a.model === cpu.model) ?? cpuAttires[0];
+          const cpuAttire = cpuMatch?.attire ?? cpu.attire ?? 'Default';
           setP2Id(cpu.id);
-          setP2Attire(cpuMatch?.attire ?? cpu.attire ?? 'Default');
+          setP2Attire(cpuAttire);
           setP2PortraitUrl(cpuMatch?.portraitUrl ?? cpu.portraitUrl);
+          setP2Analysis(null);
+          setP2Build(defaultBuild(cpu.id, cpuAttire));
+          void loadBuild(cpu.id).then((saved) => {
+            if (saved) setP2Build({ ...saved, fighterId: cpu.id, attireId: cpuAttire });
+          });
           if (onSelectP2) onSelectP2(cpu);
           warmupGLTF(cpuMatch?.portraitUrl ?? cpu.portraitUrl);
         }
@@ -612,8 +631,11 @@ export default function CharacterSelect({ onSelectP1, onSelectP2, onStartMatch }
       setP2Id(fighter.id);
       setP2Attire(defaultAttire);
       setP2PortraitUrl(defaultPortrait);
-      setP2Paint({});
-      setP2Addon('none');
+      setP2Analysis(null);
+      setP2Build(defaultBuild(fighter.id, defaultAttire));
+      void loadBuild(fighter.id).then((saved) => {
+        if (saved) setP2Build({ ...saved, fighterId: fighter.id, attireId: defaultAttire });
+      });
       setP2PaintSlot(paintSlotsForFighter(fighter.id)[0]);
       if (onSelectP2) onSelectP2(fighter);
       warmupGLTF(defaultPortrait);
@@ -627,8 +649,8 @@ export default function CharacterSelect({ onSelectP1, onSelectP2, onStartMatch }
       const a1 = getCharacterAttires(f1.id).find(a => a.attire === p1Attire);
       const a2 = getCharacterAttires(f2.id).find(a => a.attire === p2Attire);
       onStartMatch(
-        { ...f1, attire: p1Attire, model: a1?.model ?? f1.model, portraitUrl: p1PortraitUrl || f1.portraitUrl, paint: p1Paint, addon: p1Addon },
-        { ...f2, attire: p2Attire, model: a2?.model ?? f2.model, portraitUrl: p2PortraitUrl || f2.portraitUrl, paint: p2Paint, addon: p2Addon },
+        { ...f1, attire: p1Attire, model: a1?.model ?? f1.model, portraitUrl: p1PortraitUrl || f1.portraitUrl, paint: p1Build.paint, addon: p1Build.addon, customBuild: p1Build },
+        { ...f2, attire: p2Attire, model: a2?.model ?? f2.model, portraitUrl: p2PortraitUrl || f2.portraitUrl, paint: p2Build.paint, addon: p2Build.addon, customBuild: p2Build },
       );
     }
   };
@@ -678,7 +700,7 @@ export default function CharacterSelect({ onSelectP1, onSelectP2, onStartMatch }
         {/* P1 Portrait + attire strip */}
         <div className="flex flex-col flex-1 border-r border-zinc-800/60 min-w-0">
           <div className="flex-1 min-h-0">
-            <FighterPortrait fighter={p1Fighter} attirePortraitUrl={p1PortraitUrl} slot="P1" active={activeSlot === 'p1'} paint={p1Paint} addon={p1Addon} />
+            <FighterPortrait fighter={p1Fighter} attirePortraitUrl={p1PortraitUrl} slot="P1" active={activeSlot === 'p1'} appearance={p1Build} onAnalyzed={setP1Analysis} />
           </div>
           {p1Fighter && (
             <>
@@ -691,19 +713,27 @@ export default function CharacterSelect({ onSelectP1, onSelectP2, onStartMatch }
               <GearPaintBar
                 characterId={p1Fighter.id}
                 slot="P1"
-                paint={p1Paint}
+                paint={p1Build.paint}
                 paintSlot={p1PaintSlot}
-                addon={p1Addon}
+                addon={p1Build.addon}
                 onPaintSlot={setP1PaintSlot}
                 onPaint={(next, hex) => {
-                  setP1Paint((prev) => {
-                    const copy = { ...prev };
+                  setP1Build((prev) => {
+                    const copy = { ...prev.paint };
                     if (!hex) delete copy[next];
                     else copy[next] = hex;
-                    return copy;
+                    return { ...prev, paint: copy };
                   });
                 }}
-                onAddon={setP1Addon}
+                onAddon={(next) => setP1Build((prev) => ({ ...prev, addon: next }))}
+              />
+              <AppearancePanel
+                fighterId={p1Fighter.id}
+                attireId={p1Attire}
+                slot="P1"
+                build={p1Build}
+                onChange={setP1Build}
+                analysis={p1Analysis}
               />
               <CardArtPicker characterId={p1Fighter.id} />
             </>
@@ -738,7 +768,7 @@ export default function CharacterSelect({ onSelectP1, onSelectP2, onStartMatch }
         {/* P2 Portrait + attire strip */}
         <div className="flex flex-col flex-1 border-l border-zinc-800/60 min-w-0">
           <div className="flex-1 min-h-0">
-            <FighterPortrait fighter={p2Fighter} attirePortraitUrl={p2PortraitUrl} slot="P2" active={activeSlot === 'p2'} paint={p2Paint} addon={p2Addon} />
+            <FighterPortrait fighter={p2Fighter} attirePortraitUrl={p2PortraitUrl} slot="P2" active={activeSlot === 'p2'} appearance={p2Build} onAnalyzed={setP2Analysis} />
           </div>
           {p2Fighter && (
             <>
@@ -751,19 +781,27 @@ export default function CharacterSelect({ onSelectP1, onSelectP2, onStartMatch }
               <GearPaintBar
                 characterId={p2Fighter.id}
                 slot="P2"
-                paint={p2Paint}
+                paint={p2Build.paint}
                 paintSlot={p2PaintSlot}
-                addon={p2Addon}
+                addon={p2Build.addon}
                 onPaintSlot={setP2PaintSlot}
                 onPaint={(next, hex) => {
-                  setP2Paint((prev) => {
-                    const copy = { ...prev };
+                  setP2Build((prev) => {
+                    const copy = { ...prev.paint };
                     if (!hex) delete copy[next];
                     else copy[next] = hex;
-                    return copy;
+                    return { ...prev, paint: copy };
                   });
                 }}
-                onAddon={setP2Addon}
+                onAddon={(next) => setP2Build((prev) => ({ ...prev, addon: next }))}
+              />
+              <AppearancePanel
+                fighterId={p2Fighter.id}
+                attireId={p2Attire}
+                slot="P2"
+                build={p2Build}
+                onChange={setP2Build}
+                analysis={p2Analysis}
               />
               <CardArtPicker characterId={p2Fighter.id} />
             </>

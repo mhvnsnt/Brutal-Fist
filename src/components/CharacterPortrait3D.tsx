@@ -12,6 +12,11 @@ import { loadGLTF } from '../engine/pipeline/glbCache';
 import { rosterHeightScale } from '../engine/pipeline/rosterHeightScale';
 import { applyFighterLook } from '../engine/render/applyPartPaint';
 import type { GearAddon, PartPaint } from '../engine/render/paintMath';
+import { applyCustomBuild } from '../engine/customization/applyBuild';
+import { supportsEyeColor } from '../engine/customization/eyeColors';
+import { supportedMorphs } from '../engine/customization/morphs';
+import { supportsFacePaint } from '../engine/customization/facepaintAdapter';
+import type { CustomBuild, ModelAnalysis } from '../engine/customization/types';
 
 interface CharacterPortrait3DProps {
   modelUrl: string;
@@ -23,6 +28,12 @@ interface CharacterPortrait3DProps {
   side?: 1 | -1;
   paint?: PartPaint;
   addon?: GearAddon;
+  /** Full appearance build (customizer suite). When present it carries paint/addon too. */
+  appearance?: CustomBuild;
+  /** Roster fighter id — used for the face-paint profile gate in the analysis. */
+  fighterId?: string;
+  /** Fired once per loaded model with what the suite can do on this model. */
+  onAnalyzed?: (analysis: ModelAnalysis) => void;
 }
 
 function selectIdleClip(clips: THREE.AnimationClip[]): THREE.AnimationClip {
@@ -74,15 +85,27 @@ function PortraitModel({
   side,
   paint,
   addon,
+  appearance,
+  fighterId,
+  onAnalyzed,
 }: CharacterPortrait3DProps) {
   const mixerRef = useRef<THREE.AnimationMixer | null>(null);
   const [model, setModel] = useState<{ scene: THREE.Group; pluginBindPose: boolean } | null>(null);
   const paintKey = JSON.stringify(paint ?? {});
+  const appearanceKey = JSON.stringify(appearance ?? null);
+  // Latest-value refs so the load effect (keyed on modelUrl only) can apply
+  // the current build without reloading the model on every slider tweak.
+  const appearanceRef = useRef(appearance);
+  appearanceRef.current = appearance;
+  const fighterIdRef = useRef(fighterId);
+  fighterIdRef.current = fighterId;
+  const onAnalyzedRef = useRef(onAnalyzed);
+  onAnalyzedRef.current = onAnalyzed;
 
   useEffect(() => {
     let active = true;
     loadGLTF(modelUrl)
-      .then((gltf) => {
+      .then(async (gltf) => {
         if (!active) return;
         const cloned = SkeletonUtils.clone(gltf.scene) as THREE.Group;
         restoreAuthoredTextures(cloned, modelUrl);
@@ -164,6 +187,27 @@ function PortraitModel({
           }
         }
 
+        // Customizer suite: report what this model supports (panel gating),
+        // then apply the current build before the idle clip advances far
+        // (bind-pose preferred for the face-paint decal).
+        try {
+          onAnalyzedRef.current?.({
+            eyeSupport: supportsEyeColor(cloned),
+            morphs: supportedMorphs(cloned),
+            facePaint: fighterIdRef.current ? supportsFacePaint(fighterIdRef.current) : false,
+          });
+        } catch (err) {
+          console.warn('[Portrait] analysis failed', modelUrl, err);
+        }
+        const initialBuild = appearanceRef.current;
+        if (initialBuild) {
+          try {
+            await applyCustomBuild(cloned, initialBuild);
+          } catch (err) {
+            console.warn('[Portrait] appearance build failed', modelUrl, err);
+          }
+        }
+
         setModel({ scene: cloned, pluginBindPose });
       })
       .catch((err) => console.warn('[Portrait] GLB load failed:', modelUrl, err));
@@ -176,8 +220,25 @@ function PortraitModel({
 
   useEffect(() => {
     if (!model) return;
-    applyFighterLook(model.scene, paint, addon);
-  }, [model, paintKey, addon, paint]);
+    let cancelled = false;
+    // Full appearance build when present (it carries paint/addon too);
+    // otherwise the pre-existing paint/addon path, unchanged.
+    if (appearance) {
+      void (async () => {
+        try {
+          await applyCustomBuild(model.scene, appearance);
+        } catch (err) {
+          if (!cancelled) console.warn('[Portrait] appearance update failed', err);
+        }
+      })();
+    } else {
+      applyFighterLook(model.scene, paint, addon);
+    }
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [model, paintKey, addon, paint, appearanceKey]);
 
   useFrame((_, delta) => {
     mixerRef.current?.update(delta);
@@ -209,6 +270,9 @@ function PortraitScene({
   side,
   paint,
   addon,
+  appearance,
+  fighterId,
+  onAnalyzed,
 }: CharacterPortrait3DProps) {
   return (
     <>
@@ -225,6 +289,9 @@ function PortraitScene({
           side={side}
           paint={paint}
           addon={addon}
+          appearance={appearance}
+          fighterId={fighterId}
+          onAnalyzed={onAnalyzed}
         />
       </Suspense>
     </>
@@ -241,6 +308,9 @@ export default function CharacterPortrait3D({
   side,
   paint,
   addon,
+  appearance,
+  fighterId,
+  onAnalyzed,
 }: CharacterPortrait3DProps) {
   return (
     <div className="relative w-full h-full">
@@ -273,6 +343,9 @@ export default function CharacterPortrait3D({
           side={side}
           paint={paint}
           addon={addon}
+          appearance={appearance}
+          fighterId={fighterId}
+          onAnalyzed={onAnalyzed}
         />
       </Canvas>
     </div>
