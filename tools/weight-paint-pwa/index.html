@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Brutal-Fist Weight Paint</title>
+<style>
+  :root { --bg:#14141a; --panel:#1e1e26; --accent:#7c5cff; --txt:#eee; --dim:#999; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body { margin:0; padding:0; height:100%; background:var(--bg); color:var(--txt);
+    font-family:system-ui,-apple-system,Roboto,sans-serif; overscroll-behavior:none; }
+  #view3d { position:fixed; inset:0; touch-action:none; }
+  #topbar { position:fixed; top:0; left:0; right:0; display:flex; gap:8px; padding:10px;
+    padding-top:calc(10px + env(safe-area-inset-top)); align-items:center;
+    background:linear-gradient(rgba(10,10,14,.92),rgba(10,10,14,0)); z-index:10; pointer-events:none; }
+  #topbar > * { pointer-events:auto; }
+  #status { font-size:13px; color:var(--dim); flex:1; text-align:right; padding-right:4px; }
+  .seg { display:flex; background:var(--panel); border-radius:12px; padding:3px; }
+  .seg button { border:0; background:transparent; color:var(--dim); font-size:15px; font-weight:600;
+    padding:12px 16px; border-radius:9px; min-height:48px; }
+  .seg button.on { background:var(--accent); color:#fff; }
+  #panel { position:fixed; left:0; right:0; bottom:0; z-index:10; background:var(--panel);
+    border-radius:18px 18px 0 0; padding:12px 14px calc(14px + env(safe-area-inset-bottom));
+    max-height:46vh; overflow-y:auto; box-shadow:0 -4px 24px rgba(0,0,0,.5); }
+  #panel h3 { margin:6px 0 4px; font-size:13px; color:var(--dim); text-transform:uppercase; letter-spacing:.06em; }
+  .row { display:flex; gap:10px; align-items:center; margin:8px 0; }
+  .row label { font-size:14px; min-width:74px; color:var(--dim); }
+  .row output { font-size:14px; min-width:52px; text-align:right; font-variant-numeric:tabular-nums; }
+  input[type=range] { flex:1; height:44px; accent-color:var(--accent); }
+  select, input[type=text] { flex:1; font-size:16px; padding:12px; border-radius:10px; border:1px solid #333;
+    background:#101016; color:var(--txt); min-height:48px; }
+  .bigbtn { display:block; width:100%; border:0; border-radius:12px; padding:16px; font-size:17px;
+    font-weight:700; min-height:56px; margin-top:8px; }
+  #exportBtn { background:#2ea043; color:#fff; }
+  #sendbackBtn { background:#33333d; color:var(--txt); }
+  #loadbar { display:flex; gap:8px; margin-bottom:4px; }
+  #hint { font-size:13px; color:var(--dim); margin:6px 0; line-height:1.45; }
+  #sendback { display:none; font-size:14px; line-height:1.6; background:#101016; border-radius:10px; padding:12px; margin-top:8px; }
+  #sendback ol { margin:6px 0; padding-left:20px; }
+  #sendback code { background:#222; padding:1px 6px; border-radius:5px; font-size:13px; }
+  #toast { position:fixed; left:50%; bottom:52vh; transform:translateX(-50%); background:#000d;
+    color:#fff; padding:12px 20px; border-radius:10px; font-size:15px; z-index:50; display:none; }
+</style>
+<script type="importmap">
+{ "imports": {
+    "three": "./lib/three.module.min.js",
+    "three/addons/": "./lib/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div id="view3d"></div>
+<div id="topbar">
+  <div class="seg" id="modeSeg">
+    <button id="modePaint" class="on">🖌 Paint</button>
+    <button id="modeOrbit">🔄 Orbit</button>
+  </div>
+  <div class="seg" id="viewSeg">
+    <button id="viewHeat" class="on">🔥 Heat</button>
+    <button id="viewNormal">🧍 Mesh</button>
+  </div>
+  <div id="status">loading…</div>
+</div>
+<div id="panel">
+  <div id="loadbar">
+    <input type="text" id="loadUrl" placeholder="GLB URL…">
+    <button class="seg" id="loadUrlBtn" style="padding:12px 18px;font-size:16px;">Load</button>
+    <label class="seg" style="padding:12px 18px;font-size:16px;cursor:pointer;">📁<input type="file" id="uploadBtn" accept=".glb" style="display:none"></label>
+  </div>
+  <div class="row"><label>Bone</label><select id="boneSelect"></select></div>
+  <div id="hint">Tap a bone, then drag on the model to paint its influence. Red = full weight, blue = none.</div>
+  <h3>Brush</h3>
+  <div class="row"><label>Radius</label><input type="range" id="radius" min="0.02" max="0.5" step="0.01" value="0.12"><output id="radiusVal">0.12</output></div>
+  <div class="row"><label>Strength</label><input type="range" id="strength" min="0.05" max="1" step="0.05" value="0.4"><output id="strengthVal">0.40</output></div>
+  <div class="row"><div class="seg" style="flex:1">
+    <button id="brushAdd" class="on" style="flex:1">➕ Add</button>
+    <button id="brushSub" style="flex:1">➖ Remove</button>
+  </div></div>
+  <h3>Pose test — arm raise</h3>
+  <div class="row"><label>Angle</label><input type="range" id="poseSlider" min="0" max="90" step="1" value="0"><output id="poseVal">0°</output></div>
+  <div class="row">
+    <div class="seg" style="flex:1"><button id="armBoth" class="on" style="flex:1">Both</button><button id="armL" style="flex:1">Left</button><button id="armR" style="flex:1">Right</button></div>
+    <div class="seg" style="flex:1"><button id="dirFwd" class="on" style="flex:1">Forward</button><button id="dirLat" style="flex:1">Side</button></div>
+  </div>
+  <div class="row"><button class="seg" id="resetPose" style="flex:1;padding:12px;font-size:15px;">Reset pose</button></div>
+  <h3>🧭 Guided fix</h3>
+  <div id="guideText" style="font-size:14px;line-height:1.55;margin:6px 0;">Never painted weights? Tap <b>Start</b> and I'll find the torn spots for you — no experience needed.</div>
+  <button class="bigbtn" id="guideBtn" style="background:#7c5cff;color:#fff;">🧭 Start guided fix</button>
+  <button class="bigbtn" id="exportBtn">⬇ Export GLB</button>
+  <button class="bigbtn" id="sendbackBtn">📤 Send back to pipeline</button>
+  <div id="sendback">
+    <b>Getting your paint job into the game:</b>
+    <ol>
+      <li>Tap <b>Export GLB</b> — it downloads with your new weights baked in.</li>
+      <li>Send the file to the pipeline (attach it in chat, or push it to the repo).</li>
+      <li>The pipeline runs <code>tools/rig-repair/probe_shoulders.py</code> — renders your weights at 15/30/45/60/90° to prove zero webbing.</li>
+      <li>If clean, it lands as the new model via PR. If not, you get the probe frames back showing where it still tears.</li>
+    </ol>
+    Tip: paint small, then drag the <b>Angle</b> slider — that's the whole loop. Fix what tears.
+  </div>
+</div>
+<div id="toast"></div>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+const DEFAULT_URL = 'https://raw.githubusercontent.com/mhvnsnt/Brutal-Fist/main/public/models/BRUTUS.glb';
+const $ = id => document.getElementById(id);
+const toast = m => { const t=$('toast'); t.textContent=m; t.style.display='block';
+  clearTimeout(t._h); t._h=setTimeout(()=>t.style.display='none',2200); };
+
+let renderer, scene, camera, controls, modelRoot=null, skinnedMesh=null, skeleton=null;
+let restPose=[], boneByName={}, selectedBone=-1;
+let paintMode=true, heatOn=true;
+let brushRadius=0.12, brushStrength=0.4, brushDir=1;
+let poseDeg=0, poseArms='both', poseDir='fwd';
+let guideOn=false, guideFlags=null, guideAdj=null, guideStep='idle';
+let heatMat, normalMat;
+const raycaster=new THREE.Raycaster();
+// bone names vary (some exports strip the 'mixamorig:' prefix) — match by suffix
+function findBone(suffix){ if(!skeleton)return null;
+  return skeleton.bones.find(b=>b.name===suffix||b.name.endsWith(suffix))||null; }
+function shortName(n){ return n.replace(/^mixamorig:?/,''); }
+
+init();
+const _qp=new URLSearchParams(location.search);
+loadModel(_qp.get('model')||DEFAULT_URL);
+
+function init(){
+  const c=$('view3d');
+  renderer=new THREE.WebGLRenderer({antialias:true});
+  renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+  renderer.setSize(innerWidth,innerHeight);
+  c.appendChild(renderer.domElement);
+  scene=new THREE.Scene(); scene.background=new THREE.Color(0x14141a);
+  camera=new THREE.PerspectiveCamera(45,innerWidth/innerHeight,0.01,50);
+  camera.position.set(0,1.1,2.6);
+  controls=new OrbitControls(camera,renderer.domElement);
+  controls.target.set(0,0.95,0); controls.enableDamping=true; controls.enabled=false;
+  scene.add(new THREE.HemisphereLight(0xffffff,0x334,1.1));
+  const key=new THREE.DirectionalLight(0xffffff,1.6); key.position.set(2,3,2.5); scene.add(key);
+  const rim=new THREE.DirectionalLight(0x88aaff,0.7); rim.position.set(-2,1.5,-2); scene.add(rim);
+  normalMat=new THREE.MeshStandardMaterial({color:0xb08070,roughness:.75,metalness:.05});
+  heatMat=new THREE.MeshBasicMaterial({vertexColors:true});
+  wireUI();
+  renderer.domElement.addEventListener('pointerdown',onDown);
+  renderer.domElement.addEventListener('pointermove',onMove);
+  addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();
+    renderer.setSize(innerWidth,innerHeight);});
+  (function loop(){requestAnimationFrame(loop);controls.update();
+    if(guideOn&&guideFlags&&skinnedMesh)pulseGuide();
+    renderer.render(scene,camera);})();
+}
+let pulseT=0;
+function pulseGuide(){
+  pulseT+=0.05;
+  const k=0.45+0.55*Math.abs(Math.sin(pulseT*3));
+  const col=skinnedMesh.geometry.attributes.color;
+  for(let i=0;i<guideFlags.length;i++)if(guideFlags[i])col.setXYZ(i,1.0,0.25+0.65*k,0.08);
+  col.needsUpdate=true;
+}
+// ---- Guided fix mode: finds torn spots, talks plain English ----
+function getAdjacency(){
+  if(guideAdj)return guideAdj;
+  const geo=skinnedMesh.geometry, idx=geo.index;
+  if(!idx){toast('This model has no index — guided mode unavailable');return null;}
+  const n=geo.attributes.position.count, adj=Array.from({length:n},()=>[]), ia=idx.array;
+  for(let t=0;t<ia.length;t+=3){const a=ia[t],b=ia[t+1],c=ia[t+2];
+    adj[a].push(b,c);adj[b].push(a,c);adj[c].push(a,b);}
+  guideAdj=adj; return adj;
+}
+const _bv=new THREE.Vector3();
+function skinnedPositions(out){
+  // applyBoneTransform(index,target): target must HOLD the rest position on entry
+  const posAttr=skinnedMesh.geometry.attributes.position, n=posAttr.count;
+  for(let i=0;i<n;i++){
+    _bv.fromBufferAttribute(posAttr,i);
+    skinnedMesh.applyBoneTransform(i,_bv);
+    out[i*3]=_bv.x;out[i*3+1]=_bv.y;out[i*3+2]=_bv.z;
+  }
+}
+function detectWebbing(){
+  if(!skinnedMesh){toast('Load a model first');return -1;}
+  if(poseDeg<15){toast('Drag the Angle slider up first — try 45°');return -1;}
+  const adj=getAdjacency(); if(!adj)return -1;
+  const n=skinnedMesh.geometry.attributes.position.count;
+  const rest=new Float32Array(n*3), posed=new Float32Array(n*3);
+  resetPose();
+  skinnedPositions(rest);
+  applyPose(poseDeg);
+  skinnedPositions(posed);
+  const disp=new Float32Array(n);
+  for(let i=0;i<n;i++){const dx=posed[i*3]-rest[i*3],dy=posed[i*3+1]-rest[i*3+1],dz=posed[i*3+2]-rest[i*3+2];
+    disp[i]=Math.sqrt(dx*dx+dy*dy+dz*dz);}
+  // a torn spot = a vertex that moved very differently from its neighbors.
+  // Restrict to the shoulder region — that's where arm-raise webbing happens
+  // and where a beginner should paint. (Full-body scan is too noisy.)
+  const shL=findBone('LeftShoulder'), shR=findBone('RightShoulder');
+  const shPos=[];
+  [shL,shR].forEach(b=>{ if(!b)return;
+    const wp=new THREE.Vector3(); b.getWorldPosition(wp);
+    shPos.push(skinnedMesh.worldToLocal(wp.clone())); });
+  const RGN=0.38, posAttr=skinnedMesh.geometry.attributes.position;
+  const inRegion=new Uint8Array(n);
+  if(shPos.length){
+    for(let i=0;i<n;i++){
+      const x=posAttr.getX(i),y=posAttr.getY(i),z=posAttr.getZ(i);
+      for(const s of shPos){
+        const dx=x-s.x,dy=y-s.y,dz=z-s.z;
+        if(dx*dx+dy*dy+dz*dz<RGN*RGN){inRegion[i]=1;break;}
+      }
+    }
+  } else { inRegion.fill(1); } // fallback: whole body
+  const stretch=new Float32Array(n);
+  for(let i=0;i<n;i++){ if(!inRegion[i])continue;
+    const nb=adj[i]; if(!nb.length)continue;
+    let m=0,c=0; for(let k=0;k<nb.length;k++){ if(!inRegion[nb[k]])continue; m+=disp[nb[k]]; c++; }
+    if(!c)continue; m/=c;
+    stretch[i]=Math.abs(disp[i]-m); }
+  let mean=0,rc=0;for(let i=0;i<n;i++)if(inRegion[i]){mean+=stretch[i];rc++;}mean/=Math.max(1,rc);
+  let sd=0;for(let i=0;i<n;i++)if(inRegion[i]){const d=stretch[i]-mean;sd+=d*d;}sd=Math.sqrt(sd/Math.max(1,rc))||1e-9;
+  guideFlags=new Uint8Array(n);let count=0;
+  const thr=mean+2.5*sd;
+  for(let i=0;i<n;i++)if(inRegion[i]&&stretch[i]>thr){guideFlags[i]=1;count++;}
+  if(count>n*0.08){ // too many — keep the worst offenders
+    const order=[...Array(n).keys()].sort((a,b)=>stretch[b]-stretch[a]);
+    guideFlags.fill(0);const keep=Math.max(8,Math.floor(n*0.02));
+    for(let k=0;k<keep;k++)guideFlags[order[k]]=1;count=keep;
+  }
+  guideDebug={n,stretch,posed,disp};
+  return count;
+}
+let guideDebug=null;
+function recommendBone(){
+  const ji=skinnedMesh.geometry.attributes.skinIndex, jw=skinnedMesh.geometry.attributes.skinWeight;
+  const armIdx=new Set();
+  ['LeftArm','RightArm'].forEach(s=>{const b=findBone(s);if(b)armIdx.add(skeleton.bones.indexOf(b));});
+  // Which arm owns the flagged verts? Recommend ITS parent (the shoulder) —
+  // the natural bridge bone for smoothing the arm/torso transition.
+  const armW={};
+  for(let i=0;i<guideFlags.length;i++)if(guideFlags[i])
+    for(let s=0;s<4;s++){const bi=gC(ji,i,s);if(!armIdx.has(bi))continue;
+      armW[bi]=(armW[bi]||0)+gC(jw,i,s);}
+  let bestArm=-1,bw=-1;for(const k in armW)if(armW[k]>bw){bw=armW[k];bestArm=+k;}
+  if(bestArm>=0){
+    const p=skeleton.bones[bestArm].parent;
+    if(p&&p.isBone)return skeleton.bones.indexOf(p);
+  }
+  // Fallback: highest non-arm weight among flagged verts
+  const tot={};
+  for(let i=0;i<guideFlags.length;i++)if(guideFlags[i])
+    for(let s=0;s<4;s++){const bi=gC(ji,i,s);if(armIdx.has(bi))continue;
+      const w=gC(jw,i,s);tot[bi]=(tot[bi]||0)+w;}
+  let best=-1,bv=-1;for(const k in tot)if(tot[k]>bv){bv=tot[k];best=+k;}
+  if(best<0){
+    const b=findBone(poseArms==='right'?'RightShoulder':'LeftShoulder');
+    if(b)best=skeleton.bones.indexOf(b);
+  }
+  return best;
+}
+function guideSet(html,btn){$('guideText').innerHTML=html;$('guideBtn').textContent=btn;}
+function guideStart(){
+  if(!skinnedMesh){toast('Load a model first');return;}
+  guideOn=true;guideStep='scan';
+  guideSet('Step 1: drag the <b>Angle</b> slider up (try 45°) until the shoulder looks stretched or torn. Then tap below.','🔍 Find bad spots');
+}
+function guideScan(){
+  const count=detectWebbing();
+  if(count<0)return; // toast already shown
+  if(count<8){
+    guideStep='clean';
+    guideSet(`Looks clean at ${poseDeg}° — no torn spots found. Try a bigger angle, or you're done!`,'👍 Done');
+    guideOn=false;guideFlags=null;updateHeatColors();return;
+  }
+  const rec=recommendBone();
+  const recName=rec>=0?shortName(skeleton.bones[rec].name):'shoulder';
+  if(rec>=0){$('boneSelect').value=rec;selectedBone=rec;updateHeatColors();}
+  brushDir=1;$('brushAdd').classList.add('on');$('brushSub').classList.remove('on');
+  guideStep='paint';
+  guideSet(`Step 2: found <b>${count} stretched spots</b> — see them glowing? <b>${recName}</b> is selected above. Paint the glowing spots and they'll turn red as you fix them.`,'🔍 Check again');
+}
+function guideRecheck(){
+  const count=detectWebbing();
+  if(count<0)return;
+  if(count<8){
+    guideStep='fixed';
+    guideSet(`The glow is gone at ${poseDeg}° — <b>you fixed it!</b> 🎉 Tap Export GLB to send it to the pipeline.`,'👍 Done');
+    guideOn=false;guideFlags=null;updateHeatColors();return;
+  }
+  guideStep='paint';
+  guideSet(`Still <b>${count} spots</b> glowing — keep painting them, then check again. Small strokes, then re-check.`,'🔍 Check again');
+}
+function guideExit(){
+  guideOn=false;guideFlags=null;guideStep='idle';updateHeatColors();
+  guideSet('Never painted weights? Tap <b>Start</b> and I\'ll find the torn spots for you — no experience needed.','🧭 Start guided fix');
+}
+function wireUI(){
+  const seg=(ids,fn)=>ids.forEach(id=>$(id).onclick=e=>{ids.forEach(x=>$(x).classList.remove('on'));
+    e.target.classList.add('on');fn(id);});
+  seg(['modePaint','modeOrbit'],id=>{paintMode=id==='modePaint';controls.enabled=!paintMode;
+    if(paintMode)applyPose(0); toast(paintMode?'Paint mode — drag on the model':'Orbit mode — drag to rotate, pinch to zoom');});
+  seg(['viewHeat','viewNormal'],id=>{heatOn=id==='viewHeat';if(skinnedMesh){skinnedMesh.material=heatOn?heatMat:normalMat;}});
+  seg(['brushAdd','brushSub'],id=>{brushDir=id==='brushAdd'?1:-1;});
+  seg(['armBoth','armL','armR'],id=>{poseArms={armBoth:'both',armL:'left',armR:'right'}[id];applyPose(poseDeg);});
+  seg(['dirFwd','dirLat'],id=>{poseDir=id==='dirFwd'?'fwd':'lat';applyPose(poseDeg);});
+  $('radius').oninput=e=>{brushRadius=+e.target.value;$('radiusVal').textContent=brushRadius.toFixed(2);};
+  $('strength').oninput=e=>{brushStrength=+e.target.value;$('strengthVal').textContent=brushStrength.toFixed(2);};
+  $('poseSlider').oninput=e=>{poseDeg=+e.target.value;$('poseVal').textContent=poseDeg+'°';applyPose(poseDeg);};
+  $('resetPose').onclick=()=>{poseDeg=0;$('poseSlider').value=0;$('poseVal').textContent='0°';applyPose(0);};
+  $('boneSelect').onchange=e=>{selectedBone=+e.target.value;updateHeatColors();};
+  $('exportBtn').onclick=exportGLB;
+  $('guideBtn').onclick=()=>{
+    if(guideStep==='idle')guideStart();
+    else if(guideStep==='scan')guideScan();
+    else if(guideStep==='paint')guideRecheck();
+    else guideExit();
+  };
+  $('sendbackBtn').onclick=()=>{const p=$('sendback');p.style.display=p.style.display==='block'?'none':'block';};
+  $('loadUrlBtn').onclick=()=>{const u=$('loadUrl').value.trim();if(u)loadModel(u);};
+  $('uploadBtn').onchange=e=>{const f=e.target.files[0];if(f)loadModel(URL.createObjectURL(f),f.name);};
+}
+async function loadModel(url,label){
+  $('status').textContent='loading…';
+  try{
+    if(modelRoot){scene.remove(modelRoot);modelRoot=null;skinnedMesh=null;}
+    const gltf=await new GLTFLoader().loadAsync(url);
+    modelRoot=gltf.scene; scene.add(modelRoot);
+    skinnedMesh=null;
+    modelRoot.traverse(o=>{if(o.isSkinnedMesh&&!skinnedMesh)skinnedMesh=o;});
+    if(!skinnedMesh)throw new Error('no skinned mesh in file');
+    skeleton=skinnedMesh.skeleton; boneByName={}; restPose=[];
+    skeleton.bones.forEach((b,i)=>{boneByName[b.name]=b;
+      restPose.push({p:b.position.clone(),q:b.quaternion.clone(),s:b.scale.clone()});});
+    // heat color attribute
+    const n=skinnedMesh.geometry.attributes.position.count;
+    skinnedMesh.geometry.setAttribute('color',new THREE.BufferAttribute(new Float32Array(n*3),3));
+    skinnedMesh.material=heatOn?heatMat:normalMat;
+    buildBoneList();
+    // default: left upper arm
+    const defBone=findBone('LeftArm');
+    const def=defBone?skeleton.bones.indexOf(defBone):0;
+    $('boneSelect').value=def; selectedBone=def; updateHeatColors();
+    applyPose(0);
+    // frame the model, shifted up so it sits above the bottom panel
+    const box=new THREE.Box3().setFromObject(modelRoot);
+    const ctr=box.getCenter(new THREE.Vector3()),sz=box.getSize(new THREE.Vector3());
+    const dist=sz.y*2.68, lookY=ctr.y-sz.y*0.57;
+    controls.target.set(ctr.x,lookY,ctr.z);
+    camera.position.set(ctr.x,lookY+sz.y*0.19,ctr.z+dist);
+    $('status').textContent=(label||'model')+` · ${n} verts · ${skeleton.bones.length} bones`;
+    toast('Model loaded — pick a bone and paint');
+  }catch(err){ window.__lastError=String(err&&err.stack||err);
+    $('status').textContent='load failed'; toast('Load failed: '+err.message); }
+}
+function buildBoneList(){
+  const sel=$('boneSelect'); sel.innerHTML='';
+  const key=['LeftShoulder','LeftArm','LeftForeArm','RightShoulder','RightArm','RightForeArm'];
+  const g1=document.createElement('optgroup'); g1.label='★ Shoulders & arms';
+  key.forEach(k=>{const b=findBone(k);if(!b)return;const o=document.createElement('option');
+    o.value=skeleton.bones.indexOf(b);o.textContent=shortName(b.name);g1.appendChild(o);});
+  sel.appendChild(g1);
+  const g2=document.createElement('optgroup'); g2.label='All bones';
+  skeleton.bones.forEach((b,i)=>{const o=document.createElement('option');o.value=i;
+    o.textContent=shortName(b.name);g2.appendChild(o);});
+  sel.appendChild(g2);
+}
+function heatColor(w,out){
+  out.setHSL((1-Math.max(0,Math.min(1,w)))*0.666,1,0.5); return out;
+}
+// skin attributes may be interleaved (GLTFLoader) — access them safely
+const _XYZW='XYZW';
+function gC(a,i,s){return a.isInterleavedBufferAttribute?a['get'+_XYZW[s]](i):a.getComponent(i,s);}
+function sC(a,i,s,v){if(a.isInterleavedBufferAttribute)a['set'+_XYZW[s]](i,v);else a.setComponent(i,s,v);}
+function dirty(a){if(a.isInterleavedBufferAttribute)a.data.needsUpdate=true;else a.needsUpdate=true;}
+const _c=new THREE.Color();
+function updateHeatColors(){
+  if(!skinnedMesh||selectedBone<0)return;
+  const ji=skinnedMesh.geometry.attributes.skinIndex, jw=skinnedMesh.geometry.attributes.skinWeight;
+  const col=skinnedMesh.geometry.attributes.color;
+  for(let i=0;i<jw.count;i++){
+    let w=0;
+    for(let s=0;s<4;s++)if(gC(ji,i,s)===selectedBone){w=gC(jw,i,s);break;}
+    heatColor(w,_c); col.setXYZ(i,_c.r,_c.g,_c.b);
+  }
+  col.needsUpdate=true;
+}
+function resetPose(){
+  if(!skeleton)return;
+  skeleton.bones.forEach((b,i)=>{b.position.copy(restPose[i].p);b.quaternion.copy(restPose[i].q);b.scale.copy(restPose[i].s);});
+  refreshBones();
+}
+// skeleton.update() reads bone.matrixWorld, which is stale until the scene
+// graph updates — refresh it explicitly before CPU skinning queries.
+function refreshBones(){
+  if(!skeleton||!skeleton.bones.length)return;
+  let root=skeleton.bones[0];
+  while(root.parent&&root.parent.isBone)root=root.parent;
+  root.updateWorldMatrix(true,true);
+  skeleton.update();
+}
+function applyPose(deg){
+  resetPose(); if(!skeleton||deg===0)return;
+  const rad=deg*Math.PI/180, bones=[];
+  if(poseArms==='both'||poseArms==='left'){const b=findBone('LeftArm');if(b)bones.push(['L',b]);}
+  if(poseArms==='both'||poseArms==='right'){const b=findBone('RightArm');if(b)bones.push(['R',b]);}
+  bones.forEach(([side,b])=>{
+    if(poseDir==='fwd')b.rotation.x=-rad;              // arm swings forward
+    else b.rotation.z=(side==='L'?-1:1)*rad; });       // arm swings sideways
+  refreshBones();
+}
+let painting=false;
+function evNDC(e){const r=renderer.domElement.getBoundingClientRect();
+  return {x:((e.clientX-r.left)/r.width)*2-1, y:-((e.clientY-r.top)/r.height)*2+1};}
+function onDown(e){if(!paintMode||!skinnedMesh)return;painting=true;paintAt(e);}
+function onMove(e){if(!painting||!paintMode||!skinnedMesh)return;
+  if(e.buttons===0){painting=false;return;} paintAt(e);}
+addEventListener('pointerup',()=>painting=false);
+function paintAt(e){
+  const {x,y}=evNDC(e);
+  raycaster.setFromCamera({x,y},camera);
+  const hit=raycaster.intersectObject(skinnedMesh,false)[0];
+  if(!hit)return;
+  const p=skinnedMesh.worldToLocal(hit.point.clone());
+  const geo=skinnedMesh.geometry, pos=geo.attributes.position;
+  const ji=geo.attributes.skinIndex, jw=geo.attributes.skinWeight;
+  const r2=brushRadius*brushRadius, bIdx=selectedBone;
+  let changed=false;
+  for(let i=0;i<pos.count;i++){
+    const dx=pos.getX(i)-p.x,dy=pos.getY(i)-p.y,dz=pos.getZ(i)-p.z;
+    const d2=dx*dx+dy*dy+dz*dz;
+    if(d2>r2)continue;
+    const d=Math.sqrt(d2)/brushRadius, f0=1-d, f=f0*f0*(3-2*f0);
+    let slot=-1,minSlot=0,minW=2;
+    for(let s=0;s<4;s++){const w=gC(jw,i,s);
+      if(gC(ji,i,s)===bIdx){slot=s;break;}
+      if(w<minW){minW=w;minSlot=s;}}
+    if(slot<0){ if(brushDir<0)continue; slot=minSlot; sC(ji,i,slot,bIdx); }
+    let w=gC(jw,i,slot)+brushDir*brushStrength*f;
+    sC(jw,i,slot,Math.max(0,Math.min(1,w)));
+    let sum=0; for(let s=0;s<4;s++)sum+=gC(jw,i,s);
+    if(sum>1e-6)for(let s=0;s<4;s++)sC(jw,i,s,gC(jw,i,s)/sum);
+    else sC(jw,i,slot,1);
+    changed=true;
+  }
+  if(changed){dirty(ji);dirty(jw);updateHeatColors();}
+}
+async function exportGLB(){
+  if(!skinnedMesh){toast('Load a model first');return;}
+  $('status').textContent='exporting…';
+  try{
+    applyPose(0); // bind pose for export
+    const buf=await new GLTFExporter().parseAsync(modelRoot,{binary:true});
+    const blob=new Blob([buf],{type:'model/gltf-binary'});
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob); a.download='STICKUP_painted.glb'; a.click();
+    setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+    $('status').textContent='exported STICKUP_painted.glb';
+    toast('Exported — send it to the pipeline');
+  }catch(err){toast('Export failed: '+err.message);}
+}
+// test hooks (used by the automated self-test, harmless in production)
+window.__pwa={get skinnedMesh(){return skinnedMesh},get skeleton(){return skeleton},
+  get selectedBone(){return selectedBone},set selectedBone(v){selectedBone=v;updateHeatColors();},
+  get camera(){return camera},get renderer(){return renderer},get scene(){return scene},
+  paintAt,applyPose,resetPose,updateHeatColors,exportGLB,get boneByName(){return boneByName},
+  detectWebbing,guideScan,get guideFlags(){return guideFlags},get poseDeg(){return poseDeg},
+  set poseDeg(v){poseDeg=v;$('poseSlider').value=v;$('poseVal').textContent=v+'°';applyPose(v);}};
+// headless self-test: ?autotest=1&model=<url> -> writes JSON into #autotest-out
+if(_qp.has('autotest')){
+  (async()=>{
+    const out={};
+    try{
+      let t=0;while(!skinnedMesh&&t<240){await new Promise(r=>setTimeout(r,250));t++;}
+      out.loaded=!!skinnedMesh;
+      if(skinnedMesh){
+        window.__pwa.poseDeg=45;
+        const c=detectWebbing(); out.flagged=c; out.angle=45;
+        if(c>0){
+          let mnx=1e9,mxx=-1e9,mny=1e9,mxy=-1e9,mnz=1e9,mxz=-1e9,fc=0;
+          const p=skinnedMesh.geometry.attributes.position;
+          for(let i=0;i<guideFlags.length;i++)if(guideFlags[i]){fc++;
+            const x=p.getX(i),y=p.getY(i),z=p.getZ(i);
+            if(x<mnx)mnx=x;if(x>mxx)mxx=x;if(y<mny)mny=y;if(y>mxy)mxy=y;if(z<mnz)mnz=z;if(z>mxz)mxz=z;}
+          out.flagBBox={mn:[+mnx.toFixed(3),+mny.toFixed(3),+mnz.toFixed(3)],mx:[+mxx.toFixed(3),+mxy.toFixed(3),+mxz.toFixed(3)]};
+          const rec=recommendBone();
+          out.recBone=rec>=0?shortName(skeleton.bones[rec].name):null;
+          // top-10 stretch verts: position + dominant bone (debug)
+          if(guideDebug){
+            const {n,stretch,posed,disp}=guideDebug;
+            const jw=skinnedMesh.geometry.attributes.skinWeight, ji=skinnedMesh.geometry.attributes.skinIndex;
+            const order=[...Array(n).keys()].sort((a,b)=>stretch[b]-stretch[a]);
+            out.top10=order.slice(0,10).map(i=>{
+              let bb=-1,bw=-1;
+              for(let s=0;s<4;s++){const w=gC(jw,i,s);if(w>bw){bw=w;bb=gC(ji,i,s);}}
+              return {p:[+posed[i*3].toFixed(3),+posed[i*3+1].toFixed(3),+posed[i*3+2].toFixed(3)],
+                      bone:shortName(skeleton.bones[bb].name),w:+bw.toFixed(2),
+                      s:+stretch[i].toFixed(4),d:+disp[i].toFixed(4)};
+            });
+            // max displacement overall — sanity check on the pose
+            let mi=0,md=0;for(let i=0;i<n;i++)if(disp[i]>md){md=disp[i];mi=i;}
+            const pa=skinnedMesh.geometry.attributes.position;
+            out.maxDisp={d:+md.toFixed(4),rest:[+pa.getX(mi).toFixed(3),+pa.getY(mi).toFixed(3),+pa.getZ(mi).toFixed(3)]};
+          }
+          // model bounds + shoulder bone world pos for sanity
+          const bb=new THREE.Box3().setFromObject(skinnedMesh);
+          out.modelBBox={mn:bb.min.toArray().map(v=>+v.toFixed(2)),mx:bb.max.toArray().map(v=>+v.toFixed(2))};
+          const sh=findBone('LeftShoulder')||findBone('mixamorigLeftShoulder');
+          if(sh){const wp=new THREE.Vector3();sh.getWorldPosition(wp);
+            out.shoulderPos=wp.toArray().map(v=>+v.toFixed(3));
+            out.shoulderLocal=skinnedMesh.worldToLocal(wp.clone()).toArray().map(v=>+v.toFixed(3));}
+        }
+      }
+    }catch(e){out.error=String(e&&e.stack||e);}
+    const pre=document.createElement('pre');pre.id='autotest-out';
+    pre.textContent=JSON.stringify(out);document.body.appendChild(pre);
+  })();
+}
+</script>
+</body>
+</html>
