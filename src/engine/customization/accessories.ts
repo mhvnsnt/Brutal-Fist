@@ -22,6 +22,7 @@
  */
 import * as THREE from 'three';
 import type { AccessoryDef, AccessorySlotId } from './types';
+import { estimateRigForwardXZ } from '../pipeline/CharacterPipeline';
 
 const ACC_PREFIX = 'bf-acc';
 
@@ -293,8 +294,38 @@ function findSideBone(root: THREE.Object3D, want: string, side: -1 | 1): THREE.B
 }
 
 const D2R = Math.PI / 180;
+const CANON_FWD = new THREE.Vector3(0, 0, 1);
 
-function buildAndPose(def: AccessoryDef, builderId: string, side: -1 | 0 | 1): THREE.Group {
+/**
+ * Slots whose accessories have a "front" (mask over the face, chain pendant
+ * forward, hood opening). Builders author these in a canonical frame where
+ * +Z is face-forward; this aligns the group's +Z to the bone-local face
+ * direction so they sit correctly on every rig.
+ *
+ * Face direction comes from the repo's proven shoulder-line estimator
+ * (estimateRigForwardXZ — the same function the portrait and arena use to
+ * rest-align models). It is measured in world space, then converted into the
+ * attach bone's local frame, so the alignment holds however the model is
+ * yawed in the scene (portrait bust vs arena P1/P2).
+ */
+const FACING_SLOTS: AccessorySlotId[] = ['hair', 'mask', 'hood', 'chain'];
+
+function facingAlignment(root: THREE.Object3D, bone: THREE.Bone): THREE.Quaternion | null {
+  const fwd = estimateRigForwardXZ(root);
+  if (!fwd) return null;
+  root.updateMatrixWorld(true);
+  const faceWorld = new THREE.Vector3(fwd.x, 0, fwd.z).normalize();
+  const boneQ = bone.getWorldQuaternion(new THREE.Quaternion()).invert();
+  const boneLocal = faceWorld.clone().applyQuaternion(boneQ).normalize();
+  if (!isFinite(boneLocal.x + boneLocal.y + boneLocal.z)) return null;
+  return new THREE.Quaternion().setFromUnitVectors(CANON_FWD, boneLocal);
+}
+
+function buildAndPose(
+  def: AccessoryDef,
+  builderId: string,
+  side: -1 | 0 | 1,
+): THREE.Group {
   const builder = BUILDERS[builderId];
   if (!builder) throw new Error(`Unknown accessory builder: ${builderId}`);
   const g = builder(side);
@@ -314,13 +345,33 @@ function buildAndPose(def: AccessoryDef, builderId: string, side: -1 | 0 | 1): T
   return g;
 }
 
+/** Pose + face-align a built group, then hang it on the bone. */
+function hangAccessory(
+  root: THREE.Object3D,
+  bone: THREE.Bone,
+  def: AccessoryDef,
+  builderId: string,
+  side: -1 | 0 | 1,
+  tag: string,
+): void {
+  const g = buildAndPose(def, builderId, side);
+  if (FACING_SLOTS.includes(def.slot)) {
+    const align = facingAlignment(root, bone);
+    if (align) {
+      // Face-align first, then the def's authored euler rotation.
+      const euler = new THREE.Quaternion().setFromEuler(g.rotation.clone());
+      g.quaternion.copy(align).multiply(euler);
+    }
+  }
+  g.name = tag;
+  bone.add(g);
+}
+
 /**
  * Attach one accessory def to the model. Pair defs (gloves/wristbands/shoes)
  * attach to both side bones. Idempotent per slot: call clearAccessories first.
  */
 export function attachAccessory(root: THREE.Object3D, def: AccessoryDef): boolean {
-  const holder = new THREE.Group();
-  holder.name = `${ACC_PREFIX}-${def.slot}`;
   const isPair = !!def.pairBuilders && def.pairBuilders.length > 0;
   let attached = 0;
 
@@ -329,18 +380,14 @@ export function attachAccessory(root: THREE.Object3D, def: AccessoryDef): boolea
       const bone = findSideBone(root, def.attach.bone, side);
       if (!bone) continue;
       for (const bId of def.pairBuilders!) {
-        const g = buildAndPose(def, bId, side);
-        g.name = `${ACC_PREFIX}-${def.slot}-${side < 0 ? 'l' : 'r'}`;
-        bone.add(g);
+        hangAccessory(root, bone, def, bId, side, `${ACC_PREFIX}-${def.slot}-${side < 0 ? 'l' : 'r'}`);
         attached++;
       }
     }
   } else {
     const bone = resolveBone(root, def.attach.bone);
     if (!bone) return false;
-    const g = buildAndPose(def, def.builder, 0);
-    g.name = `${ACC_PREFIX}-${def.slot}`;
-    bone.add(g);
+    hangAccessory(root, bone, def, def.builder, 0, `${ACC_PREFIX}-${def.slot}`);
     attached++;
   }
   return attached > 0;
