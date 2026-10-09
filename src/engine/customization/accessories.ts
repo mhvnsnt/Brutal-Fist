@@ -64,8 +64,12 @@ function ring(r: number, tube: number, color: number, metal = 0.05): THREE.Mesh 
   return m;
 }
 
-/** Builder signature: side is -1 (left), 1 (right), 0 (center). */
-type Builder = (side: -1 | 0 | 1) => THREE.Group;
+/** Builder signature: side is -1 (left), 1 (right), 0 (center). ctx carries
+ *  measured anatomy (faceDist = head-joint → face-surface along face dir). */
+export interface BuilderCtx {
+  faceDist: number;
+}
+type Builder = (side: -1 | 0 | 1, ctx: BuilderCtx) => THREE.Group;
 
 function groupOf(...children: THREE.Object3D[]): THREE.Group {
   const g = new THREE.Group();
@@ -112,16 +116,17 @@ const BUILDERS: Record<string, Builder> = {
     box(0.15, 0.24, 0.055, HAIR, 0, -0.05, -0.105),
   ),
   // ── MASK ──────────────────────────────────────────────────────────────
-  mask_eyeband: () => groupOf(
-    box(0.175, 0.038, 0.022, 0x101010, 0, 0.02, 0.088),
-    box(0.03, 0.02, 0.1, 0x101010, -0.095, 0.02, 0.03),
-    box(0.03, 0.02, 0.1, 0x101010, 0.095, 0.02, 0.03),
+  // Bands/plates ride just off the measured face surface (ctx.faceDist).
+  mask_eyeband: (side, ctx) => groupOf(
+    box(0.175, 0.038, 0.022, 0x101010, 0, 0.02, ctx.faceDist),
+    box(0.03, 0.02, 0.1, 0x101010, -0.095, 0.02, ctx.faceDist * 0.55),
+    box(0.03, 0.02, 0.1, 0x101010, 0.095, 0.02, ctx.faceDist * 0.55),
   ),
-  mask_plate: () => groupOf(
+  mask_plate: (side, ctx) => groupOf(
     // brow plate + cheek plate, leaving an eye slit open
-    box(0.16, 0.05, 0.025, 0x3a3f4a, 0, 0.055, 0.085),
-    box(0.15, 0.07, 0.025, 0x3a3f4a, 0, -0.045, 0.082),
-    box(0.02, 0.02, 0.03, 0x8a8f9a, 0, 0.055, 0.09),
+    box(0.16, 0.05, 0.025, 0x3a3f4a, 0, 0.055, ctx.faceDist),
+    box(0.15, 0.07, 0.025, 0x3a3f4a, 0, -0.045, ctx.faceDist),
+    box(0.02, 0.02, 0.03, 0x8a8f9a, 0, 0.055, ctx.faceDist + 0.006),
   ),
   // ── HOOD ──────────────────────────────────────────────────────────────
   hood_up: () => {
@@ -325,10 +330,11 @@ function buildAndPose(
   def: AccessoryDef,
   builderId: string,
   side: -1 | 0 | 1,
+  ctx: BuilderCtx,
 ): THREE.Group {
   const builder = BUILDERS[builderId];
   if (!builder) throw new Error(`Unknown accessory builder: ${builderId}`);
-  const g = builder(side);
+  const g = builder(side, ctx);
   const [px, py, pz] = def.attach.position;
   const [rx, ry, rz] = def.attach.rotation;
   g.position.set(side === 0 ? px : px * side, py, pz);
@@ -345,6 +351,27 @@ function buildAndPose(
   return g;
 }
 
+/**
+ * Head-joint → face-surface distance along the world face direction, via a
+ * single raycast. Masks ride just off this so they never sink into the face
+ * (and never float). Falls back to 0.1 when the ray misses.
+ */
+function measureFaceDist(root: THREE.Object3D, headBone: THREE.Bone): number {
+  root.updateMatrixWorld(true);
+  const fwd = estimateRigForwardXZ(root);
+  if (!fwd) return 0.1;
+  const origin = new THREE.Vector3();
+  headBone.getWorldPosition(origin);
+  const dir = new THREE.Vector3(fwd.x, 0, fwd.z).normalize();
+  const rc = new THREE.Raycaster(origin, dir, 0, 0.6);
+  const hits = rc.intersectObject(root, true).filter((h) => {
+    const o = h.object as THREE.Mesh;
+    return (o as THREE.Mesh).isMesh && !o.name.startsWith(ACC_PREFIX);
+  });
+  if (hits.length === 0) return 0.1;
+  return hits[0].distance + 0.006;
+}
+
 /** Pose + face-align a built group, then hang it on the bone. */
 function hangAccessory(
   root: THREE.Object3D,
@@ -354,8 +381,12 @@ function hangAccessory(
   side: -1 | 0 | 1,
   tag: string,
 ): void {
-  const g = buildAndPose(def, builderId, side);
-  if (FACING_SLOTS.includes(def.slot)) {
+  const facing = FACING_SLOTS.includes(def.slot);
+  const ctx: BuilderCtx = {
+    faceDist: facing && bareName(bone.name) === 'head' ? measureFaceDist(root, bone) : 0.1,
+  };
+  const g = buildAndPose(def, builderId, side, ctx);
+  if (facing) {
     const align = facingAlignment(root, bone);
     if (align) {
       // Face-align first, then the def's authored euler rotation.
