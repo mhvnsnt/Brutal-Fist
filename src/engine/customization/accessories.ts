@@ -299,7 +299,6 @@ function findSideBone(root: THREE.Object3D, want: string, side: -1 | 1): THREE.B
 }
 
 const D2R = Math.PI / 180;
-const CANON_FWD = new THREE.Vector3(0, 0, 1);
 
 /**
  * Slots whose accessories have a "front" (mask over the face, chain pendant
@@ -321,9 +320,17 @@ function facingAlignment(root: THREE.Object3D, bone: THREE.Bone): THREE.Quaterni
   root.updateMatrixWorld(true);
   const faceWorld = new THREE.Vector3(fwd.x, 0, fwd.z).normalize();
   const boneQ = bone.getWorldQuaternion(new THREE.Quaternion()).invert();
-  const boneLocal = faceWorld.clone().applyQuaternion(boneQ).normalize();
-  if (!isFinite(boneLocal.x + boneLocal.y + boneLocal.z)) return null;
-  return new THREE.Quaternion().setFromUnitVectors(CANON_FWD, boneLocal);
+  const zAxis = faceWorld.clone().applyQuaternion(boneQ).normalize();
+  if (!isFinite(zAxis.x + zAxis.y + zAxis.z)) return null;
+  // Level basis (not shortest-arc): keeps the accessory's local X horizontal
+  // so bands lie flat across the face and mohawk fins stay vertical.
+  const upHint = new THREE.Vector3(0, 1, 0);
+  const xAxis = new THREE.Vector3().crossVectors(upHint, zAxis);
+  if (xAxis.lengthSq() < 1e-6) xAxis.set(1, 0, 0);
+  else xAxis.normalize();
+  const yAxis = new THREE.Vector3().crossVectors(zAxis, xAxis).normalize();
+  const m = new THREE.Matrix4().makeBasis(xAxis, yAxis, zAxis);
+  return new THREE.Quaternion().setFromRotationMatrix(m);
 }
 
 function buildAndPose(
@@ -352,24 +359,25 @@ function buildAndPose(
 }
 
 /**
- * Head-joint → face-surface distance along the world face direction, via a
- * single raycast. Masks ride just off this so they never sink into the face
- * (and never float). Falls back to 0.1 when the ray misses.
+ * Head-joint → face-surface distance along the world face direction.
+ * Casts from IN FRONT of the face backward: a forward cast from inside the
+ * skull only strikes backfaces (culled), so it always misses.
+ * Falls back to 0.1 when the ray misses.
  */
 function measureFaceDist(root: THREE.Object3D, headBone: THREE.Bone): number {
   root.updateMatrixWorld(true);
   const fwd = estimateRigForwardXZ(root);
   if (!fwd) return 0.1;
-  const origin = new THREE.Vector3();
-  headBone.getWorldPosition(origin);
   const dir = new THREE.Vector3(fwd.x, 0, fwd.z).normalize();
-  const rc = new THREE.Raycaster(origin, dir, 0, 0.6);
+  const joint = new THREE.Vector3();
+  headBone.getWorldPosition(joint);
+  const rc = new THREE.Raycaster(joint.clone().addScaledVector(dir, 0.6), dir.clone().negate(), 0, 0.7);
   const hits = rc.intersectObject(root, true).filter((h) => {
     const o = h.object as THREE.Mesh;
     return (o as THREE.Mesh).isMesh && !o.name.startsWith(ACC_PREFIX);
   });
   if (hits.length === 0) return 0.1;
-  return hits[0].distance + 0.006;
+  return Math.max(0.05, 0.6 - hits[0].distance + 0.006);
 }
 
 /** Pose + face-align a built group, then hang it on the bone. */
