@@ -64,33 +64,20 @@ function setDecal(root: THREE.Object3D, decal: FaceDecal | undefined): void {
   (root.userData as Record<string, unknown>)[DECAL_KEY] = decal;
 }
 
-/** The skinned mesh whose surface contains the head bone (body, or head part). */
+/** The skinned mesh whose skeleton has a head bone (body, or head part). */
 function findFaceMesh(root: THREE.Object3D): THREE.SkinnedMesh | null {
-  let headBone: THREE.Bone | null = null;
-  root.traverse((o) => {
-    if (headBone) return;
-    const b = o as THREE.Bone;
-    if (b.isBone && /head/i.test(b.name) && !/end|tip|top/i.test(b.name)) headBone = b;
-  });
-  if (!headBone) return null;
-  const hp = new THREE.Vector3();
-  headBone.getWorldPosition(hp);
-
   let best: THREE.SkinnedMesh | null = null;
-  let bestVol = Infinity;
-  const box = new THREE.Box3();
   root.traverse((o) => {
     const m = o as THREE.SkinnedMesh;
     if (!m.isSkinnedMesh || !m.skeleton) return;
     if (m.name.startsWith('facepaint-decal-')) return;
-    box.setFromObject(m);
-    if (!box.containsPoint(hp)) return;
-    const size = box.getSize(new THREE.Vector3());
-    const vol = size.x * size.y * size.z;
-    if (vol < bestVol) {
-      bestVol = vol;
-      best = m;
-    }
+    // NOTE: Box3.setFromObject on a SkinnedMesh yields model-space bounds
+    // (bind-pose geometry), which does NOT contain the normalized head bone
+    // position. Check the skeleton instead.
+    const hasHead = m.skeleton.bones.some(
+      (b) => /head/i.test(b.name) && !/end|tip|top/i.test(b.name),
+    );
+    if (hasHead && !best) best = m;
   });
   return best;
 }
