@@ -31,9 +31,9 @@ export const FACE_PAINT_PROFILES: FacePaintProfile[] = [
     characterId: 'echo',
     label: 'Echo',
     glb: 'models/ECHO.glb',
-    faceDir: [0.954, 0, 0.299],
+    faceDir: [1, 0, 0],
     notes:
-      'faceDir = head-bone X axis (horizontal), pending visual confirmation. Stitched/skull paint canon (echo-stitched preset).',
+      'faceDir visually confirmed via headless renders (nose points +X in mesh local space, face at +Z world after portrait restYaw). Stitched/skull paint canon (echo-stitched preset).',
   },
 ];
 

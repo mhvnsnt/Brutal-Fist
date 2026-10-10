@@ -24,8 +24,8 @@ import { FacePaintPainter } from './painter';
  *   decal.texture.needsUpdate = true;
  */
 export interface FaceDecal {
-  /** the overlay mesh (child of the character mesh) */
-  mesh: THREE.SkinnedMesh;
+  /** the overlay mesh (child of the head bone — rigid, follows head animation) */
+  mesh: THREE.Mesh;
   material: THREE.MeshStandardMaterial;
   texture: THREE.CanvasTexture;
   painter: FacePaintPainter;
@@ -40,10 +40,16 @@ export interface FaceDecal {
   dispose(): void;
 }
 
-const SURFACE_OFFSET = 0.002;
-/** face patch size in meters (anatomical face: hairline to chin, ear to ear) */
-const FACE_W = 0.19;
-const FACE_H = 0.20;
+/** offset the decal off the skin to avoid z-fighting (5mm — generous for large heads at close camera) */
+const SURFACE_OFFSET = 0.005;
+/**
+ * face patch size in meters. Sized generously (0.28 x 0.30) so oversized
+ * heads (cipher's feral skull) are fully covered; rays that miss the surface
+ * are marked invalid and skipped, and the planar UV remap normalizes paint
+ * to the valid hit extent, so smaller heads are unaffected.
+ */
+const FACE_W = 0.28;
+const FACE_H = 0.30;
 const GRID_NX = 28;
 const GRID_NY = 30;
 
@@ -74,23 +80,30 @@ export class FacePaintDecal {
     const headBone = bones[headIdx];
     const headWorld = new THREE.Vector3();
     headBone.getWorldPosition(headWorld);
-    // Anatomical face center: forward and slightly below the head bone.
-    const faceCenter = headWorld.clone().addScaledVector(fWorld, 0.085).addScaledVector(upW, -0.06);
 
     // Raycast grid -> conform to face surface.
     // Perf: raycast against a head-region SUBSET mesh (not the full body),
     // so the per-ray triangle loop stays small. We only need hit points and
     // normals, not triangle indices, so the subset is sufficient.
-    const headBox = new THREE.Box3().setFromObject(skinned);
+    // Adaptive head-region box: bbox of all mesh-local verts within HEAD_R of
+    // the head bone. Fixed anatomical extents (±0.16m) silently exclude the
+    // entire face on oversized/hunched heads — cipher's feral skull puts the
+    // nose 0.34m from the head bone — leaving the raycast proxy without the
+    // face, so the grid rays miss and the paint never appears.
+    // NOTE: the anchor is a POINT converted with worldToLocal (correct under
+    // any model rotation/scale). Do NOT transform box corners through the
+    // inverse matrixWorld: under yaw the min/max corners swap (inverted box).
+    const headBox = new THREE.Box3();
     {
-      // shrink to head region using the head bone as anchor
-      const hb = new THREE.Vector3();
-      headBone.getWorldPosition(hb);
-      headBox.min.set(hb.x - 0.16, hb.y - 0.20, hb.z - 0.16);
-      headBox.max.set(hb.x + 0.16, hb.y + 0.16, hb.z + 0.16);
-      // convert to mesh-local
-      headBox.min.applyMatrix4(skinned.matrixWorld.clone().invert());
-      headBox.max.applyMatrix4(skinned.matrixWorld.clone().invert());
+      const hbLocal = skinned.worldToLocal(headBone.getWorldPosition(new THREE.Vector3()).clone());
+      const pp = src.attributes.position as THREE.BufferAttribute;
+      const vv = new THREE.Vector3();
+      const HEAD_R = 0.5, HEAD_R2 = HEAD_R * HEAD_R;
+      for (let i = 0; i < pp.count; i++) {
+        vv.set(pp.getX(i), pp.getY(i), pp.getZ(i));
+        if (vv.distanceToSquared(hbLocal) < HEAD_R2) headBox.expandByPoint(vv);
+      }
+      headBox.expandByScalar(0.02);
     }
     const subGeo = new THREE.BufferGeometry();
     {
@@ -128,6 +141,22 @@ export class FacePaintDecal {
     const raycaster = new THREE.Raycaster();
     raycaster.far = 0.5;
     const rayDir = fWorld.clone().negate();
+
+    // Anatomical face center: forward and slightly below the head bone.
+    // ADAPTIVE: probe the actual face surface along -fWorld first. The fixed
+    // 0.085m constant assumes an upright, average-size head; hunched or
+    // oversized heads (cipher's feral bind pose) put the face surface farther
+    // out, leaving the grid origin inside the skull so every ray misses.
+    // Falls back to the anatomical constant when the probe finds nothing.
+    let surfDist = 0.085;
+    {
+      const probe = new THREE.Raycaster();
+      probe.far = 2.0;
+      probe.set(headWorld.clone().addScaledVector(fWorld, 1.0), fWorld.clone().negate());
+      const pHits = probe.intersectObject(proxy, false);
+      if (pHits.length > 0) surfDist = headWorld.distanceTo(pHits[0].point);
+    }
+    const faceCenter = headWorld.clone().addScaledVector(fWorld, surfDist).addScaledVector(upW, -0.06);
     const origin = new THREE.Vector3();
     const dPos: number[] = [];
     const dUV: number[] = [];
@@ -145,11 +174,13 @@ export class FacePaintDecal {
         raycaster.set(origin, rayDir);
         const hits = raycaster.intersectObject(proxy, false);
         if (hits.length > 0 && hits[0].face) {
-          // Hit point in mesh-local space; normal -> mesh-local.
-          const hp = skinned.worldToLocal(hits[0].point.clone());
-          const ln = hits[0].face.normal.clone()
-            .transformDirection(proxy.matrixWorld.clone().invert());
-          dPos.push(hp.x + ln.x * SURFACE_OFFSET, hp.y + ln.y * SURFACE_OFFSET, hp.z + ln.z * SURFACE_OFFSET);
+          // Hit point -> head-bone LOCAL space (the decal is rigidly parented
+          // to the head bone, so it follows head animation without skinning).
+          // Offset along the world normal first, then convert.
+          const nW = hits[0].face.normal.clone().transformDirection(proxy.matrixWorld);
+          const hpW = hits[0].point.clone().addScaledVector(nW, SURFACE_OFFSET);
+          const hp = headBone.worldToLocal(hpW);
+          dPos.push(hp.x, hp.y, hp.z);
           // Store grid-plane offsets; planar UV remap happens after the loop.
           // fx 0 = viewer's left (ix=0 is at -rightW = viewer's left), fy 0 = forehead top.
           dUV.push(ox, oy);
@@ -200,13 +231,6 @@ export class FacePaintDecal {
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.Float32BufferAttribute(dPos, 3));
     geo.setAttribute('uv', new THREE.Float32BufferAttribute(dUV, 2));
-    // Rigid skinning to the head bone.
-    const nVerts = dPos.length / 3;
-    const si = new Float32Array(nVerts * 4);
-    const sw = new Float32Array(nVerts * 4);
-    for (let i = 0; i < nVerts; i++) { si[i * 4] = headIdx; sw[i * 4] = 1; }
-    geo.setAttribute('skinIndex', new THREE.BufferAttribute(si, 4));
-    geo.setAttribute('skinWeight', new THREE.BufferAttribute(sw, 4));
     geo.setIndex(dIdx);
     geo.computeVertexNormals(); // smooth shading across the conforming grid
 
@@ -224,14 +248,22 @@ export class FacePaintDecal {
       polygonOffset: true,
       polygonOffsetFactor: -2,
       polygonOffsetUnits: -2,
+      // DoubleSide: the grid triangulation winding is not guaranteed to face
+      // the camera (depends on faceDir handedness); the decal is a thin
+      // conforming overlay so double-sided rendering is correct.
+      side: THREE.DoubleSide,
     });
 
-    const mesh = new THREE.SkinnedMesh(geo, material);
+    // Rigid decal: parent to the head bone (vertices are in head-bone local
+    // space). This follows head animation exactly, and — unlike SkinnedMesh
+    // binding — is immune to the double-transform that broke the skinned
+    // decal whenever an ancestor of the mesh was scaled/rotated after the
+    // skeleton was bound (the portrait normalizes the root before building).
+    const mesh = new THREE.Mesh(geo, material);
     mesh.name = `facepaint-decal-${profile.characterId}`;
     mesh.renderOrder = 2;
     mesh.frustumCulled = false;
-    skinned.add(mesh);
-    mesh.bind(skinned.skeleton, skinned.bindMatrix);
+    headBone.add(mesh);
 
     const decal: FaceDecal = {
       mesh,
@@ -246,7 +278,7 @@ export class FacePaintDecal {
         texture.needsUpdate = true;
       },
       dispose() {
-        skinned.remove(mesh);
+        headBone.remove(mesh);
         geo.dispose();
         material.dispose();
         texture.dispose();
