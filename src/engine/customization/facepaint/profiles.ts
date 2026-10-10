@@ -14,7 +14,7 @@ export const FACE_PAINT_PROFILES: FacePaintProfile[] = [
   {
     characterId: 'cipher',
     label: 'Cipher',
-    glb: 'models/CIPHER_rigged.glb',
+    glb: 'models/CIPHER.glb',
     faceDir: [1, 0, 0],
     notes:
       'Bald. faceDir verified via Blender head renders (nose points +X in mesh local space). Canon paint: cipher-grin preset.',

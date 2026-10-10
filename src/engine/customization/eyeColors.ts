@@ -2,8 +2,8 @@
  * customization/eyeColors.ts — user-settable iris colors.
  *
  * Port of the AshLanev2 suite's eye-colors.ts. The system is material-based:
- * find materials named *iris* (also meshes/nodes named *iris*/*pupil* as a
- * fallback locator), clone them once per model, and drive color via a
+ * find materials named like "iris" (also meshes/nodes with iris/pupil in
+ * the name as a fallback locator), clone them once per model, and drive
  * procedurally generated 256px iris texture (limbal ring + radial striations
  * + pupil). ONLY iris materials are touched — skin is never recolored.
  *
