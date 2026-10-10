@@ -83,19 +83,19 @@ const SKIN_DARK = 0x2a2320;
 const BUILDERS: Record<string, Builder> = {
   // ── HAIR ──────────────────────────────────────────────────────────────
   hair_flattop: () => groupOf(
-    box(0.17, 0.055, 0.19, HAIR, 0, 0.105, -0.01),
-    box(0.15, 0.03, 0.17, HAIR, 0, 0.075, -0.01),
+    box(0.17, 0.055, 0.19, HAIR, 0, 0.185, -0.01),
+    box(0.15, 0.03, 0.17, HAIR, 0, 0.155, -0.01),
   ),
   hair_mohawk: () => {
     const g = groupOf();
     for (let i = 0; i < 4; i++) {
       const h = 0.09 - i * 0.012;
-      g.add(box(0.025, h, 0.05, 0x8a1f1f, 0, 0.1 + h / 2, 0.06 - i * 0.045));
+      g.add(box(0.025, h, 0.05, 0x8a1f1f, 0, 0.18 + h / 2, 0.06 - i * 0.045));
     }
     return g;
   },
   hair_dreads: () => {
-    const g = groupOf(box(0.16, 0.05, 0.18, HAIR, 0, 0.095, -0.01));
+    const g = groupOf(box(0.16, 0.05, 0.18, HAIR, 0, 0.175, -0.01));
     for (let i = 0; i < 5; i++) {
       const d = cone(0.018, 0.17, HAIR, -0.06 + i * 0.03, -0.03, -0.11, 6);
       d.rotation.x = 0.18;
@@ -106,21 +106,21 @@ const BUILDERS: Record<string, Builder> = {
   hair_buzz: () => groupOf(
     (() => {
       const cap = new THREE.Mesh(new THREE.SphereGeometry(0.098, 8, 6, 0, Math.PI * 2, 0, Math.PI * 0.55), accMat(0x241d18));
-      cap.position.set(0, 0.015, -0.008);
+      cap.position.set(0, 0.095, -0.008);
       cap.frustumCulled = false;
       return cap;
     })(),
   ),
   hair_long: () => groupOf(
-    box(0.16, 0.06, 0.18, HAIR, 0, 0.1, -0.01),
+    box(0.16, 0.06, 0.18, HAIR, 0, 0.18, -0.01),
     box(0.15, 0.24, 0.055, HAIR, 0, -0.05, -0.105),
   ),
   // ── MASK ──────────────────────────────────────────────────────────────
   // Bands/plates ride just off the measured face surface (ctx.faceDist).
   mask_eyeband: (side, ctx) => groupOf(
-    box(0.175, 0.038, 0.022, 0xff0000, 0, 0.02, ctx.faceDist),
-    box(0.03, 0.02, 0.1, 0x101010, -0.095, 0.02, ctx.faceDist * 0.55),
-    box(0.03, 0.02, 0.1, 0x101010, 0.095, 0.02, ctx.faceDist * 0.55),
+    box(0.175, 0.038, 0.022, 0x101010, 0, 0.09, ctx.faceDist),
+    box(0.03, 0.02, 0.1, 0x101010, -0.095, 0.09, ctx.faceDist * 0.55),
+    box(0.03, 0.02, 0.1, 0x101010, 0.095, 0.09, ctx.faceDist * 0.55),
   ),
   mask_plate: (side, ctx) => groupOf(
     // brow plate + cheek plate, leaving an eye slit open
@@ -371,7 +371,7 @@ function buildAndPose(
  *  live in the normalized bone space, so the ray systematically misses and
  *  the 0.1 fallback always won. The fixed offset is verified on the cast.)
  */
-const FIXED_FACE_DIST = 0.1;
+const FIXED_FACE_DIST = 0.13;
 
 /** Pose + face-align a built group, then hang it on the bone. */
 function hangAccessory(
