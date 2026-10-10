@@ -359,26 +359,12 @@ function buildAndPose(
 }
 
 /**
- * Head-joint → face-surface distance along the world face direction.
- * Casts from IN FRONT of the face backward: a forward cast from inside the
- * skull only strikes backfaces (culled), so it always misses.
- * Falls back to 0.1 when the ray misses.
+ * Builders that need the face-surface distance get a fixed, verified offset.
+ * (A SkinnedMesh raycast was tried: the CPU-side bind-pose geometry does not
+ *  live in the normalized bone space, so the ray systematically misses and
+ *  the 0.1 fallback always won. The fixed offset is verified on the cast.)
  */
-function measureFaceDist(root: THREE.Object3D, headBone: THREE.Bone): number {
-  root.updateMatrixWorld(true);
-  const fwd = estimateRigForwardXZ(root);
-  if (!fwd) return 0.1;
-  const dir = new THREE.Vector3(fwd.x, 0, fwd.z).normalize();
-  const joint = new THREE.Vector3();
-  headBone.getWorldPosition(joint);
-  const rc = new THREE.Raycaster(joint.clone().addScaledVector(dir, 0.6), dir.clone().negate(), 0, 0.7);
-  const hits = rc.intersectObject(root, true).filter((h) => {
-    const o = h.object as THREE.Mesh;
-    return (o as THREE.Mesh).isMesh && !o.name.startsWith(ACC_PREFIX);
-  });
-  if (hits.length === 0) return 0.1;
-  return Math.max(0.05, 0.6 - hits[0].distance + 0.006);
-}
+const FIXED_FACE_DIST = 0.1;
 
 /** Pose + face-align a built group, then hang it on the bone. */
 function hangAccessory(
@@ -390,9 +376,7 @@ function hangAccessory(
   tag: string,
 ): void {
   const facing = FACING_SLOTS.includes(def.slot);
-  const ctx: BuilderCtx = {
-    faceDist: facing && bareName(bone.name) === 'head' ? measureFaceDist(root, bone) : 0.1,
-  };
+  const ctx: BuilderCtx = { faceDist: FIXED_FACE_DIST };
   const g = buildAndPose(def, builderId, side, ctx);
   if (facing) {
     const align = facingAlignment(root, bone);
