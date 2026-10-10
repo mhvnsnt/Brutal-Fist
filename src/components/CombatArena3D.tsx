@@ -901,6 +901,7 @@ export default function CombatArena3D({
           tint={p1SkinTint ?? p1Color}
           paint={p1Fighter.paint}
           addon={p1Fighter.addon}
+          customBuild={p1Fighter.customBuild}
           animationTrigger={p1AnimTrigger}
           locomotionVelocity={p1LocomotionVelocity}
           poseSlot={p1Pose}
@@ -929,6 +930,7 @@ export default function CombatArena3D({
           tint={p2SkinTint ?? p2Color}
           paint={p2Fighter.paint}
           addon={p2Fighter.addon}
+          customBuild={p2Fighter.customBuild}
           animationTrigger={p2AnimTrigger}
           locomotionVelocity={p2LocomotionVelocity}
           poseSlot={p2Pose}

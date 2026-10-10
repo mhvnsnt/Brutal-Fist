@@ -33,6 +33,8 @@ import {
 } from '../engine/combat/ClipPlaybackGate';
 import { applyFighterLook } from '../engine/render/applyPartPaint';
 import type { GearAddon, PartPaint } from '../engine/render/paintMath';
+import { applyCustomBuild } from '../engine/customization/applyBuild';
+import type { CustomBuild } from '../engine/customization/types';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props
@@ -59,6 +61,7 @@ export interface FighterMeshProps {
   tint?: string;
   paint?: PartPaint;
   addon?: GearAddon;
+  customBuild?: CustomBuild;
   showHitbox?: boolean;
   hitboxGeometry?: { offsetX: number; offsetZ: number; width: number; depth: number } | null;
   /**
@@ -451,6 +454,7 @@ function FighterMeshInner({
   attackClip = null,
   paint,
   addon,
+  customBuild,
   characterId,
   poseSlot,
   hitStopActive = false,
@@ -472,6 +476,7 @@ function FighterMeshInner({
   attackClip?: string | null;
   paint?: PartPaint;
   addon?: GearAddon;
+  customBuild?: CustomBuild;
   characterId?: string;
   locomotionVelocity?: { forward: number; strafe: number };
   poseSlot?: { current: { x: number; y: number; z: number; yaw: number } };
@@ -485,10 +490,20 @@ function FighterMeshInner({
   const [normalized, setNormalized] = useState<NormalizedResult | null>(null);
   const paintKey = JSON.stringify(paint ?? {});
 
+  const buildKey = JSON.stringify(customBuild ?? null);
   useEffect(() => {
     if (!normalized) return;
-    applyFighterLook(normalized.scene, paint, addon);
-  }, [normalized, paintKey, addon]);
+    if (customBuild) {
+      // Full appearance build (carries paint/addon too). Async: face-paint
+      // pattern PNGs load on demand; everything else applies synchronously.
+      void applyCustomBuild(normalized.scene, customBuild).catch((err) =>
+        console.warn('[FighterMesh] custom build failed', err),
+      );
+    } else {
+      applyFighterLook(normalized.scene, paint, addon);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [normalized, paintKey, addon, buildKey]);
 
   // ── Jitter-prevention refs ────────────────────────────────────────────────
   /** The clip name that is currently playing (or crossfading to) */
@@ -922,6 +937,7 @@ export function FighterMesh({
   tint,
   paint,
   addon,
+  customBuild,
   showHitbox = false,
   hitboxGeometry = null,
   animationTrigger = 0,
@@ -953,6 +969,7 @@ export function FighterMesh({
         attackClip={attackClip}
         paint={paint}
         addon={addon}
+        customBuild={customBuild}
         characterId={characterId}
         locomotionVelocity={locomotionVelocity}
         poseSlot={poseSlot}

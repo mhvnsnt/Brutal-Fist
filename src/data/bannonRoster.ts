@@ -15,6 +15,7 @@ import { getGlbEntryForFighter } from './bannonGlbRoster';
 import { BANNON_MODELS_RAW, resolveGlbUrl } from './bannonGlbUrl';
 import { pronounsForFighter, type CanonPronouns } from './canonPronouns';
 import type { GearAddon, PartPaint } from '../engine/render/paintMath';
+import type { CustomBuild } from '../engine/customization/types';
 
 export interface BannonFighterProfile {
   id: string;
@@ -55,6 +56,8 @@ export interface BannonFighterProfile {
   paint?: PartPaint;
   /** Extra geometry on the head or hands. Not a new GLB. */
   addon?: GearAddon;
+  /** Player's saved appearance build (customizer suite). Carried into fights. */
+  customBuild?: CustomBuild;
   // Per-character move set — IDs from BrutalFistMoveCatalog
   defaultMoveSet: CharacterMoveSet;
 }
