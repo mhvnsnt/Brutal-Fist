@@ -280,7 +280,7 @@ export default function AppearancePanel({
                     <button
                       type="button"
                       onClick={addPaintLayer}
-                      className={`text-[8px] font-mono px-2 py-1 min-h-8 border ${on}`}
+                      className={`text-xs font-mono px-3 py-2 min-h-11 border ${on}`}
                     >
                       + LAYER
                     </button>
@@ -400,7 +400,7 @@ export default function AppearancePanel({
             <button
               type="button"
               onClick={handleReset}
-              className="text-[8px] font-mono px-2 py-1 min-h-8 border border-zinc-700 text-zinc-400"
+              className="text-xs font-mono px-3 py-2 min-h-11 border border-zinc-700 text-zinc-400"
             >
               RESET
             </button>
