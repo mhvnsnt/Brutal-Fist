@@ -118,7 +118,7 @@ const BUILDERS: Record<string, Builder> = {
   // ── MASK ──────────────────────────────────────────────────────────────
   // Bands/plates ride just off the measured face surface (ctx.faceDist).
   mask_eyeband: (side, ctx) => groupOf(
-    box(0.175, 0.038, 0.022, 0x101010, 0, 0.02, ctx.faceDist),
+    box(0.175, 0.038, 0.022, 0xff0000, 0, 0.02, ctx.faceDist),
     box(0.03, 0.02, 0.1, 0x101010, -0.095, 0.02, ctx.faceDist * 0.55),
     box(0.03, 0.02, 0.1, 0x101010, 0.095, 0.02, ctx.faceDist * 0.55),
   ),
@@ -318,7 +318,12 @@ function facingAlignment(root: THREE.Object3D, bone: THREE.Bone): THREE.Quaterni
   const fwd = estimateRigForwardXZ(root);
   if (!fwd) return null;
   root.updateMatrixWorld(true);
-  const faceWorld = new THREE.Vector3(fwd.x, 0, fwd.z).normalize();
+  // NOTE: estimateRigForwardXZ's cross product (up × across) yields the
+  // NEGATION of the true face direction (verified against the facepaint
+  // profiles: profile [1,0,0] -> world +Z, estimator -> world -Z). The
+  // portrait/arena depend on the estimator as-is (their -Z target cancels
+  // the flip), so we negate LOCALLY here to get the true face direction.
+  const faceWorld = new THREE.Vector3(-fwd.x, 0, -fwd.z).normalize();
   const boneQ = bone.getWorldQuaternion(new THREE.Quaternion()).invert();
   const zAxis = faceWorld.clone().applyQuaternion(boneQ).normalize();
   if (!isFinite(zAxis.x + zAxis.y + zAxis.z)) return null;
