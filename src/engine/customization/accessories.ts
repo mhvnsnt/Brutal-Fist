@@ -329,8 +329,10 @@ function facingAlignment(root: THREE.Object3D, bone: THREE.Bone): THREE.Quaterni
   if (!isFinite(zAxis.x + zAxis.y + zAxis.z)) return null;
   // Level basis (not shortest-arc): keeps the accessory's local X horizontal
   // so bands lie flat across the face and mohawk fins stay vertical.
-  const upHint = new THREE.Vector3(0, 1, 0);
-  const xAxis = new THREE.Vector3().crossVectors(upHint, zAxis);
+  // "Up" is WORLD up expressed in bone space (bone-local +Y is not
+  // reliably up on Mixamo head bones).
+  const upBone = new THREE.Vector3(0, 1, 0).applyQuaternion(boneQ).normalize();
+  const xAxis = new THREE.Vector3().crossVectors(upBone, zAxis);
   if (xAxis.lengthSq() < 1e-6) xAxis.set(1, 0, 0);
   else xAxis.normalize();
   const yAxis = new THREE.Vector3().crossVectors(zAxis, xAxis).normalize();
